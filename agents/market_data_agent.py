@@ -1,0 +1,162 @@
+from loguru import logger
+from agents.base_agent import BaseAgent
+from services.market_data.market_data_service import MarketDataService
+import time
+
+class MarketDataAgent(BaseAgent):
+    """市场数据智能体，负责获取和处理市场数据"""
+    
+    def __init__(self, agent_id, config=None):
+        super().__init__(agent_id, config)
+        self.market_data_service = None
+        self.subscribed_symbols = set()
+        self.update_interval = config.get('update_interval', 1)  # 默认1秒更新一次
+        self.is_running = False
+        
+        # 订阅事件
+        self.subscribe('agent_status_changed', self.on_agent_status_changed)
+        
+        logger.info(f"市场数据智能体初始化完成: {self.agent_id}")
+    
+    def start(self):
+        """启动市场数据智能体"""
+        super().start()
+        
+        # 初始化市场数据服务
+        from okx_api_client import OKXAPIClient
+        api_client = OKXAPIClient(
+            api_key=self.config.get('api_key'),
+            api_secret=self.config.get('api_secret'),
+            passphrase=self.config.get('passphrase'),
+            is_test=self.config.get('is_test', False)
+        )
+        self.market_data_service = MarketDataService(api_client)
+        
+        # 启动数据更新线程
+        self.is_running = True
+        self.run_in_thread(self.update_market_data_loop)
+        
+        logger.info(f"市场数据智能体启动完成: {self.agent_id}")
+    
+    def stop(self):
+        """停止市场数据智能体"""
+        super().stop()
+        self.is_running = False
+        logger.info(f"市场数据智能体停止完成: {self.agent_id}")
+    
+    def update_market_data_loop(self):
+        """市场数据更新循环"""
+        while self.is_running:
+            try:
+                if self.subscribed_symbols:
+                    for symbol in self.subscribed_symbols:
+                        # 获取市场数据
+                        market_data = self.get_market_data(symbol)
+                        if market_data:
+                            # 发布市场数据更新事件
+                            self.publish('market_data_updated', {
+                                'symbol': symbol,
+                                'data': market_data,
+                                'timestamp': time.time()
+                            })
+                # 等待下一次更新
+                time.sleep(self.update_interval)
+            except Exception as e:
+                logger.error(f"市场数据更新失败: {e}")
+                time.sleep(self.update_interval)
+    
+    def get_market_data(self, symbol):
+        """获取指定交易对的市场数据
+        
+        Args:
+            symbol (str): 交易对
+            
+        Returns:
+            dict: 市场数据
+        """
+        try:
+            if not self.market_data_service:
+                return None
+            
+            # 获取实时行情数据
+            ticker = self.market_data_service.get_real_time_ticker(symbol)
+            if ticker and ticker:
+                # 构建市场数据
+                market_data = {
+                    'symbol': symbol,
+                    'price': float(ticker[0].get('last', 0)),
+                    'open': float(ticker[0].get('open24h', 0)),
+                    'high': float(ticker[0].get('high24h', 0)),
+                    'low': float(ticker[0].get('low24h', 0)),
+                    'volume': float(ticker[0].get('vol24h', 0)),
+                    'change': float(ticker[0].get('change24h', 0)),
+                    'change_pct': float(ticker[0].get('change24h', 0))
+                }
+                return market_data
+            return None
+        except Exception as e:
+            logger.error(f"获取市场数据失败: {symbol}, 错误: {e}")
+            return None
+    
+    def subscribe_symbol(self, symbol):
+        """订阅交易对
+        
+        Args:
+            symbol (str): 交易对
+        """
+        self.subscribed_symbols.add(symbol)
+        logger.info(f"订阅交易对: {symbol}")
+    
+    def unsubscribe_symbol(self, symbol):
+        """取消订阅交易对
+        
+        Args:
+            symbol (str): 交易对
+        """
+        if symbol in self.subscribed_symbols:
+            self.subscribed_symbols.remove(symbol)
+            logger.info(f"取消订阅交易对: {symbol}")
+    
+    def on_agent_status_changed(self, data):
+        """处理智能体状态变化事件
+        
+        Args:
+            data (dict): 事件数据
+        """
+        agent_id = data.get('agent_id')
+        status = data.get('status')
+        # 使用中文智能体名称
+        agent_name = BaseAgent.AGENT_ID_MAP.get(agent_id, agent_id)
+        logger.debug(f"智能体状态变化: {agent_name} -> {status}")
+    
+    def process_message(self, message):
+        """处理收到的消息
+        
+        Args:
+            message (dict): 消息内容
+        """
+        super().process_message(message)
+        
+        if message.get('type') == 'subscribe_symbol':
+            symbol = message.get('symbol')
+            self.subscribe_symbol(symbol)
+        elif message.get('type') == 'unsubscribe_symbol':
+            symbol = message.get('symbol')
+            self.unsubscribe_symbol(symbol)
+        elif message.get('type') == 'get_market_data':
+            symbol = message.get('symbol')
+            data = self.get_market_data(symbol)
+            if data:
+                self.send_message(message.get('sender'), {
+                    'type': 'market_data_response',
+                    'symbol': symbol,
+                    'data': data
+                })
+    
+    def get_subscribed_symbols(self):
+        """获取已订阅的交易对列表
+        
+        Returns:
+            set: 已订阅的交易对集合
+        """
+        return self.subscribed_symbols.copy()

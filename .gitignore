@@ -1,0 +1,67 @@
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 日志文件
+logs/
+*.log
+*.log.*
+
+# 配置文件
+config/okx_config.json
+.env
+.env.local
+.env.*.local
+
+# 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 测试文件
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 打包文件
+dist/
+build/
+*.spec
+*.exe
+*.app
+*.dmg
+*.msi
+
+# 文档生成
+docs/_build/
+docs/build/
+
+# 其他
+*.pid
+*.seed
+*.pid.lock
+*.bak
+*.tmp
+*.swp
+.cache/
+
+# 特定于本项目的临时文件
+tmp/
+temp/
+*.json.bak.*
