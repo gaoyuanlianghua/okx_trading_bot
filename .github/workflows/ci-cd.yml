@@ -31,7 +31,13 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest test_*.py -v
+        # Debug: Check current directory and list files
+        echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
+        
+        # Run pytest with auto-discovery (finds all test files)
+        pytest -v
 
     - name: Build application
       run: |
