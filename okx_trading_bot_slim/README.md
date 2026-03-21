@@ -36,8 +36,16 @@ pip install -r requirements.txt
 
 ### 直接运行
 
+#### 有GUI模式（默认）
+
 ```bash
 python main.py
+```
+
+#### 无GUI模式（服务器环境）
+
+```bash
+python start_headless.py
 ```
 
 ### 打包运行

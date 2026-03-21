@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QApplication
 import sys
 import os
+import time
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -246,9 +247,6 @@ class TradingBot:
             int: 退出码
         """
         try:
-            # 先创建QApplication实例，解决PyQt5事件循环问题
-            self.app = QApplication(sys.argv)
-            
             # 启动健康检查器
             global_health_checker.start()
             
@@ -257,14 +255,24 @@ class TradingBot:
             
             # 启动GUI
             if use_gui:
+                # 只有在使用GUI时才创建QApplication实例
+                self.app = QApplication(sys.argv)
                 logger.info("启动交易界面...")
                 from trading_gui import TradingGUI
                 gui = TradingGUI(self.config, self)
                 gui.show()
                 logger.info("交易界面启动完成")
-            
-            # 运行应用程序事件循环
-            return self.app.exec_()
+                # 运行应用程序事件循环
+                return self.app.exec_()
+            else:
+                # 无GUI模式，保持程序运行
+                logger.info("交易机器人以无GUI模式启动")
+                # 保持程序运行，等待用户中断
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    logger.info("交易机器人被用户中断")
         
         except KeyboardInterrupt:
             logger.info("交易机器人被用户中断")
