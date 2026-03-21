@@ -13,7 +13,7 @@ from commons.logger_config import global_logger as logger
 class OKXWebsocketClient:
     """OKX Websocket客户端，支持订阅市场数据和订单更新"""
     
-    def __init__(self, api_key=None, api_secret=None, passphrase=None, is_test=False, api_ip=None, api_ips=None, ws_ip=None, ws_ips=None, proxy=None):
+    def __init__(self, api_key=None, api_secret=None, passphrase=None, is_test=False, api_ip=None, api_ips=None, ws_ip=None, ws_ips=None):
         """
         初始化OKX Websocket客户端
         
@@ -26,7 +26,6 @@ class OKXWebsocketClient:
             api_ips (list): OKX API服务器的IP地址列表，用于负载均衡和自动切换
             ws_ip (str): OKX WebSocket服务器的IP地址，用于绕过DNS解析
             ws_ips (list): OKX WebSocket服务器的IP地址列表，用于IP轮询
-            proxy (dict, optional): 代理配置，格式: {"enabled": bool, "socks5": str}
         """
         self.api_key = api_key
         self.api_secret = api_secret
@@ -119,66 +118,12 @@ class OKXWebsocketClient:
         self.max_queue = api_config.get('ws_max_queue', 1000)     # 最大队列大小
         self.ping_interval = api_config.get('ws_ping_interval', 20.0) # 心跳间隔
         
-        # 代理配置
-        # 优先使用传入的参数，然后是配置管理器的配置
-        config_proxy = api_config.get('proxy', {})
-        self.proxy = proxy or config_proxy
-        logger.info(f"WebSocket代理配置: {self.proxy}")
-        self.proxy_enabled = self.proxy.get('enabled', False)
+        # 不使用代理配置，只保留基本的API调用功能
+        self.proxy_config = {}
+        self.proxy_enabled = False
         self.proxy_url = None
         self.proxy_connector = None
-        
-        logger.info(f"WebSocket代理启用状态: {self.proxy_enabled}")
-        
-        # 从多个代理类型中选择优先级最高的（SOCKS5 > HTTPS > HTTP）
-        if self.proxy_enabled:
-            for proxy_type in ['socks5', 'https', 'http']:
-                proxy_url = self.proxy.get(proxy_type)
-                logger.info(f"检查{proxy_type}代理URL: {proxy_url}")
-                if proxy_url:
-                    self.proxy_url = proxy_url
-                    logger.info(f"已选择{proxy_type}代理: {self.proxy_url}")
-                    break
-        
-        logger.info(f"最终选择的WebSocket代理URL: {self.proxy_url}")
-        
-        # 初始化代理连接器（异步实现）
-        if self.proxy_enabled and self.proxy_url:
-            try:
-                logger.info("开始初始化WebSocket代理连接器...")
-                # 使用推荐的异步ProxyConnector
-                from python_socks.asyncio import ProxyConnector
-                
-                logger.info(f"WebSocket代理已启用: {self.proxy_url}")
-                logger.info(f"使用python_socks.asyncio.ProxyConnector实现代理支持")
-                
-                # 创建异步代理连接器，设置连接超时和其他参数
-                self.proxy_connector = ProxyConnector(
-                    from_url=self.proxy_url,
-                    timeout=self.open_timeout,  # 使用配置的超时时间
-                    remote_dns_resolve=True,  # 启用远程DNS解析
-                    verify_ssl=True  # 验证SSL证书
-                )
-                logger.info(f"WebSocket异步代理连接器初始化成功")
-                
-            except ImportError as e:
-                logger.error(f"导入python_socks.asyncio失败，WebSocket代理将不可用: {e}")
-                logger.error("请安装python-socks[asyncio]库: pip install python-socks[asyncio]")
-                self.proxy_enabled = False
-            except Exception as e:
-                logger.error(f"初始化WebSocket代理连接器失败: {e}")
-                logger.error(f"代理URL: {self.proxy_url}")
-                logger.error(f"请检查代理URL格式是否正确，例如: socks5://127.0.0.1:7890")
-                import traceback
-                logger.error(f"异常堆栈: {traceback.format_exc()}")
-                self.proxy_enabled = False
-        elif self.proxy_enabled:
-            logger.warning("WebSocket代理已启用，但未配置任何代理地址")
-            self.proxy_enabled = False
-        else:
-            logger.info("WebSocket代理已禁用")
-        
-        logger.info(f"WebSocket代理最终状态: 启用={self.proxy_enabled}, 代理URL={self.proxy_url}, 代理连接器={self.proxy_connector is not None}")
+        logger.info("未使用代理配置，只保留基本API调用功能")
         
         # 自动重连配置
         self.base_reconnect_delay = 2  # 基础重连延迟，秒
@@ -632,22 +577,11 @@ class OKXWebsocketClient:
                 ws = None
                 
                 try:
-                    # 如果启用了代理，使用异步代理连接器
-                    if self.proxy_enabled and self.proxy_connector:
-                        logger.info(f"使用异步代理连接器连接到公共Websocket: {self.proxy_url}")
-                        logger.debug(f"WebSocket连接参数: {connect_kwargs}")
-                        ws = await websockets.connect(
-                            self.public_url,
-                            create_connection=self.proxy_connector.connect,
-                            **connect_kwargs
-                        )
-                        logger.info(f"公共Websocket代理连接成功，使用代理: {self.proxy_url}")
-                    else:
-                        # 直接连接WebSocket
-                        logger.info(f"直接连接到公共Websocket: {self.public_url}")
-                        logger.debug(f"WebSocket连接参数: {connect_kwargs}")
-                        ws = await websockets.connect(self.public_url, **connect_kwargs)
-                        logger.info(f"公共Websocket直接连接成功")
+                    # 直接连接WebSocket
+                    logger.info(f"直接连接到公共Websocket: {self.public_url}")
+                    logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws = await websockets.connect(self.public_url, **connect_kwargs)
+                    logger.info(f"公共Websocket直接连接成功")
                     
                     # 设置连接状态
                     self.public_ws = ws
@@ -975,22 +909,11 @@ class OKXWebsocketClient:
                 ws = None
                 
                 try:
-                    # 如果启用了代理，使用异步代理连接器
-                    if self.proxy_enabled and self.proxy_connector:
-                        logger.info(f"使用异步代理连接器连接到私有Websocket: {self.proxy_url}")
-                        logger.debug(f"WebSocket连接参数: {connect_kwargs}")
-                        ws = await websockets.connect(
-                            self.private_url,
-                            create_connection=self.proxy_connector.connect,
-                            **connect_kwargs
-                        )
-                        logger.info(f"私有Websocket代理连接成功，使用代理: {self.proxy_url}")
-                    else:
-                        # 直接连接WebSocket
-                        logger.info(f"直接连接到私有Websocket: {self.private_url}")
-                        logger.debug(f"WebSocket连接参数: {connect_kwargs}")
-                        ws = await websockets.connect(self.private_url, **connect_kwargs)
-                        logger.info(f"私有Websocket直接连接成功")
+                    # 直接连接WebSocket
+                    logger.info(f"直接连接到私有Websocket: {self.private_url}")
+                    logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws = await websockets.connect(self.private_url, **connect_kwargs)
+                    logger.info(f"私有Websocket直接连接成功")
                     
                     # 设置连接状态
                     self.private_ws = ws
@@ -1369,8 +1292,7 @@ def get_ws_client():
             api_ip=client.api_ip,
             api_ips=client.api_ips,
             ws_ip=ws_ip,
-            ws_ips=ws_ips,
-            proxy=client.proxy_config
+            ws_ips=ws_ips
         )
         # 设置WebSocket超时和心跳参数
         default_ws_client.open_timeout = client.ws_open_timeout
