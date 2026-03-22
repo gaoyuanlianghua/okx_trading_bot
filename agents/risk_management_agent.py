@@ -9,8 +9,8 @@ class RiskManagementAgent(BaseAgent):
     def __init__(self, agent_id, config=None):
         super().__init__(agent_id, config)
         self.risk_manager = None
-        self.risk_rules = {
-            # 默认风险规则
+        self.base_risk_rules = {
+            # 基础风险规则
             "max_position_size": config.get("max_position_size", 1000),  # 最大持仓价值
             "max_order_size": config.get("max_order_size", 100),  # 最大单笔订单价值
             "max_leverage": config.get("max_leverage", 10),  # 最大杠杆倍数
@@ -18,12 +18,20 @@ class RiskManagementAgent(BaseAgent):
             "max_orders_per_symbol": config.get("max_orders_per_symbol", 5),  # 每个交易对最大订单数
             "max_total_orders": config.get("max_total_orders", 20),  # 总最大订单数
         }
+        self.risk_rules = self.base_risk_rules.copy()  # 当前风险规则
         self.current_risk_state = {
             "total_position_value": 0,
             "total_orders": 0,
             "current_drawdown": 0,
             "active_symbols": set(),
+            "market_volatility": 0.0,  # 市场波动率
+            "risk_level": "normal",  # 风险等级: low, normal, high, extreme
+            "adjustment_factor": 1.0,  # 调整因子
         }
+        self.volatility_history = []  # 波动率历史
+        self.volatility_window = 20  # 波动率计算窗口
+        self.risk_adjustment_interval = 60  # 风险调整间隔（秒）
+        self.last_adjustment_time = 0
         
         # 订阅事件
         self.subscribe('order_placed', self.on_order_placed)
@@ -31,6 +39,7 @@ class RiskManagementAgent(BaseAgent):
         self.subscribe('order_canceled', self.on_order_canceled)
         self.subscribe('all_orders_canceled', self.on_all_orders_canceled)
         self.subscribe('trading_signal', self.on_trading_signal)
+        self.subscribe('market_data_updated', self.on_market_data_updated)
         
         logger.info(f"风险控制智能体初始化完成: {self.agent_id}")
     
@@ -67,6 +76,9 @@ class RiskManagementAgent(BaseAgent):
                 
                 # 检查风险规则
                 self.check_risk_rules()
+                
+                # 动态调整风险阈值
+                self.adjust_risk_thresholds()
                 
                 # 等待下一次检查
                 time.sleep(5)  # 每5秒检查一次风险
@@ -270,6 +282,122 @@ class RiskManagementAgent(BaseAgent):
         """
         return self.current_risk_state.copy()
     
+    def on_market_data_updated(self, data):
+        """处理市场数据更新事件
+        
+        Args:
+            data (dict): 市场数据
+        """
+        try:
+            symbol = data.get('symbol')
+            market_data = data.get('data')
+            
+            if market_data:
+                # 计算波动率（使用价格变化百分比）
+                change_pct = abs(market_data.get('change_pct', 0))
+                self._update_volatility(change_pct)
+        except Exception as e:
+            logger.error(f"处理市场数据更新失败: {e}")
+    
+    def _update_volatility(self, volatility):
+        """更新波动率历史
+        
+        Args:
+            volatility (float): 波动率值
+        """
+        self.volatility_history.append(volatility)
+        if len(self.volatility_history) > self.volatility_window:
+            self.volatility_history.pop(0)
+        
+        # 计算平均波动率
+        if self.volatility_history:
+            avg_volatility = sum(self.volatility_history) / len(self.volatility_history)
+            self.current_risk_state["market_volatility"] = avg_volatility
+    
+    def adjust_risk_thresholds(self):
+        """动态调整风险阈值"""
+        current_time = time.time()
+        if current_time - self.last_adjustment_time < self.risk_adjustment_interval:
+            return
+        
+        try:
+            # 评估风险等级
+            risk_level = self._assess_risk_level()
+            self.current_risk_state["risk_level"] = risk_level
+            
+            # 根据风险等级调整风险规则
+            adjustment_factor = self._calculate_adjustment_factor(risk_level)
+            self.current_risk_state["adjustment_factor"] = adjustment_factor
+            
+            # 应用调整因子
+            self._apply_adjustment_factor(adjustment_factor)
+            
+            # 发布风险规则更新事件
+            self.publish('risk_rules_updated', {
+                "rules": self.risk_rules,
+                "risk_level": risk_level,
+                "adjustment_factor": adjustment_factor,
+                "timestamp": time.time()
+            })
+            
+            self.last_adjustment_time = current_time
+            
+            logger.info(f"动态调整风险阈值完成，风险等级: {risk_level}, 调整因子: {adjustment_factor}")
+            
+        except Exception as e:
+            logger.error(f"调整风险阈值失败: {e}")
+    
+    def _assess_risk_level(self):
+        """评估风险等级
+        
+        Returns:
+            str: 风险等级
+        """
+        volatility = self.current_risk_state.get("market_volatility", 0)
+        
+        if volatility < 0.5:
+            return "low"
+        elif volatility < 1.5:
+            return "normal"
+        elif volatility < 3.0:
+            return "high"
+        else:
+            return "extreme"
+    
+    def _calculate_adjustment_factor(self, risk_level):
+        """计算调整因子
+        
+        Args:
+            risk_level (str): 风险等级
+            
+        Returns:
+            float: 调整因子
+        """
+        factor_map = {
+            "low": 1.2,    # 低风险时增加风险敞口
+            "normal": 1.0,  # 正常风险时保持默认
+            "high": 0.7,    # 高风险时减少风险敞口
+            "extreme": 0.5  # 极端风险时大幅减少风险敞口
+        }
+        return factor_map.get(risk_level, 1.0)
+    
+    def _apply_adjustment_factor(self, factor):
+        """应用调整因子到风险规则
+        
+        Args:
+            factor (float): 调整因子
+        """
+        for key in self.base_risk_rules:
+            if key in ["max_position_size", "max_order_size", "max_orders_per_symbol", "max_total_orders"]:
+                # 调整数量类规则
+                self.risk_rules[key] = int(self.base_risk_rules[key] * factor)
+            elif key == "max_leverage":
+                # 调整杠杆规则
+                self.risk_rules[key] = max(1, int(self.base_risk_rules[key] * factor))
+            elif key == "max_drawdown":
+                # 调整回撤规则
+                self.risk_rules[key] = self.base_risk_rules[key] * factor
+    
     def process_message(self, message):
         """处理收到的消息
         
@@ -299,4 +427,12 @@ class RiskManagementAgent(BaseAgent):
                 self.send_message(message.get('sender'), {
                     'type': 'risk_rules_response',
                     'rules': self.get_risk_rules()
+                })
+        elif message.get('type') == 'get_risk_level':
+            # 获取风险等级请求
+            if message.get('sender'):
+                self.send_message(message.get('sender'), {
+                    'type': 'risk_level_response',
+                    'risk_level': self.current_risk_state.get('risk_level'),
+                    'market_volatility': self.current_risk_state.get('market_volatility')
                 })

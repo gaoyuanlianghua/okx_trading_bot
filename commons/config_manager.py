@@ -2,6 +2,11 @@ import os
 import json
 import threading
 from typing import Dict, Any, Callable, Optional
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import getpass
 
 # 初始化日志配置
 from commons.logger_config import global_logger as logger
@@ -24,9 +29,97 @@ class ConfigManager:
         self._lock = threading.RLock()
         self._last_modified_time = 0
         self._default_config = self._get_default_config()
+        self._encryption_key = None
+        self._config_hash = None
+        self._last_check_time = 0
+        self._check_interval = 30  # 配置检查间隔（秒）
         
         # 加载初始配置
         self.load_config()
+    
+    def _generate_encryption_key(self, password: str) -> bytes:
+        """
+        生成加密密钥
+        
+        Args:
+            password (str): 密码
+            
+        Returns:
+            bytes: 加密密钥
+        """
+        salt = b'okx_trading_bot_salt'
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+    
+    def _encrypt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        加密配置中的敏感信息
+        
+        Args:
+            config (Dict[str, Any]): 原始配置
+            
+        Returns:
+            Dict[str, Any]: 加密后的配置
+        """
+        if not self._encryption_key:
+            # 如果没有密钥，使用默认密码
+            password = "okx_trading_bot_default_password"
+            self._encryption_key = self._generate_encryption_key(password)
+        
+        fernet = Fernet(self._encryption_key)
+        encrypted_config = config.copy()
+        
+        # 加密API密钥等敏感信息
+        if "api" in encrypted_config:
+            api_config = encrypted_config["api"]
+            sensitive_fields = ["api_key", "api_secret", "passphrase"]
+            for field in sensitive_fields:
+                if field in api_config and api_config[field]:
+                    encrypted_value = fernet.encrypt(api_config[field].encode()).decode()
+                    api_config[field] = f"encrypted:{encrypted_value}"
+        
+        return encrypted_config
+    
+    def _decrypt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        解密配置中的敏感信息
+        
+        Args:
+            config (Dict[str, Any]): 加密后的配置
+            
+        Returns:
+            Dict[str, Any]: 解密后的配置
+        """
+        if not self._encryption_key:
+            # 如果没有密钥，使用默认密码
+            password = "okx_trading_bot_default_password"
+            self._encryption_key = self._generate_encryption_key(password)
+        
+        fernet = Fernet(self._encryption_key)
+        decrypted_config = config.copy()
+        
+        # 解密API密钥等敏感信息
+        if "api" in decrypted_config:
+            api_config = decrypted_config["api"]
+            sensitive_fields = ["api_key", "api_secret", "passphrase"]
+            for field in sensitive_fields:
+                if field in api_config and api_config[field]:
+                    value = api_config[field]
+                    if value.startswith("encrypted:"):
+                        try:
+                            encrypted_value = value[10:]
+                            decrypted_value = fernet.decrypt(encrypted_value.encode()).decode()
+                            api_config[field] = decrypted_value
+                        except Exception as e:
+                            logger.error(f"解密{field}失败: {e}")
+                            api_config[field] = ""
+        
+        return decrypted_config
     
     def _get_default_config(self) -> Dict[str, Any]:
         """
@@ -105,10 +198,25 @@ class ConfigManager:
             bool: 加载是否成功
         """
         try:
+            import time
+            
+            # 快速路径：如果没有配置文件且已经使用默认配置，直接返回
+            if not os.path.exists(self.config_path) and self._config == self._default_config:
+                return True
+            
+            # 检查是否需要更新配置（基于时间间隔）
+            current_time = time.time()
+            if current_time - self._last_check_time < self._check_interval:
+                return True
+            
+            self._last_check_time = current_time
+            
             # 检查文件是否存在
             if not os.path.exists(self.config_path):
                 logger.error(f"配置文件不存在: {self.config_path}")
-                self._config = self._default_config.copy()
+                if self._config != self._default_config:
+                    self._config = self._default_config.copy()
+                    self._notify_listeners()
                 return False
             
             # 检查文件修改时间
@@ -116,34 +224,63 @@ class ConfigManager:
             if file_modified_time <= self._last_modified_time:
                 return True
             
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            
-            # 验证配置
-            validated_config = self._validate_config(config)
-            
-            # 更新配置
-            with self._lock:
-                self._config = validated_config
-                self._last_modified_time = file_modified_time
-            
-            logger.info(f"配置文件加载成功: {self.config_path}")
-            
-            # 通知监听器
-            self._notify_listeners()
-            
-            return True
-        except json.JSONDecodeError as e:
-            logger.error(f"配置文件格式错误: {e}")
-            self._config = self._default_config.copy()
-            return False
-        except PermissionError as e:
-            logger.error(f"没有权限访问配置文件: {e}")
-            self._config = self._default_config.copy()
-            return False
+            # 读取并解析配置文件
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config_content = f.read()
+                
+                # 计算配置内容的哈希值，避免重复加载相同内容
+                import hashlib
+                current_hash = hashlib.md5(config_content.encode()).hexdigest()
+                if current_hash == self._config_hash:
+                    self._last_modified_time = file_modified_time
+                    return True
+                
+                # 解析配置
+                config = json.loads(config_content)
+                
+                # 解密配置
+                decrypted_config = self._decrypt_config(config)
+                
+                # 验证配置
+                validated_config = self._validate_config(decrypted_config)
+                
+                # 更新配置
+                with self._lock:
+                    self._config = validated_config
+                    self._last_modified_time = file_modified_time
+                    self._config_hash = current_hash
+                
+                logger.info(f"配置文件加载成功: {self.config_path}")
+                
+                # 通知监听器
+                self._notify_listeners()
+                
+                return True
+            except json.JSONDecodeError as e:
+                logger.error(f"配置文件格式错误: {e}")
+                if self._config != self._default_config:
+                    self._config = self._default_config.copy()
+                    self._notify_listeners()
+                return False
+            except PermissionError as e:
+                logger.error(f"没有权限访问配置文件: {e}")
+                if self._config != self._default_config:
+                    self._config = self._default_config.copy()
+                    self._notify_listeners()
+                return False
+            except Exception as e:
+                logger.error(f"读取配置文件失败: {e}")
+                if self._config != self._default_config:
+                    self._config = self._default_config.copy()
+                    self._notify_listeners()
+                return False
+                
         except Exception as e:
             logger.error(f"加载配置文件失败: {e}")
-            self._config = self._default_config.copy()
+            if self._config != self._default_config:
+                self._config = self._default_config.copy()
+                self._notify_listeners()
             return False
     
     def _validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -364,11 +501,14 @@ class ConfigManager:
                 with self._lock:
                     config = self._config.copy()
             
+            # 加密配置
+            encrypted_config = self._encrypt_config(config)
+            
             # 确保配置目录存在
             os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
             
             with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
+                json.dump(encrypted_config, f, indent=2, ensure_ascii=False)
             
             logger.info(f"配置已保存到文件: {self.config_path}")
             

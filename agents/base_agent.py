@@ -77,6 +77,12 @@ class BaseAgent(QObject):
             logger.warning(f"智能体已停止: {self.agent_id}")
             return
         
+        # 停止线程
+        if self.thread and self.thread.isRunning():
+            self.thread.quit()
+            self.thread.wait()
+            logger.info(f"智能体线程已停止: {self.agent_id}")
+        
         self._status = "stopped"
         logger.info(f"智能体停止: {self.agent_id}")
         

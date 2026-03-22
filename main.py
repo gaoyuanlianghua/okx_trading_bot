@@ -202,40 +202,30 @@ class TradingBot:
         """加载功能：网络适配和智能体初始化"""
         logger.info("开始加载功能...")
         
-        # 在后台线程中执行网络适配和智能体初始化，避免阻塞GUI
-        import threading
-        
-        def worker_function():
-            """运行网络适配和智能体初始化逻辑"""
-            try:
-                # 检查是否启用网络适配
-                enable_network_adaptation = self.config.get("network", {}).get("enable_adaptation", True)
-                if enable_network_adaptation:
-                    # 先执行网络适配
-                    self.run_network_adaptation()
-                else:
-                    logger.info("网络适配已禁用")
-                
-                # 初始化智能体
-                self.init_agents()
-                
-                # 启动智能体
-                self.start_agents()
-                
-                # 订阅默认交易对
-                decision_agent = self.agents.get("decision_coordination_agent")
-                if decision_agent:
-                    decision_agent.add_symbol_subscription(self.config.get("symbol", "BTC-USDT-SWAP"))
-                
-                # 注意：不再自动激活默认策略，需要用户手动激活
-                logger.info("智能体初始化完成，策略需要手动激活")
-            except Exception as e:
-                logger.error(f"初始化和启动智能体失败: {e}", exc_info=True)
-        
-        # 创建并启动工作线程，设置为守护线程
-        worker_thread = threading.Thread(target=worker_function)
-        worker_thread.daemon = True
-        worker_thread.start()
+        try:
+            # 检查是否启用网络适配
+            enable_network_adaptation = self.config.get("network", {}).get("enable_adaptation", True)
+            if enable_network_adaptation:
+                # 先执行网络适配
+                self.run_network_adaptation()
+            else:
+                logger.info("网络适配已禁用")
+            
+            # 初始化智能体
+            self.init_agents()
+            
+            # 启动智能体
+            self.start_agents()
+            
+            # 订阅默认交易对
+            decision_agent = self.agents.get("decision_coordination_agent")
+            if decision_agent:
+                decision_agent.add_symbol_subscription(self.config.get("symbol", "BTC-USDT-SWAP"))
+            
+            # 注意：不再自动激活默认策略，需要用户手动激活
+            logger.info("智能体初始化完成，策略需要手动激活")
+        except Exception as e:
+            logger.error(f"初始化和启动智能体失败: {e}", exc_info=True)
 
     def start(self, use_gui=True):
         """启动交易机器人
@@ -250,23 +240,28 @@ class TradingBot:
             # 启动健康检查器
             global_health_checker.start()
             
-            # 自动加载功能
-            self.load_features()
-            
             # 启动GUI
             if use_gui:
-                # 只有在使用GUI时才创建QApplication实例
+                # 先创建QApplication实例
                 self.app = QApplication(sys.argv)
                 logger.info("启动交易界面...")
                 from trading_gui import TradingGUI
                 gui = TradingGUI(self.config, self)
                 gui.show()
                 logger.info("交易界面启动完成")
+                
+                # 自动加载功能
+                self.load_features()
+                
                 # 运行应用程序事件循环
                 return self.app.exec_()
             else:
                 # 无GUI模式，保持程序运行
                 logger.info("交易机器人以无GUI模式启动")
+                
+                # 自动加载功能
+                self.load_features()
+                
                 # 保持程序运行，等待用户中断
                 try:
                     while True:

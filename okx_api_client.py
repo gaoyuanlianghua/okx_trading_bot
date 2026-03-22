@@ -1,11 +1,13 @@
-import os
 import time
+import hmac
+import hashlib
+import base64
 import json
+import os
 import socket
 import ssl
 import requests
-import hmac
-import base64
+import functools
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
@@ -16,11 +18,302 @@ from cachetools import TTLCache
 from commons.logger_config import global_logger as logger
 from urllib.parse import urlparse, urlencode
 
+
+# 网络错误分类
+class NetworkError(Exception):
+    """网络错误基类"""
+    pass
+
+
+class ConnectionError(NetworkError):
+    """连接错误"""
+    pass
+
+
+class TimeoutError(NetworkError):
+    """超时错误"""
+    pass
+
+
+class DNSResolutionError(NetworkError):
+    """DNS解析错误"""
+    pass
+
+
+class SSLHandshakeError(NetworkError):
+    """SSL握手错误"""
+    pass
+
+
+class RateLimitError(NetworkError):
+    """速率限制错误"""
+    pass
+
+
+class ServerError(NetworkError):
+    """服务器错误"""
+    pass
+
+
+# 网络错误映射
+ERROR_MAPPING = {
+    'ConnectionResetError': ConnectionError,
+    'ConnectionRefusedError': ConnectionError,
+    'TimeoutError': TimeoutError,
+    'socket.timeout': TimeoutError,
+    'requests.exceptions.Timeout': TimeoutError,
+    'socket.gaierror': DNSResolutionError,
+    'ssl.SSLError': SSLHandshakeError,
+    'requests.exceptions.SSLError': SSLHandshakeError,
+    '429': RateLimitError,
+    '500': ServerError,
+    '502': ServerError,
+    '503': ServerError,
+    '504': ServerError,
+}
+
+
+class NetworkErrorHandler:
+    """网络错误处理器，用于统一处理和统计网络错误"""
+    
+    def __init__(self):
+        self.error_stats = {
+            'total_errors': 0,
+            'error_types': {},  # {error_type: count}
+            'error_history': [],  # 错误历史记录
+            'last_error_time': {},  # {error_type: last_time}
+            'recovery_success': 0,
+            'recovery_failed': 0
+        }
+        self.error_history_limit = 1000
+        self.recovery_strategies = {}
+        logger.info("网络错误处理器初始化完成")
+    
+    def register_recovery_strategy(self, error_type, strategy):
+        """
+        注册错误恢复策略
+        
+        Args:
+            error_type (class): 错误类型
+            strategy (callable): 恢复策略函数
+        """
+        self.recovery_strategies[error_type] = strategy
+        logger.info(f"注册错误恢复策略: {error_type.__name__}")
+    
+    def handle_error(self, error, context=None):
+        """
+        处理网络错误
+        
+        Args:
+            error (Exception): 错误对象
+            context (dict): 错误上下文信息
+            
+        Returns:
+            bool: 是否成功恢复
+        """
+        error_type = type(error).__name__
+        error_class = ERROR_MAPPING.get(error_type, NetworkError)
+        
+        # 更新错误统计
+        self.error_stats['total_errors'] += 1
+        self.error_stats['error_types'][error_type] = self.error_stats['error_types'].get(error_type, 0) + 1
+        self.error_stats['last_error_time'][error_type] = time.time()
+        
+        # 记录错误历史
+        error_record = {
+            'timestamp': time.time(),
+            'error_type': error_type,
+            'error_message': str(error),
+            'context': context
+        }
+        self.error_stats['error_history'].append(error_record)
+        
+        # 限制历史记录大小
+        if len(self.error_stats['error_history']) > self.error_history_limit:
+            self.error_stats['error_history'] = self.error_stats['error_history'][-self.error_history_limit:]
+        
+        logger.error(f"网络错误: {error_type} - {error}, 上下文: {context}")
+        
+        # 尝试恢复
+        recovery_strategy = self.recovery_strategies.get(error_class)
+        if recovery_strategy:
+            try:
+                success = recovery_strategy(error, context)
+                if success:
+                    self.error_stats['recovery_success'] += 1
+                    logger.info(f"错误恢复成功: {error_type}")
+                    return True
+                else:
+                    self.error_stats['recovery_failed'] += 1
+                    logger.warning(f"错误恢复失败: {error_type}")
+            except Exception as e:
+                self.error_stats['recovery_failed'] += 1
+                logger.error(f"执行恢复策略失败: {e}")
+        
+        return False
+    
+    def get_error_stats(self):
+        """
+        获取错误统计信息
+        
+        Returns:
+            dict: 错误统计信息
+        """
+        return self.error_stats.copy()
+    
+    def get_error_rate(self, error_type=None, time_window=300):
+        """
+        计算错误率
+        
+        Args:
+            error_type (str): 错误类型，None表示所有错误
+            time_window (int): 时间窗口，单位秒
+            
+        Returns:
+            float: 错误率
+        """
+        current_time = time.time()
+        window_start = current_time - time_window
+        
+        if error_type:
+            recent_errors = [e for e in self.error_stats['error_history'] 
+                           if e['error_type'] == error_type and e['timestamp'] >= window_start]
+        else:
+            recent_errors = [e for e in self.error_stats['error_history'] 
+                           if e['timestamp'] >= window_start]
+        
+        return len(recent_errors) / time_window if time_window > 0 else 0
+
+
+# 全局网络错误处理器实例
+global_network_error_handler = NetworkErrorHandler()
+
+
+class NetworkMonitor:
+    """网络状态监控器，用于实时监控网络性能"""
+    
+    def __init__(self):
+        self.metrics = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'failed_requests': 0,
+            'request_times': [],  # 请求时间列表
+            'response_sizes': [],  # 响应大小列表
+            'active_connections': 0,
+            'max_active_connections': 0,
+            'connection_pool_usage': {},  # 连接池使用情况
+            'throughput': 0,  # 吞吐量（bytes/sec）
+            'last_reset_time': time.time()
+        }
+        self.metrics_lock = Lock()
+        logger.info("网络监控器初始化完成")
+    
+    def record_request(self, success=True, request_time=0, response_size=0):
+        """
+        记录请求信息
+        
+        Args:
+            success (bool): 请求是否成功
+            request_time (float): 请求耗时（秒）
+            response_size (int): 响应大小（字节）
+        """
+        with self.metrics_lock:
+            self.metrics['total_requests'] += 1
+            if success:
+                self.metrics['successful_requests'] += 1
+            else:
+                self.metrics['failed_requests'] += 1
+            
+            if request_time > 0:
+                self.metrics['request_times'].append(request_time)
+            if response_size > 0:
+                self.metrics['response_sizes'].append(response_size)
+            
+            # 更新吞吐量
+            elapsed = time.time() - self.metrics['last_reset_time']
+            if elapsed > 0:
+                self.metrics['throughput'] = sum(self.metrics['response_sizes']) / elapsed
+    
+    def update_connection_status(self, active_connections):
+        """
+        更新连接状态
+        
+        Args:
+            active_connections (int): 当前活跃连接数
+        """
+        with self.metrics_lock:
+            self.metrics['active_connections'] = active_connections
+            if active_connections > self.metrics['max_active_connections']:
+                self.metrics['max_active_connections'] = active_connections
+    
+    def update_connection_pool_usage(self, pool_name, usage):
+        """
+        更新连接池使用情况
+        
+        Args:
+            pool_name (str): 连接池名称
+            usage (dict): 使用情况
+        """
+        with self.metrics_lock:
+            self.metrics['connection_pool_usage'][pool_name] = usage
+    
+    def get_performance_report(self):
+        """
+        获取性能报告
+        
+        Returns:
+            dict: 性能报告
+        """
+        with self.metrics_lock:
+            metrics = self.metrics.copy()
+            
+            # 计算统计信息
+            request_times = metrics['request_times']
+            response_sizes = metrics['response_sizes']
+            
+            report = {
+                'timestamp': time.time(),
+                'total_requests': metrics['total_requests'],
+                'success_rate': metrics['successful_requests'] / metrics['total_requests'] if metrics['total_requests'] > 0 else 0,
+                'avg_response_time': sum(request_times) / len(request_times) if request_times else 0,
+                'min_response_time': min(request_times) if request_times else 0,
+                'max_response_time': max(request_times) if request_times else 0,
+                'avg_response_size': sum(response_sizes) / len(response_sizes) if response_sizes else 0,
+                'active_connections': metrics['active_connections'],
+                'max_active_connections': metrics['max_active_connections'],
+                'throughput': metrics['throughput'],
+                'connection_pool_usage': metrics['connection_pool_usage'].copy()
+            }
+            
+            return report
+    
+    def reset_metrics(self):
+        """重置统计指标"""
+        with self.metrics_lock:
+            self.metrics = {
+                'total_requests': 0,
+                'successful_requests': 0,
+                'failed_requests': 0,
+                'request_times': [],
+                'response_sizes': [],
+                'active_connections': 0,
+                'max_active_connections': 0,
+                'connection_pool_usage': {},
+                'throughput': 0,
+                'last_reset_time': time.time()
+            }
+            logger.info("网络监控指标已重置")
+
+
+# 全局网络监控实例
+global_network_monitor = NetworkMonitor()
+
 # DNS解析白名单，仅允许解析这些域名
 DNS_WHITELIST = ['www.okx.com', 'ws.okx.com', 'okx.com']
 
-# DNS解析结果缓存，TTL为5分钟
-DNS_CACHE = TTLCache(maxsize=1000, ttl=300)
+# DNS解析结果缓存，TTL为10分钟，增加缓存大小提高命中率
+DNS_CACHE = TTLCache(maxsize=10000, ttl=600)
+DNS_CACHE_LOCK = Lock()  # DNS缓存线程安全锁
 
 # DNS解析统计信息
 DNS_STATS = {
@@ -54,7 +347,7 @@ CURRENT_DNS_CONFIG = {
     'timeout': 5,
     'retry_count': 3,
     'failure_rate_threshold': 0.2,
-    'use_custom_dns': True  # 是否使用自定义DNS解析
+    'use_custom_dns': True  # 是否使用自定义DNS解析，默认开启
 }
 
 # 从配置文件加载DNS配置
@@ -101,10 +394,10 @@ def validate_domain(domain):
     
     return True
 
-# 自定义DNS解析函数，优先使用系统DNS，支持DoH/DoT作为备选
+# 自定义DNS解析函数，优先使用系统DNS，提高可靠性
 def custom_dns_resolve(hostname, dns_servers=None):
     """
-    使用系统DNS优先解析主机名，失败时尝试DoH/DoT加密传输
+    使用系统DNS优先解析主机名，提高解析可靠性
     
     Args:
         hostname (str): 要解析的主机名
@@ -133,13 +426,14 @@ def custom_dns_resolve(hostname, dns_servers=None):
         check_dns_health()
         return None
     
-    # 检查缓存，如果存在则直接返回
-    if hostname in DNS_CACHE:
-        cached_ip = DNS_CACHE[hostname]
-        logger.debug(f"从缓存中获取 {hostname} 的IP: {cached_ip}")
-        DNS_STATS['cached_queries'] += 1
-        DNS_STATS['successful_queries'] += 1
-        return cached_ip
+    # 线程安全地检查缓存
+    with DNS_CACHE_LOCK:
+        if hostname in DNS_CACHE:
+            cached_ip = DNS_CACHE[hostname]
+            logger.debug(f"从缓存中获取 {hostname} 的IP: {cached_ip}")
+            DNS_STATS['cached_queries'] += 1
+            DNS_STATS['successful_queries'] += 1
+            return cached_ip
     
     resolved_ip = None
     resolve_start_time = time.time()
@@ -157,15 +451,21 @@ def custom_dns_resolve(hostname, dns_servers=None):
     except socket.gaierror as e:
         logger.warning(f"系统DNS解析 {hostname} 失败: {e}")
     
-    # 2. 如果系统DNS解析失败，尝试使用dnspython进行传统DNS查询
+    # 2. 如果系统DNS解析失败，尝试使用备用DNS服务器
     if not resolved_ip:
         try:
             import dns.resolver
             
-            logger.debug(f"系统DNS解析失败，尝试使用dnspython进行传统DNS查询 {hostname}")
+            logger.debug(f"系统DNS解析失败，尝试使用备用DNS服务器查询 {hostname}")
             resolver = dns.resolver.Resolver()
             resolver.timeout = CURRENT_DNS_CONFIG['timeout']
             resolver.lifetime = CURRENT_DNS_CONFIG['timeout'] * CURRENT_DNS_CONFIG['retry_count']
+            
+            # 使用配置的DNS服务器
+            if dns_servers:
+                resolver.nameservers = dns_servers
+            else:
+                resolver.nameservers = CURRENT_DNS_CONFIG['servers']
             
             # 解析A记录
             answers = resolver.resolve(hostname, 'A', raise_on_no_answer=False)
@@ -174,99 +474,13 @@ def custom_dns_resolve(hostname, dns_servers=None):
                     ip = str(rdata.address)
                     # 检查是否为有效IP（非APIPA地址）
                     if not ip.startswith('169.254.') and ip != '0.0.0.0' and ip != '255.255.255.255':
-                        logger.debug(f"使用dnspython解析 {hostname} 到 {ip} 成功")
+                        logger.debug(f"使用备用DNS服务器解析 {hostname} 到 {ip} 成功")
                         resolved_ip = ip
                         break
         except ImportError:
-            logger.debug("dnspython未安装，跳过传统DNS查询")
+            logger.debug("dnspython未安装，跳过备用DNS查询")
         except Exception as e:
-            logger.debug(f"dnspython解析 {hostname} 失败: {e}")
-    
-    # 3. 如果仍失败，尝试DoH/DoT（作为最后的备选）
-    if not resolved_ip:
-        try:
-            import dns.resolver
-            import dns.flags
-            import dns.query
-            import dns.message
-            
-            # 使用默认DNS服务器配置
-            if dns_servers is None:
-                dns_servers = CURRENT_DNS_CONFIG['servers']
-            
-            # 优先使用可靠的DNS服务器
-            reliable_dns_servers = ['1.1.1.1', '1.0.0.1', '208.67.222.222', '208.67.220.220']
-            all_dns_servers = reliable_dns_servers + [s for s in dns_servers if s not in reliable_dns_servers]
-            
-            # 支持DoH的DNS服务器
-            doh_servers = {
-                '1.1.1.1': 'https://1.1.1.1/dns-query',
-                '1.0.0.1': 'https://1.0.0.1/dns-query',
-                '8.8.8.8': 'https://dns.google/dns-query',
-                '8.8.4.4': 'https://dns.google/dns-query',
-                '208.67.222.222': 'https://dns.opendns.com/dns-query',
-                '208.67.220.220': 'https://dns.opendns.com/dns-query'
-            }
-            
-            # 尝试DoH
-            for server in all_dns_servers:
-                if server in doh_servers:
-                    try:
-                        logger.debug(f"尝试使用DoH服务器 {server} 解析 {hostname}")
-                        # 构建DNS查询消息
-                        query = dns.message.make_query(hostname, dns.rdatatype.A)
-                        
-                        # 使用DoH查询
-                        response = dns.query.https(query, doh_servers[server], timeout=CURRENT_DNS_CONFIG['timeout'])
-                        
-                        # 解析响应
-                        for answer in response.answer:
-                            if answer.rdtype == dns.rdatatype.A:
-                                for rdata in answer:
-                                    ip = str(rdata.address)
-                                    if not ip.startswith('169.254.') and ip != '0.0.0.0' and ip != '255.255.255.255':
-                                        logger.debug(f"使用DoH服务器 {server} 解析 {hostname} 到 {ip}")
-                                        resolved_ip = ip
-                                        break
-                            if resolved_ip:
-                                break
-                        if resolved_ip:
-                            break
-                    except Exception as e:
-                        logger.debug(f"DoH服务器 {server} 解析 {hostname} 失败: {e}")
-                        continue
-            
-            # 尝试DoT
-            if not resolved_ip:
-                for server in all_dns_servers:
-                    try:
-                        logger.debug(f"尝试使用DoT服务器 {server} 解析 {hostname}")
-                        # 构建DNS查询消息
-                        query = dns.message.make_query(hostname, dns.rdatatype.A)
-                        
-                        # 使用DoT查询
-                        response = dns.query.tls(query, server, timeout=CURRENT_DNS_CONFIG['timeout'])
-                        
-                        # 解析响应
-                        for answer in response.answer:
-                            if answer.rdtype == dns.rdatatype.A:
-                                for rdata in answer:
-                                    ip = str(rdata.address)
-                                    if not ip.startswith('169.254.') and ip != '0.0.0.0' and ip != '255.255.255.255':
-                                        logger.debug(f"使用DoT服务器 {server} 解析 {hostname} 到 {ip}")
-                                        resolved_ip = ip
-                                        break
-                            if resolved_ip:
-                                break
-                        if resolved_ip:
-                            break
-                    except Exception as e:
-                        logger.debug(f"DoT服务器 {server} 解析 {hostname} 失败: {e}")
-                        continue
-        except ImportError:
-            logger.debug("dnspython未安装，跳过DoH/DoT解析")
-        except Exception as e:
-            logger.error(f"DoH/DoT解析失败: {e}")
+            logger.debug(f"备用DNS服务器解析 {hostname} 失败: {e}")
     
     # 计算解析时间
     resolve_time = time.time() - resolve_start_time
@@ -275,17 +489,126 @@ def custom_dns_resolve(hostname, dns_servers=None):
     # 更新统计信息
     if resolved_ip:
         DNS_STATS['successful_queries'] += 1
-        # 将解析结果保存到缓存
-        DNS_CACHE[hostname] = resolved_ip
+        # 线程安全地更新缓存
+        with DNS_CACHE_LOCK:
+            DNS_CACHE[hostname] = resolved_ip
         logger.debug(f"将 {hostname} -> {resolved_ip} 保存到DNS缓存")
     else:
         DNS_STATS['failed_queries'] += 1
-        logger.error(f"所有DNS解析方法均失败: {hostname}")
+        logger.error(f"DNS解析失败: {hostname}")
     
     # 检查DNS健康状况，触发告警
     check_dns_health()
     
     return resolved_ip
+
+
+def prewarm_dns_cache(hostnames):
+    """
+    预热DNS缓存，批量解析域名并缓存结果
+    
+    Args:
+        hostnames (list): 要预热的域名列表
+        
+    Returns:
+        dict: 预热结果，{hostname: ip}
+    """
+    results = {}
+    logger.info(f"开始预热DNS缓存，域名数量: {len(hostnames)}")
+    
+    for hostname in hostnames:
+        if validate_domain(hostname):
+            ip = custom_dns_resolve(hostname)
+            results[hostname] = ip
+            if ip:
+                logger.debug(f"DNS缓存预热成功: {hostname} -> {ip}")
+            else:
+                logger.warning(f"DNS缓存预热失败: {hostname}")
+    
+    logger.info(f"DNS缓存预热完成，成功: {sum(1 for ip in results.values() if ip)}, 失败: {sum(1 for ip in results.values() if not ip)}")
+    return results
+
+
+def batch_dns_resolve(hostnames, dns_servers=None):
+    """
+    批量解析多个域名
+    
+    Args:
+        hostnames (list): 要解析的域名列表
+        dns_servers (list, optional): DNS服务器列表
+        
+    Returns:
+        dict: 解析结果，{hostname: ip}
+    """
+    results = {}
+    logger.info(f"开始批量DNS解析，域名数量: {len(hostnames)}")
+    
+    for hostname in hostnames:
+        if validate_domain(hostname):
+            ip = custom_dns_resolve(hostname, dns_servers)
+            results[hostname] = ip
+    
+    success_count = sum(1 for ip in results.values() if ip)
+    fail_count = len(results) - success_count
+    logger.info(f"批量DNS解析完成，成功: {success_count}, 失败: {fail_count}")
+    return results
+
+
+def smart_retry(max_retries=3, backoff_factor=0.1):
+    """
+    智能重试装饰器，根据错误类型采用不同的重试策略
+    
+    Args:
+        max_retries (int): 最大重试次数
+        backoff_factor (float): 退避因子
+        
+    Returns:
+        function: 装饰后的函数
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            retry_count = 0
+            
+            while retry_count <= max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    # 分类错误
+                    error_type = type(e).__name__
+                    error_class = ERROR_MAPPING.get(error_type, NetworkError)
+                    
+                    # 根据错误类型决定重试策略
+                    if isinstance(e, (ConnectionError, TimeoutError)):
+                        # 连接和超时错误，重试次数较多
+                        max_allowed_retries = max_retries * 2
+                    elif isinstance(e, (DNSResolutionError, SSLHandshakeError)):
+                        # DNS和SSL错误，重试次数较少
+                        max_allowed_retries = max_retries // 2
+                    elif isinstance(e, RateLimitError):
+                        # 速率限制错误，增加退避时间
+                        max_allowed_retries = max_retries
+                        backoff_factor *= 2
+                    else:
+                        # 其他错误，标准重试
+                        max_allowed_retries = max_retries
+                    
+                    retry_count += 1
+                    
+                    if retry_count > max_allowed_retries:
+                        logger.error(f"函数 {func.__name__} 执行失败，已达到最大重试次数: {max_allowed_retries}")
+                        raise error_class(f"{e}") from e
+                    
+                    # 计算退避时间
+                    backoff_time = backoff_factor * (2 ** (retry_count - 1))
+                    logger.warning(f"函数 {func.__name__} 执行失败: {e}, 将在 {backoff_time:.2f}秒后重试 (第 {retry_count}/{max_allowed_retries} 次)")
+                    
+                    time.sleep(backoff_time)
+            
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 
 # 更新DNS服务器性能统计
 def update_server_performance(server, success, resolve_time):
@@ -968,17 +1291,34 @@ class OKXAPIClient:
         # API版本，当前OKX API版本为v5
         self.api_version = "v5"
         
-        # 不使用代理配置，只保留基本的API调用功能
-        self.proxy_config = {}
-        self.proxy_enabled = False
-        logger.info("未使用代理配置，只保留基本API调用功能")
-        
         # 创建自定义会话，支持可靠DNS解析和重试机制
         self.session = DNSBypassingSession(
             retry_count=3,
             backoff_factor=0.5
         )
-        self.session.timeout = self.timeout
+        
+        # 读取代理配置
+        self.proxy_config = api_config.get('proxy', {})
+        self.proxy_enabled = self.proxy_config.get('enabled', False)
+        
+        # 配置代理
+        if self.proxy_enabled:
+            proxies = {}
+            if self.proxy_config.get('http'):
+                proxies['http'] = self.proxy_config['http']
+            if self.proxy_config.get('https'):
+                proxies['https'] = self.proxy_config['https']
+            if self.proxy_config.get('socks5'):
+                proxies['http'] = self.proxy_config['socks5']
+                proxies['https'] = self.proxy_config['socks5']
+            
+            self.session.proxies = proxies
+            self.active_proxy_url = self.proxy_config.get('socks5') or self.proxy_config.get('https') or self.proxy_config.get('http')
+            logger.info(f"已配置代理: {self.active_proxy_url}")
+        else:
+            self.session.proxies = {}
+            self.active_proxy_url = None
+            logger.info("未使用代理，只保留基本API调用功能")
         
         # 自定义SSL上下文，伪装TLS指纹
         import ssl
@@ -997,20 +1337,21 @@ class OKXAPIClient:
         ssl_context.options |= ssl.OP_NO_TLSv1
         ssl_context.options |= ssl.OP_NO_TLSv1_1
         
-        # 创建带有重试策略的HTTP适配器
+        # 创建带有智能重试策略的HTTP适配器
         retry_strategy = Retry(
-            total=3,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE"],
-            backoff_factor=2,  # 指数退避因子
-            respect_retry_after_header=True
+            total=8,  # 增加重试次数
+            status_forcelist=[429, 500, 502, 503, 504, 521, 522, 523, 524],  # 增加更多错误码
+            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            backoff_factor=0.3,  # 进一步减少退避因子，提高重试效率
+            respect_retry_after_header=True,
+            raise_on_status=False  # 不抛出异常，让应用层处理
         )
         
         # 应用SSL上下文，修复旧版本requests库不支持ssl_context参数的问题
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=20,  # 增加连接池大小
-            pool_maxsize=20,     # 增加连接池最大大小
+            pool_connections=100,  # 大幅增加连接池大小
+            pool_maxsize=100,     # 大幅增加连接池最大大小
             pool_block=False
         )
         adapter._ssl_context = ssl_context
@@ -1040,11 +1381,6 @@ class OKXAPIClient:
         
         logger.info(f"已配置API客户端超时时间: {self.timeout}秒")
         logger.info(f"已配置HTTP适配器重试策略: {retry_strategy}")
-        
-        # 不使用代理
-        self.active_proxy_url = None
-        self.session.proxies = {}
-        logger.info("未使用代理，只保留基本API调用功能")
         
         # 添加线程锁，确保线程安全
         self._lock = Lock()
@@ -1096,17 +1432,15 @@ class OKXAPIClient:
     def get_current_ip(self):
         """获取当前活跃的API IP地址"""
         try:
-            # 从配置文件获取当前API IP
-            config_path = os.path.join(os.path.dirname(__file__), 'config/okx_config.json')
-            with open(config_path, 'r') as f:
-                config = json.load(f)
+            # 从配置管理器获取当前API IP
+            api_config = self.config_manager.get("api", {})
             
             # 优先返回配置的api_ip，如果没有则返回api_ips列表中的第一个
-            api_ip = config['api'].get('api_ip')
+            api_ip = api_config.get('api_ip')
             if api_ip:
                 return api_ip
             
-            api_ips = config['api'].get('api_ips', [])
+            api_ips = api_config.get('api_ips', [])
             if api_ips:
                 return api_ips[0]
             
@@ -1261,16 +1595,35 @@ class OKXAPIClient:
             # 测试DNS解析
             logger.info(f"正在解析主机名: {self.host_name}")
             ip = custom_dns_resolve(self.host_name)
-            if not ip:
-                logger.error(f"无法解析主机名: {self.host_name}")
-                logger.error("可能的原因:")
-                logger.error("1. 系统DNS配置问题")
-                logger.error("2. 网络环境对DNS查询的拦截")
-                logger.error("3. 域名不存在或已过期")
-                logger.error("建议: 检查网络连接或禁用自定义DNS解析")
-                return False
             
-            logger.info(f"DNS解析成功: {self.host_name} -> {ip}")
+            # 如果DNS解析失败，使用配置文件中的API IP地址
+            if not ip or ip.startswith('169.254.'):
+                logger.warning(f"DNS解析失败或返回无效IP: {ip}")
+                # 从配置文件中获取API IP地址
+                api_ip = self.config_manager.get("api", {}).get("api_ip")
+                if api_ip and not api_ip.startswith('169.254.'):
+                    logger.info(f"使用配置文件中的API IP地址: {api_ip}")
+                    ip = api_ip
+                else:
+                    # 从API IP列表中获取第一个有效IP
+                    api_ips = self.config_manager.get("api", {}).get("api_ips", [])
+                    for api_ip_candidate in api_ips:
+                        if api_ip_candidate and not api_ip_candidate.startswith('169.254.'):
+                            logger.info(f"使用配置文件中的API IP地址: {api_ip_candidate}")
+                            ip = api_ip_candidate
+                            break
+                
+                if not ip or ip.startswith('169.254.'):
+                    logger.error(f"无法解析主机名: {self.host_name}，且配置文件中没有有效API IP地址")
+                    logger.error("可能的原因:")
+                    logger.error("1. 系统DNS配置问题")
+                    logger.error("2. 网络环境对DNS查询的拦截")
+                    logger.error("3. 域名不存在或已过期")
+                    logger.error("4. 配置文件中没有有效API IP地址")
+                    logger.error("建议: 检查网络连接或禁用自定义DNS解析")
+                    return False
+            
+            logger.info(f"使用IP地址: {ip}")
             
             # 测试socket连接
             logger.info(f"正在测试Socket连接: {ip}:443")

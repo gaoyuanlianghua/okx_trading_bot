@@ -2,7 +2,7 @@ import asyncio
 import time
 import numpy as np
 from loguru import logger
-from .base_strategy import BaseStrategy
+from strategies.base_strategy import BaseStrategy
 
 # 尝试导入scipy，如不可用则使用替代实现
 try:
@@ -16,12 +16,12 @@ except Exception as e:
 class DynamicsStrategy(BaseStrategy):
     """原子核互反动力学交易策略"""
     
-    def __init__(self, api_client, config=None):
+    def __init__(self, api_client=None, config=None):
         """
         初始化动力学交易策略
         
         Args:
-            api_client (OKXAPIClient): OKX API客户端实例
+            api_client (OKXAPIClient, optional): OKX API客户端实例
             config (dict, optional): 策略配置
         """
         super().__init__(api_client, config)

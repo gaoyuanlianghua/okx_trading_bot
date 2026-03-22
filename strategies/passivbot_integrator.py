@@ -4,25 +4,28 @@ import json
 import hjson
 import subprocess
 from loguru import logger
+from strategies.base_strategy import BaseStrategy
 
 # 添加passivbot到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), 'passivbot', 'src'))
 
-class PassivbotIntegrator:
+class PassivbotIntegrator(BaseStrategy):
     """passivbot策略集成器，用于将passivbot策略与OKX API客户端结合"""
     
-    def __init__(self, api_client, config_path=None, api_keys_path=None):
+    def __init__(self, api_client=None, config=None):
         """
         初始化passivbot集成器
         
         Args:
             api_client (OKXAPIClient): OKX API客户端实例
-            config_path (str, optional): passivbot配置文件路径
-            api_keys_path (str, optional): API密钥文件路径
+            config (dict, optional): 策略配置
         """
-        self.api_client = api_client
-        self.config_path = config_path
-        self.api_keys_path = api_keys_path or os.path.join(os.path.dirname(__file__), 'passivbot', 'api-keys.json')
+        super().__init__(api_client, config)
+        
+        self.config_path = config.get('config_path') if config else None
+        self.api_keys_path = config.get('api_keys_path') if config else None
+        if not self.api_keys_path:
+            self.api_keys_path = os.path.join(os.path.dirname(__file__), 'passivbot', 'api-keys.json')
         
         # 默认配置
         self.default_config = {
@@ -261,6 +264,20 @@ class PassivbotIntegrator:
                 logger.error(f"停止交易机器人失败: {e}")
                 return False
         return False
+    
+    def execute(self, market_data):
+        """执行策略，生成交易信号
+        
+        Args:
+            market_data (dict): 市场数据
+            
+        Returns:
+            dict: 交易信号，包含side, price, amount等信息
+        """
+        # 由于passivbot是独立运行的，这里返回None表示不生成交易信号
+        # 实际的交易决策由passivbot独立处理
+        logger.debug("Passivbot策略执行 - 由独立进程处理")
+        return None
 
 if __name__ == "__main__":
     # 测试passivbot集成器

@@ -10,6 +10,10 @@ class OrderAgent(BaseAgent):
         super().__init__(agent_id, config)
         self.order_manager = None
         self.pending_orders = {}  # 未成交订单缓存
+        self.order_batch_queue = []  # 订单批量处理队列
+        self.batch_processing_interval = config.get('batch_processing_interval', 0.5)  # 批量处理间隔（秒）
+        self.max_batch_size = config.get('max_batch_size', 20)  # 最大批量大小
+        self.is_batch_processing = False
         
         # 订阅事件
         self.subscribe('trading_signal', self.on_trading_signal)
@@ -33,6 +37,9 @@ class OrderAgent(BaseAgent):
         
         # 启动订单状态更新线程
         self.run_in_thread(self.update_order_status_loop)
+        
+        # 启动订单批量处理线程
+        self.run_in_thread(self.batch_processing_loop)
         
         logger.info(f"订单管理智能体启动完成: {self.agent_id}")
     
@@ -322,3 +329,114 @@ class OrderAgent(BaseAgent):
             int: 未成交订单数量
         """
         return len(self.pending_orders)
+    
+    def batch_processing_loop(self):
+        """订单批量处理循环"""
+        while self.status == 'running':
+            try:
+                if self.order_batch_queue:
+                    # 处理批量订单
+                    self._process_order_batch()
+                # 等待下一次批量处理
+                time.sleep(self.batch_processing_interval)
+            except Exception as e:
+                logger.error(f"批量处理订单失败: {e}")
+                time.sleep(self.batch_processing_interval)
+    
+    def _process_order_batch(self):
+        """处理批量订单"""
+        if not self.order_batch_queue:
+            return
+        
+        # 取出批量队列中的订单
+        batch_orders = self.order_batch_queue[:self.max_batch_size]
+        self.order_batch_queue = self.order_batch_queue[self.max_batch_size:]
+        
+        logger.info(f"开始处理批量订单，数量: {len(batch_orders)}")
+        
+        # 分类订单（按交易对和操作类型）
+        orders_by_symbol = {}
+        for order_info in batch_orders:
+            symbol = order_info['symbol']
+            if symbol not in orders_by_symbol:
+                orders_by_symbol[symbol] = []
+            orders_by_symbol[symbol].append(order_info)
+        
+        # 按交易对批量处理
+        for symbol, orders in orders_by_symbol.items():
+            try:
+                # 这里应该调用订单管理服务的批量下单方法
+                # 由于OKX API可能不支持批量下单，这里使用循环处理
+                # 但通过批量收集可以减少API调用频率
+                for order_info in orders:
+                    order = self._place_single_order(order_info)
+                    if order:
+                        # 发布订单已下单事件
+                        self.publish('order_placed', {
+                            'order': order,
+                            'signal': order_info.get('signal'),
+                            'timestamp': time.time()
+                        })
+            except Exception as e:
+                logger.error(f"处理{symbol}批量订单失败: {e}")
+    
+    def _place_single_order(self, order_info):
+        """下单（单个订单）
+        
+        Args:
+            order_info (dict): 订单信息
+            
+        Returns:
+            dict: 订单信息
+        """
+        try:
+            symbol = order_info['symbol']
+            side = order_info['side']
+            ord_type = order_info.get('ord_type', 'limit')
+            price = order_info.get('price')
+            amount = order_info.get('amount', 0.001)
+            
+            logger.debug(f"批量下单: {symbol}, {side}, {ord_type}, 价格: {price}, 数量: {amount}")
+            
+            # 调用订单管理服务下单
+            order = self.order_manager.place_order(
+                inst_id=symbol,
+                side=side,
+                ord_type=ord_type,
+                sz=str(amount),
+                px=str(price) if price else None
+            )
+            
+            if order:
+                # 添加到未成交订单缓存
+                if order.get('state') in ['live', 'partially_filled']:
+                    self.pending_orders[order['ordId']] = order
+                
+                logger.info(f"批量下单成功: {order['ordId']}")
+                return order
+            else:
+                logger.error(f"批量下单失败")
+                return None
+        except Exception as e:
+            logger.error(f"批量下单异常: {e}")
+            return None
+    
+    def place_batch_orders(self, orders):
+        """批量下单
+        
+        Args:
+            orders (list): 订单列表
+            
+        Returns:
+            int: 加入队列的订单数量
+        """
+        try:
+            for order_info in orders:
+                if isinstance(order_info, dict) and 'symbol' in order_info and 'side' in order_info:
+                    self.order_batch_queue.append(order_info)
+            
+            logger.info(f"批量订单已加入队列，数量: {len(orders)}")
+            return len(orders)
+        except Exception as e:
+            logger.error(f"批量下单失败: {e}")
+            return 0

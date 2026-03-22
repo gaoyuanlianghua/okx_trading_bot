@@ -14,11 +14,22 @@ class StrategyExecutionAgent(BaseAgent):
         self.active_strategies = set()  # 激活的策略
         self.strategy_extension_path = config.get("strategy_extension_path", "strategies")  # 策略扩展路径
         self.market_data_cache = {}  # 市场数据缓存
+        self.market_environment = {  # 市场环境分析
+            "volatility": 0.0,  # 市场波动率
+            "trend_strength": 0.0,  # 趋势强度
+            "market_phase": "neutral",  # 市场阶段: bullish, bearish, neutral, volatile
+            "liquidity": 0.0,  # 流动性指标
+        }
+        self.strategy_params_history = {}  # 策略参数历史
+        self.adaptive_params_config = config.get("adaptive_params_config", {})  # 自适应参数配置
+        self.param_adjustment_interval = 300  # 参数调整间隔（秒）
+        self.last_adjustment_time = 0
         
         # 订阅事件
         self.subscribe('market_data_updated', self.on_market_data_updated)
         self.subscribe('risk_check_passed', self.on_risk_check_passed)
         self.subscribe('strategy_registered', self.on_strategy_registered)
+        self.subscribe('risk_rules_updated', self.on_risk_rules_updated)
         
         # 初始化时加载所有策略
         self.load_all_strategies()
@@ -123,6 +134,12 @@ class StrategyExecutionAgent(BaseAgent):
                     for strategy_name in self.active_strategies:
                         strategy = self.strategies.get(strategy_name)
                         if strategy and strategy.status == "running":
+                            # 分析市场环境
+                            self.analyze_market_environment()
+                            
+                            # 自适应调整策略参数
+                            self.adjust_strategy_parameters()
+                            
                             # 获取所有订阅的市场数据
                             for symbol in self.market_data_cache:
                                 market_data = self.market_data_cache[symbol]
@@ -534,3 +551,214 @@ class StrategyExecutionAgent(BaseAgent):
                         "performance": strategy.performance if strategy else {}
                     }
                 })
+    
+    def analyze_market_environment(self):
+        """分析市场环境"""
+        try:
+            if not self.market_data_cache:
+                return
+            
+            # 计算市场波动率
+            volatilities = []
+            for symbol, data in self.market_data_cache.items():
+                if data and 'change_pct' in data:
+                    volatilities.append(abs(data['change_pct']))
+            
+            if volatilities:
+                self.market_environment["volatility"] = sum(volatilities) / len(volatilities)
+            
+            # 分析市场阶段
+            self._analyze_market_phase()
+            
+            # 分析趋势强度
+            self._analyze_trend_strength()
+            
+        except Exception as e:
+            logger.error(f"分析市场环境失败: {e}")
+    
+    def _analyze_market_phase(self):
+        """分析市场阶段"""
+        volatility = self.market_environment["volatility"]
+        
+        if volatility < 0.5:
+            self.market_environment["market_phase"] = "neutral"
+        elif volatility < 1.5:
+            # 基于价格变化判断牛市/熊市
+            trend_indicators = []
+            for symbol, data in self.market_data_cache.items():
+                if data and 'change' in data:
+                    trend_indicators.append(data['change'])
+            
+            if trend_indicators:
+                avg_change = sum(trend_indicators) / len(trend_indicators)
+                if avg_change > 0.5:
+                    self.market_environment["market_phase"] = "bullish"
+                elif avg_change < -0.5:
+                    self.market_environment["market_phase"] = "bearish"
+                else:
+                    self.market_environment["market_phase"] = "neutral"
+        else:
+            self.market_environment["market_phase"] = "volatile"
+    
+    def _analyze_trend_strength(self):
+        """分析趋势强度"""
+        trend_strengths = []
+        for symbol, data in self.market_data_cache.items():
+            if data and 'change_pct' in data:
+                trend_strengths.append(abs(data['change_pct']))
+        
+        if trend_strengths:
+            self.market_environment["trend_strength"] = sum(trend_strengths) / len(trend_strengths)
+    
+    def adjust_strategy_parameters(self):
+        """自适应调整策略参数"""
+        current_time = time.time()
+        if current_time - self.last_adjustment_time < self.param_adjustment_interval:
+            return
+        
+        try:
+            for strategy_name in self.active_strategies:
+                strategy = self.strategies.get(strategy_name)
+                if strategy:
+                    # 基于市场环境调整策略参数
+                    new_params = self._calculate_adaptive_params(strategy_name, strategy)
+                    if new_params:
+                        # 更新策略参数
+                        strategy.set_params(new_params)
+                        
+                        # 保存参数历史
+                        self._save_params_history(strategy_name, new_params)
+                        
+                        # 发布参数更新事件
+                        self.publish('strategy_params_updated', {
+                            "strategy_name": strategy_name,
+                            "params": new_params,
+                            "market_environment": self.market_environment,
+                            "timestamp": time.time()
+                        })
+            
+            self.last_adjustment_time = current_time
+            
+        except Exception as e:
+            logger.error(f"调整策略参数失败: {e}")
+    
+    def _calculate_adaptive_params(self, strategy_name, strategy):
+        """计算自适应参数
+        
+        Args:
+            strategy_name (str): 策略名称
+            strategy (BaseStrategy): 策略实例
+            
+        Returns:
+            dict: 新的策略参数
+        """
+        current_params = strategy.get_params()
+        new_params = current_params.copy()
+        
+        # 根据市场环境调整参数
+        market_phase = self.market_environment["market_phase"]
+        volatility = self.market_environment["volatility"]
+        
+        # 基于策略类型和市场环境调整参数
+        if hasattr(strategy, 'name'):
+            strategy_type = strategy.name.lower()
+            
+            # 趋势策略参数调整
+            if 'trend' in strategy_type:
+                if market_phase == "bullish":
+                    # 牛市环境下，增加趋势跟踪灵敏度
+                    if 'trend_ma_period' in new_params:
+                        new_params['trend_ma_period'] = max(5, int(new_params['trend_ma_period'] * 0.8))
+                    if 'stop_loss_pct' in new_params:
+                        new_params['stop_loss_pct'] = max(0.01, new_params['stop_loss_pct'] * 0.9)
+                elif market_phase == "bearish":
+                    # 熊市环境下，降低风险敞口
+                    if 'position_size' in new_params:
+                        new_params['position_size'] = max(0.1, new_params['position_size'] * 0.7)
+                    if 'stop_loss_pct' in new_params:
+                        new_params['stop_loss_pct'] = min(0.1, new_params['stop_loss_pct'] * 1.2)
+            
+            # 均值回归策略参数调整
+            if 'mean_reversion' in strategy_type or 'mean' in strategy_type:
+                if market_phase == "volatile":
+                    # 高波动环境下，增加回归阈值
+                    if 'threshold' in new_params:
+                        new_params['threshold'] = min(0.05, new_params['threshold'] * 1.5)
+                    if 'position_size' in new_params:
+                        new_params['position_size'] = max(0.1, new_params['position_size'] * 0.8)
+                elif market_phase == "neutral":
+                    # 低波动环境下，降低回归阈值
+                    if 'threshold' in new_params:
+                        new_params['threshold'] = max(0.01, new_params['threshold'] * 0.8)
+            
+            # 通用参数调整
+            if volatility > 2.0:
+                # 高波动率环境
+                if 'position_size' in new_params:
+                    new_params['position_size'] = max(0.1, new_params['position_size'] * 0.6)
+                if 'leverage' in new_params:
+                    new_params['leverage'] = max(1, int(new_params['leverage'] * 0.5))
+            elif volatility < 0.5:
+                # 低波动率环境
+                if 'position_size' in new_params:
+                    new_params['position_size'] = min(1.0, new_params['position_size'] * 1.2)
+                if 'leverage' in new_params:
+                    new_params['leverage'] = min(10, new_params['leverage'] * 1.2)
+        
+        return new_params
+    
+    def _save_params_history(self, strategy_name, params):
+        """保存策略参数历史
+        
+        Args:
+            strategy_name (str): 策略名称
+            params (dict): 策略参数
+        """
+        if strategy_name not in self.strategy_params_history:
+            self.strategy_params_history[strategy_name] = []
+        
+        self.strategy_params_history[strategy_name].append({
+            "params": params,
+            "timestamp": time.time(),
+            "market_environment": self.market_environment.copy()
+        })
+        
+        # 保持历史记录不超过100条
+        if len(self.strategy_params_history[strategy_name]) > 100:
+            self.strategy_params_history[strategy_name] = self.strategy_params_history[strategy_name][-100:]
+    
+    def on_risk_rules_updated(self, data):
+        """处理风险规则更新事件
+        
+        Args:
+            data (dict): 风险规则更新数据
+        """
+        try:
+            risk_level = data.get('risk_level')
+            if risk_level:
+                # 根据风险等级调整策略参数
+                for strategy_name in self.active_strategies:
+                    strategy = self.strategies.get(strategy_name)
+                    if strategy:
+                        params = strategy.get_params()
+                        
+                        # 基于风险等级调整参数
+                        if risk_level == "high" or risk_level == "extreme":
+                            # 高风险环境，降低风险敞口
+                            if 'position_size' in params:
+                                params['position_size'] = max(0.1, params['position_size'] * 0.5)
+                            if 'leverage' in params:
+                                params['leverage'] = max(1, int(params['leverage'] * 0.5))
+                        elif risk_level == "low":
+                            # 低风险环境，增加风险敞口
+                            if 'position_size' in params:
+                                params['position_size'] = min(1.0, params['position_size'] * 1.3)
+                            if 'leverage' in params:
+                                params['leverage'] = min(10, params['leverage'] * 1.3)
+                        
+                        # 更新策略参数
+                        strategy.set_params(params)
+                        
+                        logger.info(f"根据风险等级 {risk_level} 调整策略 {strategy_name} 参数")
+        except Exception as e:
+            logger.error(f"处理风险规则更新失败: {e}")

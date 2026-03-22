@@ -7,7 +7,7 @@ class LoggerConfig:
     日志配置类，用于统一管理日志配置
     """
     
-    def __init__(self, log_dir="logs", log_level="INFO"):
+    def __init__(self, log_dir="logs", log_level="WARNING"):
         """
         初始化日志配置
         

@@ -8,17 +8,24 @@ class HealthChecker:
     健康检查类，用于定期检查系统的健康状态
     """
     
-    def __init__(self, check_interval=30):
+    def __init__(self, check_interval=60, min_interval=10, max_interval=300):
         """
         初始化健康检查器
         
         Args:
-            check_interval (int): 检查间隔，单位秒，默认30秒
+            check_interval (int): 检查间隔，单位秒，默认60秒
+            min_interval (int): 最小检查间隔，单位秒，默认10秒
+            max_interval (int): 最大检查间隔，单位秒，默认300秒（5分钟）
         """
-        self.check_interval = check_interval
+        self.base_interval = check_interval  # 基础检查间隔
+        self.check_interval = check_interval  # 当前检查间隔
+        self.min_interval = min_interval  # 最小检查间隔
+        self.max_interval = max_interval  # 最大检查间隔
         self.is_running = False
         self._lock = threading.RLock()
         self._check_thread = None
+        self.last_adjustment_time = time.time()  # 上次调整检查间隔的时间
+        self.adjustment_cooldown = 300  # 调整冷却时间，单位秒（5分钟）
         
         # 健康状态存储
         self.health_status = {
@@ -106,11 +113,15 @@ class HealthChecker:
                 # 执行健康检查
                 self._perform_checks()
                 
+                # 动态调整检查间隔
+                self._adjust_check_interval()
+                
                 # 等待检查间隔
                 time.sleep(self.check_interval)
             except Exception as e:
                 logger.error(f"健康检查执行失败: {e}")
-                time.sleep(5.0)  # 发生错误时，缩短等待时间
+                # 发生错误时，使用最小检查间隔
+                time.sleep(self.min_interval)
     
     def _perform_checks(self):
         """
@@ -218,12 +229,43 @@ class HealthChecker:
         overall = self.health_status['overall']
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.health_status['timestamp']))
         
-        logger.info(f"健康检查报告 [{timestamp}]: 整体状态={overall}")
+        logger.info(f"健康检查报告 [{timestamp}]: 整体状态={overall}, 检查间隔={self.check_interval}秒")
         
         for check_name, check_result in self.health_status['checks'].items():
             status = check_result['status']
             message = check_result['message']
             logger.info(f"  {check_name}: {status} - {message}")
+    
+    def _adjust_check_interval(self):
+        """
+        根据系统健康状态动态调整检查间隔
+        """
+        current_time = time.time()
+        
+        # 检查是否在冷却期内
+        if current_time - self.last_adjustment_time < self.adjustment_cooldown:
+            return
+        
+        overall_status = self.health_status['overall']
+        new_interval = self.base_interval
+        
+        # 根据健康状态调整检查间隔
+        if overall_status == 'CRITICAL':
+            # 系统严重问题，使用最小检查间隔
+            new_interval = self.min_interval
+        elif overall_status == 'DEGRADED':
+            # 系统降级，缩短检查间隔
+            new_interval = max(self.min_interval, int(self.base_interval * 0.5))
+        elif overall_status == 'HEALTHY':
+            # 系统健康，可以延长检查间隔
+            new_interval = min(self.max_interval, int(self.base_interval * 1.5))
+        
+        # 如果检查间隔发生变化，更新并记录
+        if new_interval != self.check_interval:
+            old_interval = self.check_interval
+            self.check_interval = new_interval
+            self.last_adjustment_time = current_time
+            logger.info(f"动态调整健康检查间隔: {old_interval}秒 -> {new_interval}秒 (系统状态: {overall_status})")
     
     def add_check_hook(self, hook):
         """

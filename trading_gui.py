@@ -13,6 +13,309 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
+# 统一的样式表
+UNIFIED_STYLESHEET = """
+/* 主窗口样式 */
+QMainWindow {
+    background-color: #f5f7fa;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+/* 标签页样式 */
+QTabWidget {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 2px;
+}
+
+QTabBar {
+    background-color: transparent;
+}
+
+QTabBar::tab {
+    background-color: #f8f9fa;
+    padding: 10px 16px;
+    border: 1px solid #e0e0e0;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 2px;
+    min-width: 100px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+QTabBar::tab:hover {
+    background-color: #e9ecef;
+    transform: translateY(-1px);
+}
+
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    border-bottom: 1px solid #ffffff;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 分组框样式 */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 8px 0 8px;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+/* 按钮样式 */
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 500;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    min-height: 36px;
+}
+
+QPushButton:hover {
+    background-color: #f8f9fa;
+    border-color: #d0d0d0;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+QPushButton:pressed {
+    background-color: #e9ecef;
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 特殊按钮样式 */
+QPushButton#primary {
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    font-weight: 600;
+}
+
+QPushButton#primary:hover {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+QPushButton#primary:pressed {
+    background-color: #1d4ed8;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+QPushButton#secondary {
+    background-color: #64748b;
+    color: white;
+    border-color: #64748b;
+    font-weight: 600;
+}
+
+QPushButton#secondary:hover {
+    background-color: #475569;
+    border-color: #475569;
+    box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
+}
+
+QPushButton#warning {
+    background-color: #f59e0b;
+    color: white;
+    border-color: #f59e0b;
+    font-weight: 600;
+}
+
+QPushButton#warning:hover {
+    background-color: #d97706;
+    border-color: #d97706;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+QPushButton#danger {
+    background-color: #ef4444;
+    color: white;
+    border-color: #ef4444;
+    font-weight: 600;
+}
+
+QPushButton#danger:hover {
+    background-color: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* 输入框样式 */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    min-height: 36px;
+}
+
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 2px solid #3b82f6;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 表格样式 */
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    gridline-color: #f0f0f0;
+}
+
+QTableWidget::item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f8f9fa;
+}
+
+QTableWidget::item:hover {
+    background-color: #f8f9fa;
+}
+
+QTableWidget::item:selected {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+QHeaderView::section {
+    background-color: #f8f9fa;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    font-weight: 600;
+    color: #2c3e50;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+QHeaderView::section:hover {
+    background-color: #e9ecef;
+}
+
+/* 文本编辑框样式 */
+QTextEdit {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+QTextEdit[readOnly="true"] {
+    background-color: #f8f9fa;
+    color: #64748b;
+}
+
+/* 标签样式 */
+QLabel {
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+QLabel#status {
+    font-weight: 600;
+}
+
+QLabel#success {
+    color: #10b981;
+    font-weight: 600;
+}
+
+QLabel#warning {
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+QLabel#error {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+/* 控制栏样式 */
+QWidget#controlBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* 滚动条样式 */
+QScrollBar:vertical {
+    background-color: #f8f9fa;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #cbd5e1;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #94a3b8;
+}
+
+QScrollBar:horizontal {
+    background-color: #f8f9fa;
+    height: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #cbd5e1;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #94a3b8;
+}
+
+/* 分隔器样式 */
+QSplitter::handle {
+    background-color: #e0e0e0;
+    width: 4px;
+    height: 4px;
+}
+
+QSplitter::handle:hover {
+    background-color: #cbd5e1;
+}
+
+/* 对话框样式 */
+QDialog {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* 表单布局样式 */
+QFormLayout {
+    spacing: 8px;
+}
+"""
+
 # 初始化日志配置
 from commons.logger_config import global_logger as logger
 
@@ -21,8 +324,7 @@ from okx_api_client import OKXAPIClient
 from services.market_data.market_data_service import MarketDataService
 from services.order_management.order_manager import OrderManager
 from services.risk_management.risk_manager import RiskManager
-# 动态导入DynamicsStrategy，避免在导入时执行scipy导入
-# from strategies.dynamics_strategy import DynamicsStrategy
+from strategies.dynamics_strategy import DynamicsStrategy
 
 class HelpDialog(QDialog):
     """Help dialog for OKX Trading Bot"""
@@ -209,7 +511,7 @@ class ConfigFileHandler(FileSystemEventHandler):
     
     def check_content_changed(self):
         """检查配置文件内容是否变化"""
-        config_path = "d:\\Projects\\okx_trading_bot\\config\\okx_config.json"
+        config_path = "d:\Projects\okx_trading_bot\config\okx_config.json"
         current_content = self.get_file_content(config_path)
         
         # 如果获取内容失败，返回False，不重新加载
@@ -234,7 +536,7 @@ class ConfigFileHandler(FileSystemEventHandler):
             return
         
         # Check if the modified file is our configuration file
-        config_path = "d:\\Projects\\okx_trading_bot\\config\\okx_config.json"
+        config_path = "d:\Projects\okx_trading_bot\config\okx_config.json"
         if event.src_path == config_path:
             current_time = time.time()
             
@@ -299,6 +601,9 @@ class TradingGUI(QMainWindow):
         self.setWindowTitle("OKX交易机器人")
         self.setGeometry(100, 100, 1200, 800)
         
+        # 应用统一的样式表
+        self.setStyleSheet(UNIFIED_STYLESHEET)
+        
         # GUI状态标志位，用于线程安全检查
         self.is_closed = False
         
@@ -326,1179 +631,6 @@ class TradingGUI(QMainWindow):
         self.init_network_monitoring()
         
         # 注意：智能体系统交互和服务初始化将在用户点击"加载功能"按钮后进行
-    
-    def init_agent_interaction(self):
-        """
-        初始化智能体系统交互
-        """
-        try:
-            self.log("开始初始化智能体系统交互...")
-            
-            # 从commons导入事件总线和智能体注册表
-            from commons.event_bus import global_event_bus
-            
-            # 注册事件监听器
-            self.register_event_listeners(global_event_bus)
-            
-            # 初始化服务
-            self.init_services()
-            
-            # 初始化策略管理UI
-            self.init_strategy_management()
-            
-            # 初始化智能体状态监控
-            self.init_agent_status_monitor()
-            
-            self.log("智能体系统交互初始化完成")
-        except Exception as e:
-            self.log(f"初始化智能体系统交互失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def register_event_listeners(self, event_bus):
-        """
-        注册事件监听器
-        """
-        try:
-            # 注册市场数据更新事件
-            event_bus.subscribe('market_data_updated', self.on_market_data_updated)
-            
-            # 注册订单相关事件
-            event_bus.subscribe('order_placed', self.on_order_placed)
-            event_bus.subscribe('order_updated', self.on_order_updated)
-            event_bus.subscribe('order_canceled', self.on_order_canceled)
-            
-            # 注册风险相关事件
-            event_bus.subscribe('risk_alert', self.on_risk_alert)
-            event_bus.subscribe('risk_state_updated', self.on_risk_state_updated)
-            
-            # 注册策略相关事件
-            event_bus.subscribe('strategy_registered', self.on_strategy_registered)
-            event_bus.subscribe('strategy_activated', self.on_strategy_activated)
-            event_bus.subscribe('strategy_deactivated', self.on_strategy_deactivated)
-            event_bus.subscribe('strategy_paused', self.on_strategy_paused)
-            event_bus.subscribe('strategy_resumed', self.on_strategy_resumed)
-            
-            # 注册系统状态事件
-            event_bus.subscribe('system_state_updated', self.on_system_state_updated)
-            
-            self.log("事件监听器注册完成")
-        except Exception as e:
-            self.log(f"注册事件监听器失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def on_strategy_paused(self, data):
-        """
-        处理策略暂停事件
-        """
-        try:
-            strategy_name = data.get("strategy_name")
-            self.log(f"策略已暂停: {strategy_name}")
-            # 更新策略列表
-            if hasattr(self, 'load_strategy_list'):
-                self.load_strategy_list()
-        except Exception as e:
-            self.log(f"处理策略暂停事件失败: {e}")
-    
-    def on_strategy_resumed(self, data):
-        """
-        处理策略恢复事件
-        """
-        try:
-            strategy_name = data.get("strategy_name")
-            self.log(f"策略已恢复: {strategy_name}")
-            # 更新策略列表
-            if hasattr(self, 'load_strategy_list'):
-                self.load_strategy_list()
-        except Exception as e:
-            self.log(f"处理策略恢复事件失败: {e}")
-    
-    def init_config_monitor(self):
-        """Initialize configuration file monitoring"""
-        try:
-            # Create watchdog observer
-            self.config_observer = Observer()
-            config_path = "d:\Projects\okx_trading_bot\config"
-            self.config_observer.schedule(
-                ConfigFileHandler(self),
-                config_path,
-                recursive=False
-            )
-            self.config_observer.start()
-            self.log("配置文件监控已启动")
-        except Exception as e:
-            self.log(f"初始化配置文件监控失败: {e}")
-    
-    def init_services(self):
-        """
-        在后台线程中初始化服务
-        """
-        try:
-            self.log("开始初始化服务...")
-            
-            # 初始化API客户端和相关服务
-            self.restart_api_client()
-            
-            # 初始化WebSocket client
-            self.init_websocket_client()
-            
-            # Initialize data update timers
-            self.init_data_updates()
-            
-            # Initialize health check timer
-            self.init_health_check()
-            
-            # 初始数据更新
-            self.update_all_data()
-            
-            self.log("服务初始化完成")
-        except Exception as e:
-            self.log(f"初始化服务失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def init_strategy_management(self):
-        """
-        初始化策略管理UI
-        """
-        try:
-            self.log("开始初始化策略管理UI...")
-            
-            # 查找现有的标签页
-            tab_widget = None
-            for widget in self.centralWidget().children():
-                if isinstance(widget, QTabWidget):
-                    tab_widget = widget
-                    break
-            
-            if not tab_widget:
-                self.log("未找到标签页控件，无法初始化策略管理UI")
-                return
-            
-            # 创建策略管理标签页
-            strategy_tab = QWidget()
-            strategy_layout = QVBoxLayout(strategy_tab)
-            
-            # 策略列表
-            strategy_list_group = QGroupBox("策略列表")
-            strategy_list_layout = QVBoxLayout(strategy_list_group)
-            
-            # 策略选择器
-            strategy_layout_1 = QHBoxLayout()
-            strategy_layout_1.addWidget(QLabel("策略:"))
-            self.strategy_combo = QComboBox()
-            strategy_layout_1.addWidget(self.strategy_combo)
-            
-            # 策略控制按钮
-            self.activate_strategy_btn = QPushButton("激活策略")
-            self.activate_strategy_btn.clicked.connect(self.activate_strategy)
-            self.activate_strategy_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-            strategy_layout_1.addWidget(self.activate_strategy_btn)
-            
-            self.deactivate_strategy_btn = QPushButton("停用策略")
-            self.deactivate_strategy_btn.clicked.connect(self.deactivate_strategy)
-            self.deactivate_strategy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
-            strategy_layout_1.addWidget(self.deactivate_strategy_btn)
-            
-            self.reload_strategy_btn = QPushButton("重新加载")
-            self.reload_strategy_btn.clicked.connect(self.reload_strategy)
-            strategy_layout_1.addWidget(self.reload_strategy_btn)
-            
-            strategy_list_layout.addLayout(strategy_layout_1)
-            
-            # 策略列表表格
-            self.strategy_table = QTableWidget()
-            self.strategy_table.setColumnCount(5)
-            self.strategy_table.setHorizontalHeaderLabels(["策略名称", "状态", "类型", "总交易次数", "总收益"])
-            self.strategy_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            strategy_list_layout.addWidget(self.strategy_table)
-            
-            # 策略参数设置
-            strategy_params_group = QGroupBox("策略参数设置")
-            strategy_params_layout = QVBoxLayout(strategy_params_group)
-            
-            # 参数编辑区域
-            self.strategy_params_edit = QTextEdit()
-            self.strategy_params_edit.setPlaceholderText("策略参数JSON格式")
-            strategy_params_layout.addWidget(self.strategy_params_edit)
-            
-            # 保存参数按钮
-            self.save_params_btn = QPushButton("保存参数")
-            self.save_params_btn.clicked.connect(self.save_strategy_params)
-            self.save_params_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
-            strategy_params_layout.addWidget(self.save_params_btn)
-            
-            # 添加到主布局
-            strategy_layout.addWidget(strategy_list_group)
-            strategy_layout.addWidget(strategy_params_group)
-            
-            # 添加策略管理标签页
-            tab_widget.addTab(strategy_tab, "策略管理")
-            
-            # 加载策略列表
-            self.load_strategy_list()
-            
-            self.log("策略管理UI初始化完成")
-        except Exception as e:
-            self.log(f"初始化策略管理UI失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def init_agent_status_monitor(self):
-        """
-        初始化智能体状态监控
-        """
-        try:
-            self.log("开始初始化智能体状态监控...")
-            
-            # 查找现有的标签页
-            tab_widget = None
-            for widget in self.centralWidget().children():
-                if isinstance(widget, QTabWidget):
-                    tab_widget = widget
-                    break
-            
-            if not tab_widget:
-                self.log("未找到标签页控件，无法初始化智能体状态监控")
-                return
-            
-            # 创建智能体状态标签页
-            agent_tab = QWidget()
-            agent_layout = QVBoxLayout(agent_tab)
-            
-            # 智能体状态列表
-            agent_status_group = QGroupBox("智能体状态")
-            agent_status_layout = QVBoxLayout(agent_status_group)
-            
-            # 智能体状态表格
-            self.agent_status_table = QTableWidget()
-            self.agent_status_table.setColumnCount(4)
-            self.agent_status_table.setHorizontalHeaderLabels(["智能体ID", "类型", "状态", "运行时间"])
-            self.agent_status_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            agent_status_layout.addWidget(self.agent_status_table)
-            
-            # 系统状态
-            system_status_group = QGroupBox("系统状态")
-            system_status_layout = QGridLayout(system_status_group)
-            
-            # 系统状态指标
-            self.system_status_labels = {
-                "total_agents": QLabel("0"),
-                "running_agents": QLabel("0"),
-                "active_strategies": QLabel("0"),
-                "active_symbols": QLabel("0")
-            }
-            
-            system_status_layout.addWidget(QLabel("总智能体数:"), 0, 0)
-            system_status_layout.addWidget(self.system_status_labels["total_agents"], 0, 1)
-            system_status_layout.addWidget(QLabel("运行中智能体:"), 0, 2)
-            system_status_layout.addWidget(self.system_status_labels["running_agents"], 0, 3)
-            system_status_layout.addWidget(QLabel("活跃策略数:"), 1, 0)
-            system_status_layout.addWidget(self.system_status_labels["active_strategies"], 1, 1)
-            system_status_layout.addWidget(QLabel("活跃交易对:"), 1, 2)
-            system_status_layout.addWidget(self.system_status_labels["active_symbols"], 1, 3)
-            
-            # 风险状态
-            risk_status_group = QGroupBox("风险状态")
-            risk_status_layout = QGridLayout(risk_status_group)
-            
-            self.risk_status_labels = {
-                "total_position_value": QLabel("0"),
-                "total_orders": QLabel("0"),
-                "current_drawdown": QLabel("0%")
-            }
-            
-            risk_status_layout.addWidget(QLabel("总持仓价值:"), 0, 0)
-            risk_status_layout.addWidget(self.risk_status_labels["total_position_value"], 0, 1)
-            risk_status_layout.addWidget(QLabel("总订单数:"), 0, 2)
-            risk_status_layout.addWidget(self.risk_status_labels["total_orders"], 0, 3)
-            risk_status_layout.addWidget(QLabel("当前回撤:"), 1, 0)
-            risk_status_layout.addWidget(self.risk_status_labels["current_drawdown"], 1, 1)
-            
-            # 添加到主布局
-            agent_layout.addWidget(agent_status_group)
-            agent_layout.addWidget(system_status_group)
-            agent_layout.addWidget(risk_status_group)
-            
-            # 添加智能体状态标签页
-            tab_widget.addTab(agent_tab, "智能体状态")
-            
-            # 加载智能体状态
-            self.load_agent_status()
-            
-            # 定时更新智能体状态
-            self.agent_status_timer = QTimer()
-            self.agent_status_timer.timeout.connect(self.load_agent_status)
-            self.agent_status_timer.start(5000)  # 每5秒更新一次
-            
-            self.log("智能体状态监控初始化完成")
-        except Exception as e:
-            self.log(f"初始化智能体状态监控失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def update_dns_config_display(self):
-        """
-        更新DNS配置显示
-        """
-        current_region = self.api_client.get_dns_config().get('region', 'global')
-        self.dns_region_combo.setCurrentText(current_region)
-        self.current_dns_servers.setText(", ".join(self.api_client.get_dns_config()['servers']))
-    
-    def manual_network_adaptation(self):
-        """Handle manual network adaptation request"""
-        self.log("开始手动网络适配...")
-        self.manual_adapt_btn.setEnabled(False)
-        
-        # Run network adaptation in a separate thread to avoid blocking GUI
-        def run_adaptation():
-            try:
-                from okx_api_client import OKXAPIClient
-                api_client = OKXAPIClient()
-                success = api_client.run_network_adapter(auto_update=True)
-                
-                # Update GUI on main thread
-                self.app.thread().postEvent(self, type("Event", (), {}))
-                
-                if success:
-                    self.log("手动网络适配完成，配置已更新")
-                    self.refresh_network_status()
-                else:
-                    self.log("手动网络适配失败")
-            except Exception as e:
-                self.log(f"手动网络适配出错: {e}")
-            finally:
-                # Re-enable button on main thread
-                self.app.thread().postEvent(self, type("Event", (), {}))
-        
-        import threading
-        thread = threading.Thread(target=run_adaptation)
-        thread.daemon = True
-        thread.start()
-        
-        # Re-enable button
-        self.manual_adapt_btn.setEnabled(True)
-    
-    def refresh_network_status(self):
-        """Refresh network status display"""
-        self.log("刷新网络状态...")
-        self.update_network_status()
-    
-    def update_network_status(self):
-        """Update network status from API client with detailed health indicators"""
-        try:
-            from okx_api_client import OKXAPIClient
-            
-            # Get network status from API client
-            api_client = OKXAPIClient()
-            network_status = api_client.get_network_status()
-            
-            # Update current IP address
-            current_ip = network_status.get("current_ip", "未检测")
-            self.current_ip_label.setText(current_ip)
-            
-            # Test connection and get response time
-            start_time = time.time()
-            connection_ok = api_client.test_network_connection()
-            response_time = int((time.time() - start_time) * 1000)
-            
-            # Update connection status
-            if connection_ok:
-                self.connection_status_label.setText("已连接")
-                self.connection_status_label.setStyleSheet("color: green; font-weight: bold;")
-            else:
-                self.connection_status_label.setText("连接失败")
-                self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
-            
-            # Update response time with color coding
-            self.response_time_label.setText(f"{response_time} ms")
-            if response_time < 200:
-                self.response_time_label.setStyleSheet("color: green; font-weight: bold;")
-            elif response_time < 500:
-                self.response_time_label.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                self.response_time_label.setStyleSheet("color: red; font-weight: bold;")
-            
-            # Update WebSocket status if available
-            if hasattr(self, 'ws_client') and self.ws_client:
-                # 检查WebSocket连接状态，使用实际存在的属性
-                try:
-                    # 检查public_connected和private_connected属性
-                    public_connected = hasattr(self.ws_client, 'public_connected') and self.ws_client.public_connected
-                    private_connected = hasattr(self.ws_client, 'private_connected') and self.ws_client.private_connected
-                    ws_connected = public_connected or private_connected
-                    
-                    if ws_connected:
-                        self.ws_status_label.setText("已连接")
-                        self.ws_status_label.setStyleSheet("color: green; font-weight: bold;")
-                    else:
-                        self.ws_status_label.setText("未连接")
-                        self.ws_status_label.setStyleSheet("color: red; font-weight: bold;")
-                except Exception as e:
-                    self.log(f"获取WebSocket连接状态失败: {e}")
-                    self.ws_status_label.setText("未知")
-                    self.ws_status_label.setStyleSheet("color: orange; font-weight: bold;")
-            
-            # Get and update DNS stats with more detail
-            dns_stats = network_status.get("dns_stats", {})
-            success_rate = dns_stats.get('success_rate', 0)
-            total_queries = dns_stats.get('total_queries', 0)
-            avg_dns_time = dns_stats.get('avg_resolve_time', 0)
-            
-            # Update DNS status with detailed information
-            if success_rate > 0.9:
-                dns_status_text = f"正常 (成功率: {success_rate:.1%}, 查询: {total_queries}, 平均耗时: {avg_dns_time:.1f}ms)"
-                self.dns_status_label.setStyleSheet("color: green; font-weight: bold;")
-            elif success_rate > 0.5:
-                dns_status_text = f"不稳定 (成功率: {success_rate:.1%}, 查询: {total_queries}, 平均耗时: {avg_dns_time:.1f}ms)"
-                self.dns_status_label.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                dns_status_text = f"异常 (成功率: {success_rate:.1%}, 查询: {total_queries}, 平均耗时: {avg_dns_time:.1f}ms)"
-                self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
-            self.dns_status_label.setText(dns_status_text)
-            
-            # Update SSL certificate status (mock for now, can be enhanced with actual SSL check)
-            self.ssl_status_label.setText("有效")
-            self.ssl_status_label.setStyleSheet("color: green; font-weight: bold;")
-            
-            # Update packet loss rate (mock for now, can be enhanced with actual ping test)
-            packet_loss = 0.0  # Mock value
-            self.packet_loss_label.setText(f"{packet_loss:.1f}%")
-            if packet_loss < 1.0:
-                self.packet_loss_label.setStyleSheet("color: green; font-weight: bold;")
-            elif packet_loss < 5.0:
-                self.packet_loss_label.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                self.packet_loss_label.setStyleSheet("color: red; font-weight: bold;")
-            
-            # Update connection stability based on response time and success rate
-            if response_time < 200 and success_rate > 0.9:
-                stability_text = "稳定"
-                self.stability_label.setStyleSheet("color: green; font-weight: bold;")
-            elif response_time < 500 and success_rate > 0.7:
-                stability_text = "一般"
-                self.stability_label.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                stability_text = "不稳定"
-                self.stability_label.setStyleSheet("color: red; font-weight: bold;")
-            self.stability_label.setText(stability_text)
-            
-            # Update connection stats table
-            self.update_connection_stats()
-            
-        except Exception as e:
-            self.log(f"更新网络状态出错: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def switch_env(self, is_test=True):
-        """Switch between testnet and mainnet environments"""
-        self.log(f"正在切换到{'测试网' if is_test else '主网'}...")
-        
-        try:
-            # Update the is_test flag in configuration
-            self.config['api']['is_test'] = is_test
-            
-            # Update API IP list based on environment
-            if is_test:
-                # Testnet recommended IPs
-                valid_ips = ["172.64.144.82", "104.18.43.174"]
-            else:
-                # Mainnet recommended IPs
-                valid_ips = ["172.64.144.82", "104.18.43.174"]
-            
-            # Update API IP list in UI
-            if hasattr(self, 'api_ip_list'):
-                self.api_ip_list.setPlainText('\n'.join(valid_ips))
-            
-            # Save configuration
-            self.save_config()
-            
-            # Restart API client with new configuration
-            self.restart_api_client()
-            
-            # Update network status
-            self.refresh_network_status()
-            
-            self.log(f"已成功切换到{'测试网' if is_test else '主网'}")
-        except Exception as e:
-            self.log(f"切换环境失败: {e}")
-    
-    def update_connection_stats(self):
-        """Update connection statistics table"""
-        try:
-            from okx_api_client import OKXAPIClient
-            
-            # Get API IPs from config
-            config_path = "d:\Projects\okx_trading_bot\config\okx_config.json"
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            
-            api_ips = config['api'].get('api_ips', [])
-            if not api_ips and 'api_ip' in config['api']:
-                api_ips = [config['api']['api_ip']]
-            
-            # Clear table
-            self.connection_stats_table.setRowCount(0)
-            
-            # Test each IP and add to table
-            for i, ip in enumerate(api_ips):
-                # Test connection
-                start_time = time.time()
-                connection_ok = self.test_ip_connection(ip, 443)
-                response_time = int((time.time() - start_time) * 1000)
-                
-                # Add row to table
-                self.connection_stats_table.insertRow(i)
-                
-                # IP address
-                self.connection_stats_table.setItem(i, 0, QTableWidgetItem(ip))
-                
-                # Port
-                self.connection_stats_table.setItem(i, 1, QTableWidgetItem("443"))
-                
-                # Response time
-                self.connection_stats_table.setItem(i, 2, QTableWidgetItem(str(response_time)))
-                
-                # Status
-                if connection_ok:
-                    status_item = QTableWidgetItem("可用")
-                    status_item.setForeground(QColor(0, 128, 0))
-                else:
-                    status_item = QTableWidgetItem("不可用")
-                    status_item.setForeground(QColor(255, 0, 0))
-                self.connection_stats_table.setItem(i, 3, status_item)
-                
-                # Update current IP if first available IP
-                if i == 0 and connection_ok:
-                    self.current_ip_label.setText(ip)
-            
-        except Exception as e:
-            self.log(f"更新连接统计出错: {e}")
-    
-    def test_ip_connection(self, ip, port=443, timeout=2):
-        """Test if IP:port is reachable"""
-        try:
-            import socket
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(timeout)
-            s.connect((ip, port))
-            s.close()
-            return True
-        except:
-            return False
-    
-    def init_network_monitoring(self):
-        """Initialize network status monitoring"""
-        # Set up timer to update network status every 5 seconds
-        self.network_timer = QTimer()
-        self.network_timer.timeout.connect(self.update_network_status)
-        self.network_timer.start(5000)  # Update every 5 seconds
-        
-        # Initial update
-        self.update_network_status()
-    
-    def init_websocket_client(self):
-        """Initialize WebSocket client for real-time data"""
-        try:
-            from okx_websocket_client import OKXWebsocketClient
-            self.ws_client = OKXWebsocketClient(
-                api_key=self.config['api']['api_key'],
-                api_secret=self.config['api']['api_secret'],
-                passphrase=self.config['api']['passphrase'],
-                is_test=self.config['api']['is_test'],
-                api_ip=self.config['api'].get('api_ip'),
-                api_ips=self.config['api'].get('api_ips', [])
-            )
-            
-            # Start WebSocket client
-            self.ws_client.start()
-            
-            # Define message handlers
-            def handle_ticker_message(msg):
-                """Handle ticker update messages"""
-                if msg['data'] and len(msg['data']) > 0:
-                    ticker_data = msg['data'][0]
-                    ticker_dict = {
-                        'last': ticker_data.get('last', '0.0'),
-                        'change': ticker_data.get('change', '0.0'),
-                        'change_pct': ticker_data.get('changePct', '0.0')
-                    }
-                    self.update_ticker.emit(ticker_dict)
-            
-            # Add message handlers
-            self.ws_client.add_message_handler("tickers", handle_ticker_message)
-            
-            self.log("WebSocket客户端已初始化")
-        except Exception as e:
-            self.log(f"初始化WebSocket客户端失败: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def closeEvent(self, event):
-        """处理GUI关闭事件，确保线程安全"""
-        # 设置关闭标志位
-        self.is_closed = True
-        
-        # 停止数据更新定时器
-        self.timer.stop()
-        
-        # 停止网络状态监控定时器
-        if hasattr(self, 'network_timer'):
-            self.network_timer.stop()
-        
-        # 停止健康检查定时器
-        if hasattr(self, 'health_check_timer'):
-            self.health_check_timer.stop()
-        
-        # 停止WebSocket客户端
-        if hasattr(self, 'ws_client'):
-            self.ws_client.stop()
-            self.log("WebSocket客户端已停止")
-        
-        # 停止配置文件监控
-        if hasattr(self, 'config_observer') and self.config_observer.is_alive():
-            self.config_observer.stop()
-            self.config_observer.join()
-            self.log("配置文件监控已停止")
-        
-        # 停止智能体状态更新定时器
-        if hasattr(self, 'agent_status_timer'):
-            self.agent_status_timer.stop()
-            self.log("智能体状态更新定时器已停止")
-        
-        # 调用父类的关闭事件处理
-        super().closeEvent(event)
-    
-    def load_strategy_list(self):
-        """
-        加载策略列表
-        """
-        try:
-            # 获取策略执行智能体
-            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
-            if not strategy_agent:
-                self.log("未找到策略执行智能体")
-                return
-            
-            # 获取策略列表
-            strategies = strategy_agent.list_strategies()
-            
-            # 清空表格
-            self.strategy_table.setRowCount(0)
-            
-            # 添加策略到表格
-            for i, strategy in enumerate(strategies):
-                self.strategy_table.insertRow(i)
-                self.strategy_table.setItem(i, 0, QTableWidgetItem(strategy.get("name", "")))
-                self.strategy_table.setItem(i, 1, QTableWidgetItem(strategy.get("status", "")))
-                self.strategy_table.setItem(i, 2, QTableWidgetItem(strategy.get("class", "")))
-                self.strategy_table.setItem(i, 3, QTableWidgetItem(str(strategy.get("performance", {}).get("total_trades", 0))))
-                self.strategy_table.setItem(i, 4, QTableWidgetItem(str(strategy.get("performance", {}).get("total_profit", 0))))
-            
-            # 更新策略选择器
-            self.strategy_combo.clear()
-            for strategy in strategies:
-                self.strategy_combo.addItem(strategy.get("name", ""))
-            
-            self.log(f"策略列表加载完成，共 {len(strategies)} 个策略")
-        except Exception as e:
-            self.log(f"加载策略列表失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def activate_strategy(self):
-        """
-        激活策略
-        """
-        try:
-            # 获取选中的策略
-            strategy_name = self.strategy_combo.currentText()
-            if not strategy_name:
-                self.log("未选中策略")
-                return
-            
-            # 获取策略执行智能体
-            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
-            if not strategy_agent:
-                self.log("未找到策略执行智能体")
-                return
-            
-            # 激活策略
-            strategy_agent.activate_strategy(strategy_name)
-            self.log(f"正在激活策略: {strategy_name}")
-        except Exception as e:
-            self.log(f"激活策略失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def deactivate_strategy(self):
-        """
-        停用策略
-        """
-        try:
-            # 获取选中的策略
-            strategy_name = self.strategy_combo.currentText()
-            if not strategy_name:
-                self.log("未选中策略")
-                return
-            
-            # 获取策略执行智能体
-            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
-            if not strategy_agent:
-                self.log("未找到策略执行智能体")
-                return
-            
-            # 停用策略
-            strategy_agent.deactivate_strategy(strategy_name)
-            self.log(f"正在停用策略: {strategy_name}")
-        except Exception as e:
-            self.log(f"停用策略失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def reload_strategy(self):
-        """
-        重新加载策略
-        """
-        try:
-            # 获取选中的策略
-            strategy_name = self.strategy_combo.currentText()
-            if not strategy_name:
-                self.log("未选中策略")
-                return
-            
-            # 获取策略执行智能体
-            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
-            if not strategy_agent:
-                self.log("未找到策略执行智能体")
-                return
-            
-            # 重新加载策略
-            strategy_agent.reload_strategy(strategy_name)
-            self.log(f"正在重新加载策略: {strategy_name}")
-        except Exception as e:
-            self.log(f"重新加载策略失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def save_strategy_params(self):
-        """
-        保存策略参数
-        """
-        try:
-            # 获取选中的策略
-            strategy_name = self.strategy_combo.currentText()
-            if not strategy_name:
-                self.log("未选中策略")
-                return
-            
-            # 获取策略执行智能体
-            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
-            if not strategy_agent:
-                self.log("未找到策略执行智能体")
-                return
-            
-            # 获取参数
-            params_text = self.strategy_params_edit.toPlainText()
-            if not params_text:
-                self.log("参数不能为空")
-                return
-            
-            # 解析参数
-            import json
-            params = json.loads(params_text)
-            
-            # 更新策略参数
-            strategy_agent.update_strategy_params(strategy_name, params)
-            self.log(f"正在更新策略参数: {strategy_name}")
-        except json.JSONDecodeError as e:
-            self.log(f"参数格式错误: {e}")
-        except Exception as e:
-            self.log(f"保存策略参数失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def load_agent_status(self):
-        """
-        加载智能体状态
-        """
-        try:
-            # 获取所有智能体
-            from commons.agent_registry import global_agent_registry
-            all_agents = global_agent_registry.get_all_agents()
-            
-            # 清空表格
-            self.agent_status_table.setRowCount(0)
-            
-            # 添加智能体到表格
-            for i, agent in enumerate(all_agents):
-                status = agent.get_status()
-                self.agent_status_table.insertRow(i)
-                # 使用中文名称显示智能体
-                self.agent_status_table.setItem(i, 0, QTableWidgetItem(status.get("agent_name", status.get("agent_id", ""))))
-                # 使用中文类型显示智能体
-                self.agent_status_table.setItem(i, 1, QTableWidgetItem(status.get("agent_type", "")))
-                self.agent_status_table.setItem(i, 2, QTableWidgetItem(status.get("status", "")))
-                self.agent_status_table.setItem(i, 3, QTableWidgetItem(""))  # 运行时间
-            
-            self.log(f"智能体状态加载完成，共 {len(all_agents)} 个智能体")
-        except Exception as e:
-            self.log(f"加载智能体状态失败: {e}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    # 事件处理方法
-    def on_market_data_updated(self, data):
-        """
-        处理市场数据更新事件
-        """
-        try:
-            symbol = data.get("symbol")
-            market_data = data.get("data")
-            if not market_data or not symbol:
-                return
-            
-            # 更新GUI中的市场数据
-            if hasattr(self, 'last_price_label'):
-                self.last_price_label.setText(f"{market_data.get('price', 0):.2f}")
-            
-            # 更新其他市场数据显示
-            self.log(f"收到 {symbol} 市场数据更新")
-        except Exception as e:
-            self.log(f"处理市场数据更新事件失败: {e}")
-    
-    def on_order_placed(self, data):
-        """
-        处理订单已下单事件
-        """
-        try:
-            order = data.get("order")
-            if not order:
-                return
-            
-            self.log(f"订单已下单: {order.get('ordId')}")
-            # 更新订单列表
-            if hasattr(self, 'update_orders_table'):
-                self.update_orders_table()
-        except Exception as e:
-            self.log(f"处理订单已下单事件失败: {e}")
-    
-    def on_order_updated(self, data):
-        """
-        处理订单更新事件
-        """
-        try:
-            order = data.get("order")
-            if not order:
-                return
-            
-            self.log(f"订单已更新: {order.get('ordId')}, 状态: {order.get('state')}")
-            # 更新订单列表
-            if hasattr(self, 'update_orders_table'):
-                self.update_orders_table()
-        except Exception as e:
-            self.log(f"处理订单更新事件失败: {e}")
-    
-    def on_order_canceled(self, data):
-        """
-        处理订单取消事件
-        """
-        try:
-            order_id = data.get("order_id")
-            if not order_id:
-                return
-            
-            self.log(f"订单已取消: {order_id}")
-            # 更新订单列表
-            if hasattr(self, 'update_orders_table'):
-                self.update_orders_table()
-        except Exception as e:
-            self.log(f"处理订单取消事件失败: {e}")
-    
-    def on_risk_alert(self, data):
-        """
-        处理风险告警事件
-        """
-        try:
-            alert_type = data.get("type")
-            self.log(f"风险告警: {alert_type}, 详情: {data}")
-            
-            # 更新风险状态显示
-            if hasattr(self, 'risk_status_labels'):
-                self.risk_status_labels["current_drawdown"].setText(f"{data.get('current_value', 0):.2f}%")
-        except Exception as e:
-            self.log(f"处理风险告警事件失败: {e}")
-    
-    def on_risk_state_updated(self, data):
-        """
-        处理风险状态更新事件
-        """
-        try:
-            state = data.get("state")
-            if not state:
-                return
-            
-            # 更新风险状态显示
-            if hasattr(self, 'risk_status_labels'):
-                self.risk_status_labels["total_position_value"].setText(f"{state.get('total_position_value', 0):.2f}")
-                self.risk_status_labels["total_orders"].setText(str(state.get('total_orders', 0)))
-                active_symbols = list(state.get('active_symbols', set()))
-                self.risk_status_labels["current_drawdown"].setText(str(len(active_symbols)))
-        except Exception as e:
-            self.log(f"处理风险状态更新事件失败: {e}")
-    
-    def on_strategy_registered(self, data):
-        """
-        处理策略注册事件
-        """
-        try:
-            strategy_name = data.get("strategy_name")
-            self.log(f"策略已注册: {strategy_name}")
-            # 更新策略列表
-            if hasattr(self, 'load_strategy_list'):
-                self.load_strategy_list()
-        except Exception as e:
-            self.log(f"处理策略注册事件失败: {e}")
-    
-    def on_strategy_activated(self, data):
-        """
-        处理策略激活事件
-        """
-        try:
-            strategy_name = data.get("strategy_name")
-            self.log(f"策略已激活: {strategy_name}")
-            # 更新策略列表
-            if hasattr(self, 'load_strategy_list'):
-                self.load_strategy_list()
-        except Exception as e:
-            self.log(f"处理策略激活事件失败: {e}")
-    
-    def on_strategy_deactivated(self, data):
-        """
-        处理策略停用事件
-        """
-        try:
-            strategy_name = data.get("strategy_name")
-            self.log(f"策略已停用: {strategy_name}")
-            # 更新策略列表
-            if hasattr(self, 'load_strategy_list'):
-                self.load_strategy_list()
-        except Exception as e:
-            self.log(f"处理策略停用事件失败: {e}")
-    
-    def on_system_state_updated(self, data):
-        """
-        处理系统状态更新事件
-        """
-        try:
-            state = data.get("state")
-            if not state:
-                return
-            
-            # 更新系统状态显示
-            if hasattr(self, 'system_status_labels'):
-                self.system_status_labels["total_agents"].setText(str(state.get('total_agents', 0)))
-                self.system_status_labels["running_agents"].setText(str(state.get('running_agents', 0)))
-                self.system_status_labels["active_strategies"].setText(str(state.get('active_strategies', 0)))
-                active_symbols = list(state.get('active_symbols', set()))
-                self.system_status_labels["active_symbols"].setText(str(len(active_symbols)))
-        except Exception as e:
-            self.log(f"处理系统状态更新事件失败: {e}")
-        
-    def _load_config_internal(self):
-        """Internal method to load configuration on the main thread"""
-        import os
-        import time
-        
-        config_path = os.path.join(os.path.dirname(__file__), 'config', 'okx_config.json')
-        config = None
-        
-        # 添加超时机制，防止文件IO操作长时间阻塞
-        start_time = time.time()
-        timeout = 5.0  # 5秒超时
-        
-        try:
-            with open(config_path, 'r') as f:
-                # 读取文件内容，带超时检查
-                while time.time() - start_time < timeout:
-                    content = f.read()
-                    if content:
-                        break
-                    time.sleep(0.1)
-                
-                if not content:
-                    raise TimeoutError("读取配置文件超时")
-                
-                self.log(f"从配置文件加载配置: {config_path}")
-                config = json.loads(content)
-                
-                # 验证配置格式
-                if not self.validate_config(config):
-                    raise ValueError("配置文件格式验证失败")
-                    
-                return config
-        except FileNotFoundError as e:
-            self.log(f"配置文件不存在: {config_path}")
-            # 返回默认配置，确保程序可以继续运行
-            return self.get_default_config()
-        except json.JSONDecodeError as e:
-            self.log(f"配置文件格式错误: {e}")
-            # 返回默认配置，确保程序可以继续运行
-            return self.get_default_config()
-        except TimeoutError as e:
-            self.log(f"读取配置文件超时: {e}")
-            # 返回默认配置，确保程序可以继续运行
-            return self.get_default_config()
-        except Exception as e:
-            self.log(f"加载配置文件失败: {e}")
-            # 返回默认配置，确保程序可以继续运行
-            return self.get_default_config()
-    
-    def load_config(self):
-        """Load configuration from file with timeout and validation"""
-        import os
-        import time
-        from PyQt5.QtCore import QThread, QTimer
-        
-        # 确保在主线程中执行文件操作，避免阻塞GUI
-        from PyQt5.QtWidgets import QApplication
-        main_thread = QApplication.instance().thread()
-        
-        if QThread.currentThread() == main_thread:
-            # 已经在主线程中，直接执行内部方法
-            return self._load_config_internal()
-        else:
-            # 不在主线程中，使用QTimer.singleShot确保主线程执行
-            self.log("在非主线程中调用load_config方法，将切换到主线程执行")
-            
-            # 创建结果容器
-            result = [None]
-            
-            # 定义在主线程中执行的函数
-            def load_on_main():
-                result[0] = self._load_config_internal()
-            
-            # 在主线程中执行
-            QTimer.singleShot(0, load_on_main)
-            
-            # 等待结果（最多等待5秒）
-            start_wait = time.time()
-            while result[0] is None and time.time() - start_wait < 5.0:
-                time.sleep(0.1)
-            
-            return result[0] if result[0] is not None else self.get_default_config()
-    
-    def validate_config(self, config):
-        """Validate configuration format"""
-        try:
-            # 基本配置验证
-            if not isinstance(config, dict):
-                self.log("配置文件不是有效的JSON对象")
-                return False
-            
-            # 验证api配置
-            if 'api' not in config or not isinstance(config['api'], dict):
-                self.log("配置文件缺少api配置")
-                return False
-            
-
-            
-            # 验证api必需字段
-            required_api_fields = ['api_key', 'api_secret', 'passphrase', 'is_test', 'api_url', 'timeout']
-            for field in required_api_fields:
-                if field not in config['api']:
-                    self.log(f"配置文件缺少必需字段: api.{field}")
-                    # 不是致命错误，继续验证
-                    continue
-            
-            return True
-        except Exception as e:
-            self.log(f"配置验证失败: {e}")
-            return False
-    
-    def get_default_config(self):
-        """Return default configuration if loading fails"""
-        self.log("使用默认配置")
-        return {
-            "api": {
-                "api_key": "",
-                "api_secret": "",
-                "passphrase": "",
-                "is_test": True,
-                "api_url": "https://www.okx.com",
-                "timeout": 30,
-                "is_logged_in": False
-            },
-            "market_data": {
-                "update_interval": 10
-            }
-        }
-    
-    def _load_config_file_internal(self):
-        """Internal method to reload configuration file on the main thread"""
-        try:
-            # Load new configuration
-            new_config = self.load_config()
-            
-            # Check if configuration has actually changed
-            import json
-            if json.dumps(new_config, sort_keys=True) == json.dumps(self.config, sort_keys=True):
-                # Configuration hasn't changed, skip update
-                self.log("配置文件内容未变化，跳过重新加载")
-                return
-            
-            # Configuration has changed, update
-            self.config = new_config
-            
-            # Update API client
-            self.restart_api_client()
-            
-            # Update GUI elements if they exist
-            if hasattr(self, 'api_key_edit'):
-                self.api_key_edit.setText(self.config['api']['api_key'])
-                self.api_secret_edit.setText(self.config['api']['api_secret'])
-                self.passphrase_edit.setText(self.config['api']['passphrase'])
-                self.api_url_edit.setText(self.config['api']['api_url'])
-                
-                # Update API IP list
-                api_ips = self.config['api'].get('api_ips', [self.config['api'].get('api_ip', '')])
-                self.api_ip_list.setPlainText('\n'.join(api_ips))
-                
-                self.timeout_spin.setValue(self.config['api']['timeout'])
-                
-                # Load login state if available
-                if hasattr(self, 'login_status') and self.config['api'].get('is_logged_in', False):
-                    self.login_status.setText("登录状态: 已登录")
-                    self.login_status.setStyleSheet("font-weight: bold; color: green;")
-                    if hasattr(self, 'api_login_btn'):
-                        self.api_login_btn.setEnabled(False)
-                    if hasattr(self, 'api_logout_btn'):
-                        self.api_logout_btn.setEnabled(True)
-            
-            self.log("配置文件重新加载成功")
-        except Exception as e:
-            self.log(f"重新加载配置文件失败: {e}")
-            self.show_alert("配置加载错误", f"重新加载配置文件失败: {e}")
-    
-    def load_config_file(self):
-        """Reload configuration file and update GUI, ensuring main thread execution"""
-        from PyQt5.QtCore import QThread, QTimer
-        from PyQt5.QtWidgets import QApplication
-        
-        # Get the main thread
-        main_thread = QApplication.instance().thread()
-        
-        if QThread.currentThread() == main_thread:
-            # Already on main thread, execute directly
-            self._load_config_file_internal()
-        else:
-            # Not on main thread, use QTimer.singleShot to ensure main thread execution
-            self.log("在非主线程中调用load_config_file方法，将切换到主线程执行")
-            
-            # Use QTimer.singleShot to execute on main thread
-            QTimer.singleShot(0, self._load_config_file_internal)
     
     def init_ui(self):
         """Initialize the main UI"""
@@ -1536,6 +668,7 @@ class TradingGUI(QMainWindow):
     def init_control_bar(self, layout):
         """Initialize the top control bar"""
         control_bar = QWidget()
+        control_bar.setObjectName("controlBar")
         control_layout = QHBoxLayout(control_bar)
         
         # Symbol selection
@@ -1547,6 +680,7 @@ class TradingGUI(QMainWindow):
         
         # Update button
         self.update_btn = QPushButton("更新数据")
+        self.update_btn.setObjectName("secondary")
         self.update_btn.clicked.connect(self.update_all_data)
         control_layout.addWidget(self.update_btn)
         
@@ -1568,12 +702,13 @@ class TradingGUI(QMainWindow):
         
         # Add strategy button
         self.add_strategy_btn = QPushButton("添加策略")
+        self.add_strategy_btn.setObjectName("primary")
         self.add_strategy_btn.clicked.connect(self.add_strategy)
-        self.add_strategy_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         control_layout.addWidget(self.add_strategy_btn)
         
         # Help button
         self.help_btn = QPushButton("帮助")
+        self.help_btn.setObjectName("secondary")
         self.help_btn.clicked.connect(self.show_help)
         control_layout.addWidget(self.help_btn)
         
@@ -1665,7 +800,7 @@ class TradingGUI(QMainWindow):
             QMessageBox.error(self, "错误", f"添加策略时出错: {str(e)}")
     
     def init_trading_tab(self):
-        """Initialize the trading tab"""
+        """Initialize trading tab"""
         trading_tab = QWidget()
         trading_layout = QVBoxLayout(trading_tab)
         
@@ -1707,20 +842,28 @@ class TradingGUI(QMainWindow):
         
         # Ticker labels
         self.ticker_price = QLabel("0.00")
-        self.ticker_price.setFont(QFont("Arial", 24, QFont.Bold))
+        self.ticker_price.setFont(QFont("Segoe UI", 28, QFont.Bold))
         self.ticker_price.setAlignment(Qt.AlignCenter)
+        self.ticker_price.setStyleSheet("color: #2c3e50; margin: 10px 0;")
         
         self.ticker_change = QLabel("0.00")
-        self.ticker_change.setFont(QFont("Arial", 14))
+        self.ticker_change.setFont(QFont("Segoe UI", 16))
         self.ticker_change.setAlignment(Qt.AlignCenter)
         
         self.ticker_change_pct = QLabel("0.00%")
-        self.ticker_change_pct.setFont(QFont("Arial", 14))
+        self.ticker_change_pct.setFont(QFont("Segoe UI", 16))
         self.ticker_change_pct.setAlignment(Qt.AlignCenter)
         
         ticker_layout.addWidget(self.ticker_price, 0, 0, 1, 3)
         ticker_layout.addWidget(self.ticker_change, 1, 0)
         ticker_layout.addWidget(self.ticker_change_pct, 1, 1)
+        
+        # Add last update time
+        self.last_update_time = QLabel("")
+        self.last_update_time.setFont(QFont("Segoe UI", 10))
+        self.last_update_time.setAlignment(Qt.AlignRight)
+        self.last_update_time.setStyleSheet("color: #64748b;")
+        ticker_layout.addWidget(self.last_update_time, 1, 2)
         
         layout.addWidget(ticker_group)
     
@@ -1732,23 +875,55 @@ class TradingGUI(QMainWindow):
         # Buy orders
         buy_widget = QWidget()
         buy_layout = QVBoxLayout(buy_widget)
-        buy_layout.addWidget(QLabel("买单"))
+        
+        buy_header = QLabel("买单")
+        buy_header.setStyleSheet("font-weight: 600; color: #10b981; margin-bottom: 8px;")
+        buy_header.setAlignment(Qt.AlignCenter)
+        buy_layout.addWidget(buy_header)
         
         self.buy_table = QTableWidget(10, 2)
         self.buy_table.setHorizontalHeaderLabels(["价格", "数量"])
         self.buy_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.buy_table.setStyleSheet("QTableWidget { background-color: #f0fff0; }")
+        self.buy_table.setStyleSheet("""
+            QTableWidget { 
+                background-color: #f0fff4; 
+                border-radius: 6px;
+                border: 1px solid #dcfce7;
+            }
+            QTableWidget::item {
+                border-bottom: 1px solid #f0fdf4;
+            }
+            QTableWidget::item:hover {
+                background-color: #dcfce7;
+            }
+        """)
         buy_layout.addWidget(self.buy_table)
         
         # Sell orders
         sell_widget = QWidget()
         sell_layout = QVBoxLayout(sell_widget)
-        sell_layout.addWidget(QLabel("卖单"))
+        
+        sell_header = QLabel("卖单")
+        sell_header.setStyleSheet("font-weight: 600; color: #ef4444; margin-bottom: 8px;")
+        sell_header.setAlignment(Qt.AlignCenter)
+        sell_layout.addWidget(sell_header)
         
         self.sell_table = QTableWidget(10, 2)
         self.sell_table.setHorizontalHeaderLabels(["价格", "数量"])
         self.sell_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.sell_table.setStyleSheet("QTableWidget { background-color: #fff0f0; }")
+        self.sell_table.setStyleSheet("""
+            QTableWidget { 
+                background-color: #fff1f0; 
+                border-radius: 6px;
+                border: 1px solid #fee2e2;
+            }
+            QTableWidget::item {
+                border-bottom: 1px solid #fff1f0;
+            }
+            QTableWidget::item:hover {
+                background-color: #fee2e2;
+            }
+        """)
         sell_layout.addWidget(self.sell_table)
         
         order_book_layout.addWidget(buy_widget)
@@ -1761,56 +936,64 @@ class TradingGUI(QMainWindow):
         trading_group = QGroupBox("交易控制")
         trading_layout = QVBoxLayout(trading_group)
         
-        # Order form - Main parameters
-        order_form = QFormLayout()
+        # Main parameters section with grid layout for better organization
+        main_params_group = QGroupBox("订单参数")
+        main_params_layout = QGridLayout(main_params_group)
         
-        # Order type
+        # Order type and side in first row
+        main_params_layout.addWidget(QLabel("订单类型:"), 0, 0)
         self.order_type_combo = QComboBox()
         self.order_type_combo.addItems(["限价", "市价", "只做maker", "触发限价", "触发市价"])
-        order_form.addRow("订单类型:", self.order_type_combo)
+        main_params_layout.addWidget(self.order_type_combo, 0, 1)
         
-        # Side
+        main_params_layout.addWidget(QLabel("方向:"), 0, 2)
         self.side_combo = QComboBox()
         self.side_combo.addItems(["买入", "卖出"])
-        order_form.addRow("方向:", self.side_combo)
+        main_params_layout.addWidget(self.side_combo, 0, 3)
         
-        # Price
+        # Price and amount in second row
+        main_params_layout.addWidget(QLabel("价格:"), 1, 0)
         self.price_edit = QLineEdit("0.0")
-        order_form.addRow("价格:", self.price_edit)
+        self.price_edit.setPlaceholderText("输入价格")
+        main_params_layout.addWidget(self.price_edit, 1, 1)
         
-        # Amount
+        main_params_layout.addWidget(QLabel("数量:"), 1, 2)
         self.amount_edit = QLineEdit("0.0")
-        order_form.addRow("数量:", self.amount_edit)
+        self.amount_edit.setPlaceholderText("输入数量")
+        main_params_layout.addWidget(self.amount_edit, 1, 3)
         
-        # Leverage
+        # Leverage and trading mode in third row
+        main_params_layout.addWidget(QLabel("杠杆:"), 2, 0)
         self.leverage_spin = QSpinBox()
         self.leverage_spin.setRange(1, 100)
         self.leverage_spin.setValue(5)
-        order_form.addRow("杠杆:", self.leverage_spin)
+        main_params_layout.addWidget(self.leverage_spin, 2, 1)
         
-        # Trading mode (td_mode)
+        main_params_layout.addWidget(QLabel("交易模式:"), 2, 2)
         self.td_mode_combo = QComboBox()
         self.td_mode_combo.addItems(["逐仓", "全仓"])
         self.td_mode_combo.setCurrentText("逐仓")
-        order_form.addRow("交易模式:", self.td_mode_combo)
+        main_params_layout.addWidget(self.td_mode_combo, 2, 3)
         
-        # Position side
+        # Position side and reduce only in fourth row
+        main_params_layout.addWidget(QLabel("持仓方向:"), 3, 0)
         self.pos_side_combo = QComboBox()
         self.pos_side_combo.addItems(["净持仓", "多头", "空头"])
         self.pos_side_combo.setCurrentText("净持仓")
-        order_form.addRow("持仓方向:", self.pos_side_combo)
+        main_params_layout.addWidget(self.pos_side_combo, 3, 1)
         
-        # Reduce only
+        main_params_layout.addWidget(QLabel("只减仓:"), 3, 2)
         self.reduce_only_check = QCheckBox()
         self.reduce_only_check.setChecked(False)
-        order_form.addRow("只减仓:", self.reduce_only_check)
+        main_params_layout.addWidget(self.reduce_only_check, 3, 3)
         
-        # Client order ID
+        # Client order ID in fifth row (span across columns)
+        main_params_layout.addWidget(QLabel("客户订单ID:"), 4, 0)
         self.cl_ord_id_edit = QLineEdit("")
         self.cl_ord_id_edit.setPlaceholderText("可选，客户订单ID")
-        order_form.addRow("客户订单ID:", self.cl_ord_id_edit)
+        main_params_layout.addWidget(self.cl_ord_id_edit, 4, 1, 1, 3)
         
-        trading_layout.addLayout(order_form)
+        trading_layout.addWidget(main_params_group)
         
         # Take Profit / Stop Loss settings
         self.init_tp_sl_settings(trading_layout)
@@ -1818,10 +1001,33 @@ class TradingGUI(QMainWindow):
         # Batch operations
         self.init_batch_operations(trading_layout)
         
-        # Place order button
+        # Place order button with better styling
         self.place_order_btn = QPushButton("下单")
+        self.place_order_btn.setObjectName("primary")
+        self.place_order_btn.setMinimumHeight(40)
+        self.place_order_btn.setStyleSheet("""
+            QPushButton#primary {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: 600;
+                padding: 12px;
+                transition: all 0.2s ease;
+            }
+            QPushButton#primary:hover {
+                background-color: #2563eb;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            }
+            QPushButton#primary:pressed {
+                background-color: #1d4ed8;
+                transform: translateY(0);
+                box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+            }
+        """)
         self.place_order_btn.clicked.connect(self.place_order)
-        self.place_order_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         trading_layout.addWidget(self.place_order_btn)
         
         layout.addWidget(trading_group)
@@ -1831,8 +1037,9 @@ class TradingGUI(QMainWindow):
         tp_sl_group = QGroupBox("止盈止损设置")
         tp_sl_layout = QGridLayout(tp_sl_group)
         
-        # Take Profit settings
+        # Take Profit settings with better styling
         tp_label = QLabel("止盈设置")
+        tp_label.setStyleSheet("font-weight: 600; color: #10b981; margin-bottom: 8px;")
         tp_label.setAlignment(Qt.AlignCenter)
         tp_sl_layout.addWidget(tp_label, 0, 0, 1, 2)
         
@@ -1846,8 +1053,9 @@ class TradingGUI(QMainWindow):
         tp_sl_layout.addWidget(QLabel("止盈触发价格:"), 2, 0)
         tp_sl_layout.addWidget(self.tp_trigger_px_edit, 2, 1)
         
-        # Stop Loss settings
+        # Stop Loss settings with better styling
         sl_label = QLabel("止损设置")
+        sl_label.setStyleSheet("font-weight: 600; color: #ef4444; margin-bottom: 8px;")
         sl_label.setAlignment(Qt.AlignCenter)
         tp_sl_layout.addWidget(sl_label, 0, 2, 1, 2)
         
@@ -1881,22 +1089,25 @@ class TradingGUI(QMainWindow):
         batch_group = QGroupBox("批量操作")
         batch_layout = QHBoxLayout(batch_group)
         
-        # Batch place orders button
+        # Batch place orders button with better styling
         self.batch_place_btn = QPushButton("批量下单")
+        self.batch_place_btn.setObjectName("secondary")
+        self.batch_place_btn.setMinimumHeight(36)
         self.batch_place_btn.clicked.connect(self.batch_place_orders)
-        self.batch_place_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         batch_layout.addWidget(self.batch_place_btn)
         
-        # Batch cancel orders button
+        # Batch cancel orders button with better styling
         self.batch_cancel_btn = QPushButton("批量撤单")
+        self.batch_cancel_btn.setObjectName("warning")
+        self.batch_cancel_btn.setMinimumHeight(36)
         self.batch_cancel_btn.clicked.connect(self.batch_cancel_orders)
-        self.batch_cancel_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
         batch_layout.addWidget(self.batch_cancel_btn)
         
-        # Batch amend orders button
+        # Batch amend orders button with better styling
         self.batch_amend_btn = QPushButton("批量修改")
+        self.batch_amend_btn.setObjectName("secondary")
+        self.batch_amend_btn.setMinimumHeight(36)
         self.batch_amend_btn.clicked.connect(self.batch_amend_orders)
-        self.batch_amend_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold;")
         batch_layout.addWidget(self.batch_amend_btn)
         
         layout.addWidget(batch_group)
@@ -1910,27 +1121,52 @@ class TradingGUI(QMainWindow):
         self.orders_table.setColumnCount(10)
         self.orders_table.setHorizontalHeaderLabels(["订单ID", "交易对", "方向", "类型", "价格", "数量", "状态", "持仓方向", "交易模式", "客户订单ID"])
         self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.orders_table.setStyleSheet("""
+            QTableWidget {
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+            }
+            QTableWidget::item:hover {
+                background-color: #f8f9fa;
+            }
+            QTableWidget::item:selected {
+                background-color: #dbeafe;
+                color: #1e40af;
+            }
+            QHeaderView::section {
+                background-color: #f8f9fa;
+                font-weight: 600;
+                color: #2c3e50;
+                border-radius: 6px 6px 0 0;
+            }
+        """)
         
         # Order operations buttons
         order_ops_layout = QHBoxLayout()
         
-        # Cancel selected order button
+        # Cancel selected order button with styling
         self.cancel_order_btn = QPushButton("取消选中订单")
+        self.cancel_order_btn.setObjectName("danger")
+        self.cancel_order_btn.setMinimumHeight(32)
         self.cancel_order_btn.clicked.connect(self.cancel_selected_order)
         order_ops_layout.addWidget(self.cancel_order_btn)
         
-        # Amend selected order button
+        # Amend selected order button with styling
         self.amend_order_btn = QPushButton("修改选中订单")
+        self.amend_order_btn.setObjectName("secondary")
+        self.amend_order_btn.setMinimumHeight(32)
         self.amend_order_btn.clicked.connect(self.amend_selected_order)
         order_ops_layout.addWidget(self.amend_order_btn)
         
-        # Select all orders button
+        # Select all orders button with styling
         self.select_all_orders_btn = QPushButton("全选订单")
+        self.select_all_orders_btn.setMinimumHeight(32)
         self.select_all_orders_btn.clicked.connect(self.select_all_orders)
         order_ops_layout.addWidget(self.select_all_orders_btn)
         
-        # Clear selection button
+        # Clear selection button with styling
         self.clear_selection_btn = QPushButton("清空选择")
+        self.clear_selection_btn.setMinimumHeight(32)
         self.clear_selection_btn.clicked.connect(self.clear_order_selection)
         order_ops_layout.addWidget(self.clear_selection_btn)
         
@@ -1999,12 +1235,12 @@ class TradingGUI(QMainWindow):
         control_layout = QHBoxLayout()
         
         self.start_strategy_btn = QPushButton("启动策略")
+        self.start_strategy_btn.setObjectName("primary")
         self.start_strategy_btn.clicked.connect(self.start_strategy)
-        self.start_strategy_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         
         self.stop_strategy_btn = QPushButton("停止策略")
+        self.stop_strategy_btn.setObjectName("danger")
         self.stop_strategy_btn.clicked.connect(self.stop_strategy)
-        self.stop_strategy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
         
         self.strategy_status = QLabel("状态: 已停止")
         self.strategy_status.setStyleSheet("font-weight: bold;")
@@ -2147,13 +1383,13 @@ class TradingGUI(QMainWindow):
         
         env_btn_layout = QHBoxLayout()
         self.testnet_btn = QPushButton("测试网")
+        self.testnet_btn.setObjectName("warning")
         self.testnet_btn.clicked.connect(lambda: self.switch_env(is_test=True))
-        self.testnet_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
         env_btn_layout.addWidget(self.testnet_btn)
         
         self.mainnet_btn = QPushButton("主网")
+        self.mainnet_btn.setObjectName("primary")
         self.mainnet_btn.clicked.connect(lambda: self.switch_env(is_test=False))
-        self.mainnet_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         env_btn_layout.addWidget(self.mainnet_btn)
         
         env_layout.addLayout(env_btn_layout)
@@ -2161,12 +1397,13 @@ class TradingGUI(QMainWindow):
         
         # Manual adaptation button
         self.manual_adapt_btn = QPushButton("手动适配网络")
+        self.manual_adapt_btn.setObjectName("secondary")
         self.manual_adapt_btn.clicked.connect(self.manual_network_adaptation)
-        self.manual_adapt_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         controls_layout.addWidget(self.manual_adapt_btn)
         
         # Refresh status button
         self.refresh_status_btn = QPushButton("刷新状态")
+        self.refresh_status_btn.setObjectName("secondary")
         self.refresh_status_btn.clicked.connect(self.refresh_network_status)
         controls_layout.addWidget(self.refresh_status_btn)
         
@@ -2267,1232 +1504,171 @@ class TradingGUI(QMainWindow):
         
         # Monitoring Configuration Group
         monitoring_group = QGroupBox("监控配置")
-        monitoring_layout = QFormLayout(monitoring_group)
         
-        # Health Check Interval
-        self.health_check_interval = QSpinBox()
-        self.health_check_interval.setRange(60, 3600)
-        self.health_check_interval.setValue(self.config.get('market_data', {}).get('update_interval', 10) * 6)
-        monitoring_layout.addRow("健康检查间隔 (秒):", self.health_check_interval)
-        
-        # Enable Health Check
-        self.enable_health_check = QCheckBox("启用自动健康检查")
-        self.enable_health_check.setChecked(True)
-        monitoring_layout.addRow(self.enable_health_check)
-        
-        # Load Balancing Configuration Group
-        lb_group = QGroupBox("负载均衡配置")
-        lb_layout = QFormLayout(lb_group)
-        
-        # Load Balancing Strategy
-        self.lb_strategy_combo = QComboBox()
-        self.lb_strategy_combo.addItems(["轮询", "响应时间优先"])
-        lb_layout.addRow("负载均衡策略:", self.lb_strategy_combo)
-        
-        # Current Active IP
-        self.current_active_ip = QLabel("当前活跃IP: " + (self.config['api'].get('api_ip', '未设置')))
-        self.current_active_ip.setStyleSheet("font-weight: bold;")
-        lb_layout.addRow(self.current_active_ip)
-        
-        # DNS Configuration Group
-        dns_group = QGroupBox("DNS配置")
-        dns_layout = QFormLayout(dns_group)
-        
-        # DNS Region Selection
-        self.dns_region_combo = QComboBox()
-        self.dns_region_combo.addItems(["global", "asia", "europe", "north_america"])
-        # Set default to 'global' initially, will be updated when API client is ready
-        self.dns_region_combo.setCurrentText("global")
-        dns_layout.addRow("DNS区域:", self.dns_region_combo)
-        
-        # Current DNS Servers Display
-        self.current_dns_servers = QLabel("初始化中...")
-        self.current_dns_servers.setStyleSheet("font-weight: bold;")
-        dns_layout.addRow("当前DNS服务器:", self.current_dns_servers)
-        
-        # DNS Stats Button
-        self.view_dns_stats_btn = QPushButton("查看DNS统计信息")
-        self.view_dns_stats_btn.clicked.connect(self.show_dns_stats)
-        dns_layout.addRow(self.view_dns_stats_btn)
-        
-        # Update DNS Configuration Button
-        self.update_dns_config_btn = QPushButton("更新DNS配置")
-        self.update_dns_config_btn.clicked.connect(self.update_dns_configuration)
-        self.update_dns_config_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
-        dns_layout.addRow(self.update_dns_config_btn)
-        
-
-        
-        # Advanced Settings Group
-        advanced_group = QGroupBox("高级设置")
-        advanced_layout = QFormLayout(advanced_group)
-        
-        # API IP List in advanced settings
-        self.api_ip_list = QTextEdit()
-        api_ips = self.config['api'].get('api_ips', [self.config['api'].get('api_ip', '')])
-        self.api_ip_list.setPlainText('\n'.join(api_ips))
-        advanced_layout.addRow("API IP地址列表 (每行一个):", self.api_ip_list)
-        
-        # Add all groups to main layout
+        # 结束配置页面的布局
         config_layout.addWidget(api_config_group)
-        config_layout.addLayout(auth_layout)
-        config_layout.addWidget(self.connection_status)
         config_layout.addWidget(monitoring_group)
-        config_layout.addWidget(lb_group)
-        config_layout.addWidget(dns_group)
         
-        # DPI Interception Detection Group
-        dpi_group = QGroupBox("DPI拦截检测")
-        dpi_layout = QFormLayout(dpi_group)
+        # 添加标签页
+        self.tab_widget.addTab(config_tab, "配置")
         
-        # DPI Detection Result
-        self.dpi_detection_result = QLabel("未检测")
-        self.dpi_detection_result.setStyleSheet("font-weight: bold; color: orange;")
-        dpi_layout.addRow("检测结果:", self.dpi_detection_result)
+        # 显示主窗口
+        self.show()
         
-        # DPI Detection Button
-        self.detect_dpi_btn = QPushButton("检测DPI拦截")
-        self.detect_dpi_btn.clicked.connect(self.detect_dpi_interception)
-        self.detect_dpi_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold;")
-        dpi_layout.addRow(self.detect_dpi_btn)
-        
-        # DPI Detection Details
-        self.dpi_detection_details = QTextEdit()
-        self.dpi_detection_details.setReadOnly(True)
-        self.dpi_detection_details.setMinimumHeight(100)
-        self.dpi_detection_details.setPlaceholderText("检测结果详情将显示在这里...")
-        dpi_layout.addRow("检测详情:", self.dpi_detection_details)
-        
-        config_layout.addWidget(dpi_group)
-        config_layout.addWidget(advanced_group)
-        
-        self.tab_widget.addTab(config_tab, "配置管理")
-        
-        # 在后台线程中初始化DNS配置显示，避免阻塞GUI
-        from PyQt5.QtCore import QTimer
-        QTimer.singleShot(0, self.update_dns_config_display)
-    
-    def connect_signals(self):
-        """Connect signals for GUI updates"""
-        self.update_ticker.connect(self.update_ticker_display)
-        self.update_order_book.connect(self.update_order_book_display)
-        self.update_orders.connect(self.update_orders_display)
-        self.update_positions.connect(self.update_positions_display)
-        self.update_log.connect(self.append_log)
-    
-    def on_symbol_change(self, symbol):
-        """Handle symbol change"""
-        self.log(f"切换交易对为 {symbol}")
-        self.update_all_data()
-    
-    def update_all_data(self):
-        """Update all market data"""
-        threading.Thread(target=self.fetch_market_data).start()
-        threading.Thread(target=self.fetch_account_data).start()
-        threading.Thread(target=self.fetch_orders).start()
-        threading.Thread(target=self.fetch_positions).start()
-    
-    def fetch_market_data(self):
-        """Fetch market data in a background thread"""
-        symbol = self.symbol_combo.currentText()
-        
+    def save_config(self):
+        """保存配置"""
         try:
-            # Check if market_data_service is initialized
-            if hasattr(self, 'market_data_service') and self.market_data_service:
-                # Fetch ticker
-                ticker = self.market_data_service.get_real_time_ticker(symbol)
-                
-                # 检查GUI是否已关闭
-                if not self.is_closed:
-                    if ticker:
-                        self.update_ticker.emit(ticker)
-                    else:
-                        # Emit an empty dict if ticker is None
-                        self.update_ticker.emit({})
-                    
-                    # Fetch order book
-                    order_book = self.market_data_service.get_order_book(symbol, 10)
-                    if order_book:
-                        self.update_order_book.emit(order_book)
-                    else:
-                        # Emit an empty dict if order_book is None
-                        self.update_order_book.emit({})
-                    
-                    # Update status to ready if data is fetched successfully
-                    self.status_label.setText("状态: 就绪")
-                    self.status_label.setStyleSheet("color: green; font-weight: bold;")
-            else:
-                # Service not initialized yet, skip this update
-                if not self.is_closed:
-                    self.log("市场数据服务未初始化，跳过数据更新")
-            
-        except Exception as e:
-            error_msg = f"获取市场数据失败: {e}"
-            
-            # 只在GUI未关闭时记录日志和更新状态
-            if not self.is_closed:
-                self.log(error_msg)
-                
-                # Update status bar with error
-                if "getaddrinfo failed" in str(e):
-                    self.status_label.setText("状态: DNS解析失败，请检查网络连接")
-                    self.status_label.setStyleSheet("color: red; font-weight: bold;")
-                else:
-                    self.status_label.setText(f"状态: 数据获取失败")
-                    self.status_label.setStyleSheet("color: red; font-weight: bold;")
-                
-                # Emit empty dicts to prevent GUI errors
-                self.update_ticker.emit({})
-                self.update_order_book.emit({})
-    
-    def fetch_account_data(self):
-        """Fetch account data in a background thread"""
-        try:
-            # Check if api_client is initialized
-            if hasattr(self, 'api_client') and self.api_client:
-                # Fetch account balance
-                balance_info = self.api_client.get_account_balance()
-                
-                # 只在GUI未关闭时更新UI
-                if not self.is_closed and balance_info:
-                    # Extract balance information
-                    total_eq = balance_info[0].get('totalEq', '0')
-                    available_balance = balance_info[0].get('details', [{}])[0].get('availBal', '0')
-                    self.available_balance.setText(available_balance)
-                    self.total_balance.setText(total_eq)
-                    # Unrealized PnL is not available in get_account_balance, leave it as-is
-            else:
-                # API client not initialized yet, skip this update
-                if not self.is_closed:
-                    self.log("API客户端未初始化，跳过账户数据更新")
-            
-        except Exception as e:
-            # 只在GUI未关闭时记录日志
-            if not self.is_closed:
-                self.log(f"获取账户数据失败: {e}")
-    
-    def fetch_orders(self):
-        """Fetch orders in a background thread"""
-        try:
-            # Check if order_manager is initialized
-            if hasattr(self, 'order_manager') and self.order_manager:
-                symbol = self.symbol_combo.currentText()
-                orders = self.order_manager.get_pending_orders(symbol)
-                
-                # 只在GUI未关闭时发送信号
-                if not self.is_closed:
-                    # 确保传递的是列表类型，即使API返回None
-                    self.update_orders.emit(orders if orders is not None else [])
-            else:
-                # Order manager not initialized yet, skip this update
-                if not self.is_closed:
-                    self.log("订单管理器未初始化，跳过订单数据更新")
-            
-        except Exception as e:
-            # 只在GUI未关闭时记录日志
-            if not self.is_closed:
-                self.log(f"获取订单数据失败: {e}")
-    
-    def fetch_positions(self):
-        """Fetch positions in a background thread"""
-        try:
-            # Check if api_client is initialized
-            if hasattr(self, 'api_client') and self.api_client:
-                positions = self.api_client.get_positions()
-                
-                # 只在GUI未关闭时发送信号
-                if not self.is_closed:
-                    # 确保传递的是列表类型，即使API返回None
-                    self.update_positions.emit(positions if positions is not None else [])
-            else:
-                # API client not initialized yet, skip this update
-                if not self.is_closed:
-                    self.log("API客户端未初始化，跳过持仓数据更新")
-            
-        except Exception as e:
-            # 只在GUI未关闭时记录日志
-            if not self.is_closed:
-                self.log(f"获取持仓数据失败: {e}")
-    
-    def update_ticker_display(self, ticker):
-        """Update ticker display"""
-        if ticker:
-            self.ticker_price.setText(str(ticker.get('last', '0.00')))
-            
-            change = float(ticker.get('change', '0.0'))
-            change_pct = float(ticker.get('change_pct', '0.0'))
-            
-            self.ticker_change.setText(f"{change:.2f}")
-            self.ticker_change_pct.setText(f"{change_pct:.2f}%")
-            
-            # Set color based on change
-            if change > 0:
-                self.ticker_change.setStyleSheet("color: green; font-weight: bold;")
-                self.ticker_change_pct.setStyleSheet("color: green; font-weight: bold;")
-            else:
-                self.ticker_change.setStyleSheet("color: red; font-weight: bold;")
-                self.ticker_change_pct.setStyleSheet("color: red; font-weight: bold;")
-    
-    def update_order_book_display(self, order_book):
-        """Update order book display"""
-        if order_book:
-            # Update buy orders
-            self.buy_table.setRowCount(0)
-            for i, order in enumerate(order_book.get('bids', [])):
-                self.buy_table.insertRow(i)
-                self.buy_table.setItem(i, 0, QTableWidgetItem(str(order[0])))
-                self.buy_table.setItem(i, 1, QTableWidgetItem(str(order[1])))
-            
-            # Update sell orders
-            self.sell_table.setRowCount(0)
-            for i, order in enumerate(order_book.get('asks', [])):
-                self.sell_table.insertRow(i)
-                self.sell_table.setItem(i, 0, QTableWidgetItem(str(order[0])))
-                self.sell_table.setItem(i, 1, QTableWidgetItem(str(order[1])))
-    
-    def update_orders_display(self, orders):
-        """Update orders table"""
-        self.orders_table.setRowCount(0)
-        
-        # Define mappings for order status, side, type, etc.
-        side_mapping = {
-            "buy": "买入",
-            "sell": "卖出"
-        }
-        
-        ord_type_mapping = {
-            "limit": "限价",
-            "market": "市价",
-            "post_only": "只做maker",
-            "conditional": "触发限价",
-            "trigger_market": "触发市价"
-        }
-        
-        state_mapping = {
-            "live": "等待成交",
-            "partially_filled": "部分成交",
-            "filled": "完全成交",
-            "cancelled": "已撤销",
-            "failed": "失败",
-            "rejected": "已拒绝"
-        }
-        
-        pos_side_mapping = {
-            "net": "净持仓",
-            "long": "多头",
-            "short": "空头"
-        }
-        
-        td_mode_mapping = {
-            "isolated": "逐仓",
-            "cross": "全仓"
-        }
-        
-        for i, order in enumerate(orders):
-            self.orders_table.insertRow(i)
-            self.orders_table.setItem(i, 0, QTableWidgetItem(order.get('ordId', '')))
-            self.orders_table.setItem(i, 1, QTableWidgetItem(order.get('instId', '')))
-            self.orders_table.setItem(i, 2, QTableWidgetItem(side_mapping.get(order.get('side', ''), order.get('side', ''))))
-            self.orders_table.setItem(i, 3, QTableWidgetItem(ord_type_mapping.get(order.get('ordType', ''), order.get('ordType', ''))))
-            self.orders_table.setItem(i, 4, QTableWidgetItem(str(order.get('px', '0.0'))))
-            self.orders_table.setItem(i, 5, QTableWidgetItem(str(order.get('sz', '0.0'))))
-            self.orders_table.setItem(i, 6, QTableWidgetItem(state_mapping.get(order.get('state', ''), order.get('state', ''))))
-            self.orders_table.setItem(i, 7, QTableWidgetItem(pos_side_mapping.get(order.get('posSide', ''), order.get('posSide', ''))))
-            self.orders_table.setItem(i, 8, QTableWidgetItem(td_mode_mapping.get(order.get('tdMode', ''), order.get('tdMode', ''))))
-            self.orders_table.setItem(i, 9, QTableWidgetItem(order.get('clOrdId', '')))
-    
-    def update_positions_display(self, positions):
-        """Update positions table"""
-        self.positions_table.setRowCount(0)
-        
-        # Define mappings for position side
-        pos_side_mapping = {
-            "net": "净持仓",
-            "long": "多头",
-            "short": "空头"
-        }
-        
-        for i, position in enumerate(positions):
-            self.positions_table.insertRow(i)
-            self.positions_table.setItem(i, 0, QTableWidgetItem(position.get('instId', '')))
-            self.positions_table.setItem(i, 1, QTableWidgetItem(pos_side_mapping.get(position.get('posSide', ''), position.get('posSide', ''))))
-            self.positions_table.setItem(i, 2, QTableWidgetItem(str(position.get('pos', '0.0'))))
-            self.positions_table.setItem(i, 3, QTableWidgetItem(str(position.get('avgPx', '0.0'))))
-            self.positions_table.setItem(i, 4, QTableWidgetItem(str(position.get('upl', '0.0'))))
-    
-    def place_order(self):
-        """Place an order"""
-        symbol = self.symbol_combo.currentText()
-        order_type_text = self.order_type_combo.currentText()
-        side_text = self.side_combo.currentText()
-        
-        try:
-            price = float(self.price_edit.text()) if self.price_edit.text() else None
-            amount = float(self.amount_edit.text())
-            leverage = self.leverage_spin.value()
-            td_mode = self.td_mode_combo.currentText()
-            pos_side = self.pos_side_combo.currentText()
-            reduce_only = self.reduce_only_check.isChecked()
-            cl_ord_id = self.cl_ord_id_edit.text() or None
-            
-            # Translate Chinese to English for API
-            order_type_mapping = {
-                "限价": "limit",
-                "市价": "market",
-                "只做maker": "post_only",
-                "触发限价": "conditional",
-                "触发市价": "trigger_market"
-            }
-            
-            side_mapping = {
-                "买入": "buy",
-                "卖出": "sell"
-            }
-            
-            td_mode_mapping = {
-                "逐仓": "isolated",
-                "全仓": "cross"
-            }
-            
-            pos_side_mapping = {
-                "净持仓": "net",
-                "多头": "long",
-                "空头": "short"
-            }
-            
-            order_type = order_type_mapping[order_type_text]
-            side = side_mapping[side_text]
-            td_mode = td_mode_mapping[self.td_mode_combo.currentText()]
-            pos_side = pos_side_mapping[self.pos_side_combo.currentText()]
-            
-            # Validate inputs
-            if amount <= 0:
-                self.log("无效的数量")
-                return
-            
-            if order_type in ["limit", "post_only", "conditional"] and price is not None and price <= 0:
-                self.log("无效的价格")
-                return
-            
-            # Set leverage first
-            self.api_client.set_leverage(symbol, leverage, mgn_mode=td_mode, pos_side=pos_side)
-            
-            # Get TP/SL settings
-            tp_px = float(self.tp_px_edit.text()) if self.tp_px_edit.text() and float(self.tp_px_edit.text()) > 0 else None
-            tp_trigger_px = float(self.tp_trigger_px_edit.text()) if self.tp_trigger_px_edit.text() and float(self.tp_trigger_px_edit.text()) > 0 else None
-            sl_px = float(self.sl_px_edit.text()) if self.sl_px_edit.text() and float(self.sl_px_edit.text()) > 0 else None
-            sl_trigger_px = float(self.sl_trigger_px_edit.text()) if self.sl_trigger_px_edit.text() and float(self.sl_trigger_px_edit.text()) > 0 else None
-            
-            # Translate TP/SL trigger types from Chinese to English
-            trigger_type_mapping = {
-                "最新价": "last",
-                "指数价": "index",
-                "标记价": "mark"
-            }
-            
-            tp_trigger_px_type = trigger_type_mapping[self.tp_trigger_type_combo.currentText()]
-            sl_trigger_px_type = trigger_type_mapping[self.sl_trigger_type_combo.currentText()]
-            
-            # Place order using the order manager
-            order_id = self.order_manager.place_order(
-                symbol=symbol,
-                side=side,
-                order_type=order_type,
-                price=price,
-                amount=amount,
-                td_mode=td_mode,
-                cl_ord_id=cl_ord_id,
-                pos_side=pos_side,
-                reduce_only=reduce_only,
-                tp_px=tp_px,
-                tp_trigger_px=tp_trigger_px,
-                sl_px=sl_px,
-                sl_trigger_px=sl_trigger_px,
-                tp_trigger_px_type=tp_trigger_px_type,
-                sl_trigger_px_type=sl_trigger_px_type
-            )
-            
-            if order_id:
-                self.log(f"下单成功: {order_id}")
-                self.refresh_orders()
-            else:
-                self.log("下单失败")
-                
-        except Exception as e:
-            self.log(f"下单失败: {e}")
-    
-    def batch_place_orders(self):
-        """Batch place orders"""
-        # This is a placeholder for batch place orders functionality
-        # In a real implementation, you would open a dialog to collect multiple orders
-        self.log("批量下单功能开发中")
-    
-    def batch_cancel_orders(self):
-        """Batch cancel orders"""
-        selected_rows = self.orders_table.selectionModel().selectedRows()
-        if not selected_rows:
-            self.log("未选择订单")
-            return
-        
-        cancel_orders = []
-        for index in selected_rows:
-            order_id = self.orders_table.item(index.row(), 0).text()
-            symbol = self.orders_table.item(index.row(), 1).text()
-            cancel_orders.append({
-                "instId": symbol,
-                "ordId": order_id
-            })
-        
-        try:
-            # Batch cancel orders
-            result = self.api_client.batch_cancel_orders(cancel_orders)
-            if result:
-                self.log(f"批量撤单成功，共撤销 {len(result)} 个订单")
-                self.refresh_orders()
-            else:
-                self.log("批量撤单失败")
-        except Exception as e:
-            self.log(f"批量撤单失败: {e}")
-    
-    def batch_amend_orders(self):
-        """Batch amend orders"""
-        # This is a placeholder for batch amend orders functionality
-        # In a real implementation, you would open a dialog to collect amendment information
-        self.log("批量修改订单功能开发中")
-    
-    def amend_selected_order(self):
-        """Amend selected order"""
-        selected_rows = self.orders_table.selectionModel().selectedRows()
-        if not selected_rows:
-            self.log("未选择订单")
-            return
-        
-        if len(selected_rows) > 1:
-            self.log("只能修改一个订单")
-            return
-        
-        index = selected_rows[0]
-        order_id = self.orders_table.item(index.row(), 0).text()
-        
-        # This is a placeholder for amend order functionality
-        # In a real implementation, you would open a dialog to collect amendment information
-        self.log(f"修改订单功能开发中，订单ID: {order_id}")
-    
-    def select_all_orders(self):
-        """Select all orders"""
-        self.orders_table.selectAll()
-    
-    def clear_order_selection(self):
-        """Clear order selection"""
-        self.orders_table.clearSelection()
-    
-    def refresh_orders(self):
-        """Refresh orders display"""
-        threading.Thread(target=self.fetch_orders).start()
-    
-    def cancel_selected_order(self):
-        """Cancel selected order"""
-        selected_rows = self.orders_table.selectionModel().selectedRows()
-        if not selected_rows:
-            self.log("未选择订单")
-            return
-        
-        for index in selected_rows:
-            order_id = self.orders_table.item(index.row(), 0).text()
-            symbol = self.orders_table.item(index.row(), 1).text()
-            
-            try:
-                success = self.order_manager.cancel_order(symbol, order_id)
-                if success:
-                    self.log(f"取消订单成功: {order_id}")
-                    self.update_orders()
-                else:
-                    self.log(f"取消订单失败: {order_id}")
-            except Exception as e:
-                self.log(f"取消订单失败: {e}")
-    
-    def start_strategy(self):
-        """Start trading strategy"""
-        strategy = self.strategy_combo.currentText()
-        mode = self.strategy_mode_combo.currentText()
-        symbol = self.symbol_combo.currentText()
-        
-        self.log(f"启动策略: {strategy}，模式: {mode}，交易对: {symbol}")
-        self.strategy_status.setText("状态: 运行中")
-        self.strategy_status.setStyleSheet("color: green; font-weight: bold;")
-        
-        # Start strategy thread
-        threading.Thread(target=self.run_strategy, args=(strategy, mode, symbol)).start()
-    
-    def stop_strategy(self):
-        """Stop trading strategy"""
-        self.log("停止策略")
-        self.strategy_status.setText("状态: 已停止")
-        self.strategy_status.setStyleSheet("color: red; font-weight: bold;")
-    
-    def run_strategy(self, strategy, mode, symbol):
-        """Run the selected strategy"""
-        try:
-            if strategy == "原子核互反动力学策略":
-                # 运行原子核互反动力学策略
-                self.strategy_log.append(f"[{time.strftime('%H:%M:%S')}] 启动原子核互反动力学策略...")
-                
-                # 根据模式选择运行方式
-                if mode == "回测":
-                    # 回测模式
-                    self.strategy_log.append(f"[{time.strftime('%H:%M:%S')}] 回测模式不支持，切换到实盘模式")
-                    mode = "实盘"
-                
-                # 实盘模式
-                import asyncio
-                async def run_dynamics_strategy():
-                    while self.strategy_status.text() == "状态: 运行中":
-                        try:
-                            await self.dynamics_strategy.run_live_trading(inst_id=symbol, interval=60)
-                            await asyncio.sleep(1)
-                        except Exception as e:
-                            self.log(f"动力学策略错误: {e}")
-                            self.strategy_log.append(f"[{time.strftime('%H:%M:%S')}] 策略错误: {e}")
-                            break
-                
-                asyncio.run(run_dynamics_strategy())
-            else:
-                # 其他策略（passivbot）
-                while self.strategy_status.text() == "状态: 运行中":
-                    try:
-                        self.strategy_log.append(f"[{time.strftime('%H:%M:%S')}] 策略运行中...")
-                        time.sleep(5)  # Simulate strategy execution
-                    except Exception as e:
-                        self.log(f"策略错误: {e}")
-                        break
-        except Exception as e:
-            self.log(f"策略运行错误: {e}")
-            self.strategy_log.append(f"[{time.strftime('%H:%M:%S')}] 策略运行错误: {e}")
-    
-    def log(self, message):
-        """Log a message"""
-        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        self.update_log.emit(f"[{timestamp}] {message}")
-    
-    def append_log(self, message):
-        """Append log message to log widget"""
-        self.log_text.append(message)
-        # Auto-scroll to bottom
-        self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
-        
-        # Also append to strategy log if it's a strategy-related message
-        if "策略" in message:
-            self.strategy_log.append(message)
-            self.strategy_log.verticalScrollBar().setValue(self.strategy_log.verticalScrollBar().maximum())
-    
-    def api_login(self):
-        """Login to API with current configuration, with network fault tolerance"""
-        self.log("开始API登录...")
-        self.login_status.setText("登录状态: 登录中...")
-        self.login_status.setStyleSheet("font-weight: bold; color: orange;")
-        
-        # Get current configuration from UI
-        login_config = {
-            'api_key': self.api_key_edit.text(),
-            'api_secret': self.api_secret_edit.text(),
-            'passphrase': self.passphrase_edit.text(),
-            'api_url': self.api_url_edit.text(),
-            'api_ip': self.api_ip_list.toPlainText().split('\n')[0].strip() if self.api_ip_list.toPlainText() else None,
-            'timeout': self.timeout_spin.value()
-        }
-        
-        def login_thread():
-            retry_count = 0
-            max_retry = 3
-            success = False
-            error_msg = ""
-            
-            while retry_count < max_retry and not success:
-                retry_count += 1
-                try:
-                    # Update login status to show retry count
-                    self.login_status.setText(f"登录状态: 登录中（网络重试 {retry_count}/{max_retry}）")
-                    self.login_status.setStyleSheet("font-weight: bold; color: orange;")
-                    
-                    # Create API client and test connection
-                    from okx_api_client import OKXAPIClient
-                    test_client = OKXAPIClient(
-                        api_key=login_config['api_key'],
-                        api_secret=login_config['api_secret'],
-                        passphrase=login_config['passphrase'],
-                        api_url=login_config['api_url'],
-                        api_ip=login_config['api_ip'],
-                        timeout=login_config['timeout']
-                    )
-                    
-                    # Test connection with a simple API call
-                    ticker = test_client.get_ticker('BTC-USDT-SWAP')
-                    if ticker:
-                        # Login successful
-                        success = True
-                    else:
-                        error_msg = "无法获取行情数据"
-                        time.sleep(1)
-                except ConnectionResetError as e:
-                    error_msg = f"网络连接重置: {str(e)}"
-                    time.sleep(1)
-                except Exception as e:
-                    error_msg = f"API调用错误: {str(e)}"
-                    break  # Don't retry for non-network errors
-            
-            if success:
-                # Login successful
-                self.login_status.setText("登录状态: 已登录")
-                self.login_status.setStyleSheet("font-weight: bold; color: green;")
-                self.api_login_btn.setEnabled(False)
-                self.api_logout_btn.setEnabled(True)
-                
-                # Update login state in configuration
-                self.config['api']['is_logged_in'] = True
-                
-                # Save the login configuration
-                self.save_config()
-                
-                self.log("API登录成功")
-            else:
-                # Login failed
-                self.login_status.setText(f"登录状态: 登录失败")
-                self.login_status.setStyleSheet("font-weight: bold; color: red;")
-                self.log(f"API登录失败: {error_msg}")
-                self.log("可能是测试环境网络限制，建议：")
-                self.log("1. 检查代理配置")
-                self.log("2. 切换OKX主网")
-                self.log("3. 验证API密钥")
-        
-        # Run login in background thread
-        threading.Thread(target=login_thread).start()
-    
-    def api_logout(self):
-        """Logout from API"""
-        self.log("开始API登出...")
-        
-        # Clear login status
-        self.login_status.setText("登录状态: 未登录")
-        self.login_status.setStyleSheet("font-weight: bold; color: red;")
-        
-        # Update button states
-        self.api_login_btn.setEnabled(True)
-        self.api_logout_btn.setEnabled(False)
-        
-        # Update login state in configuration
-        if 'is_logged_in' in self.config['api']:
-            self.config['api']['is_logged_in'] = False
-            
-        # Save updated configuration
-        self.save_config()
-        
-        self.log("API登出完成")
-    
-    def test_api_connection(self):
-        """Test API connection with current configuration"""
-        self.connection_status.setText("连接状态: 测试中...")
-        self.connection_status.setStyleSheet("font-weight: bold; color: orange;")
-        
-        # Get current configuration from UI
-        test_config = {
-            'api_key': self.api_key_edit.text(),
-            'api_secret': self.api_secret_edit.text(),
-            'passphrase': self.passphrase_edit.text(),
-            'api_url': self.api_url_edit.text(),
-            'api_ip': self.api_ip_list.toPlainText().split('\n')[0].strip(),
-            'timeout': self.timeout_spin.value()
-        }
-        
-        # Create a test client with the current configuration
-        def test_connection():
-            try:
-                from okx_api_client import OKXAPIClient
-                test_client = OKXAPIClient(
-                    api_key=test_config['api_key'],
-                    api_secret=test_config['api_secret'],
-                    passphrase=test_config['passphrase'],
-                    api_url=test_config['api_url'],
-                    api_ip=test_config['api_ip'],
-                    timeout=test_config['timeout']
-                )
-                
-                # Test with a simple API call
-                ticker = test_client.get_ticker('BTC-USDT-SWAP')
-                if ticker:
-                    self.connection_status.setText("连接状态: 成功")
-                    self.connection_status.setStyleSheet("font-weight: bold; color: green;")
-                    self.log("API连接测试成功")
-                else:
-                    self.connection_status.setText("连接状态: 失败")
-                    self.connection_status.setStyleSheet("font-weight: bold; color: red;")
-                    self.log("API连接测试失败: 无法获取行情数据")
-                    self.log("可能的原因:")
-                    self.log("1. 网络环境问题，如防火墙或代理服务器阻止了连接")
-                    self.log("2. SSL握手失败，远程主机强迫关闭了连接")
-                    self.log("3. OKX API的反爬虫机制")
-                    self.log("4. API密钥配置错误")
-                    self.log("建议: 检查网络连接或使用代理服务器")
-            except Exception as e:
-                error_msg = str(e)
-                self.connection_status.setText(f"连接状态: 失败 - {error_msg[:50]}...")
-                self.connection_status.setStyleSheet("font-weight: bold; color: red;")
-                self.log(f"API连接测试失败: {error_msg}")
-                if "远程主机强迫关闭了一个现有的连接" in error_msg:
-                    self.log("错误类型: SSL握手失败")
-                    self.log("可能的原因:")
-                    self.log("1. 防火墙或代理服务器阻止了SSL连接")
-                    self.log("2. 网络环境问题")
-                    self.log("3. OKX API的反爬虫机制")
-                    self.log("建议: 检查网络连接或使用代理服务器")
-                elif "getaddrinfo failed" in error_msg:
-                    self.log("错误类型: DNS解析失败")
-                    self.log("可能的原因:")
-                    self.log("1. DNS服务器配置错误")
-                    self.log("2. 网络连接问题")
-                    self.log("建议: 检查DNS配置或网络连接")
-                else:
-                    self.log("建议: 检查网络连接或API配置")
-        
-        # Run test in a background thread to avoid freezing UI
-        threading.Thread(target=test_connection).start()
-    
-
-    
-    def detect_dpi_interception(self):
-        """Detect DPI interception type and display results"""
-        def detect():
-            try:
-                import subprocess
-                import sys
-                import os
-                
-                # 获取DPI检测脚本的完整路径
-                script_path = os.path.join(os.path.dirname(__file__), 'detect_dpi_interception.py')
-                
-                self.log("开始DPI拦截类型检测...")
-                
-                # 在GUI中更新状态
-                def update_gui_status(result_text, details):
-                    self.dpi_detection_result.setText(result_text)
-                    self.dpi_detection_details.setText(details)
-                
-                # 执行DPI检测脚本
-                result = subprocess.run(
-                    [sys.executable, script_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                
-                # 解析检测结果
-                output = result.stdout
-                error = result.stderr
-                
-                # 提取关键信息
-                if "DPI拦截类型: SSL握手阶段拦截" in output:
-                    result_text = "SSL握手阶段拦截"
-                    self.dpi_detection_result.setStyleSheet("font-weight: bold; color: red;")
-                elif "DPI拦截类型: 应用层流量拦截" in output:
-                    result_text = "应用层流量拦截"
-                    self.dpi_detection_result.setStyleSheet("font-weight: bold; color: red;")
-                elif "DPI拦截类型: 无DPI拦截" in output:
-                    result_text = "无DPI拦截"
-                    self.dpi_detection_result.setStyleSheet("font-weight: bold; color: green;")
-                else:
-                    result_text = "检测失败"
-                    self.dpi_detection_result.setStyleSheet("font-weight: bold; color: orange;")
-                
-                # 组合详细信息
-                details = output
-                if error:
-                    details += f"\n\n错误信息:\n{error}"
-                
-                # 更新GUI
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(0, lambda: update_gui_status(result_text, details))
-                
-                # 记录日志
-                self.log(f"DPI拦截检测完成，结果: {result_text}")
-                
-            except subprocess.TimeoutExpired:
-                self.log("DPI拦截检测超时")
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(0, lambda: self.dpi_detection_result.setText("检测超时"))
-                QTimer.singleShot(0, lambda: self.dpi_detection_details.setText("检测过程超过60秒，可能网络环境复杂或代理响应缓慢"))
-            except Exception as e:
-                self.log(f"DPI拦截检测失败: {e}")
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(0, lambda: self.dpi_detection_result.setText("检测失败"))
-                QTimer.singleShot(0, lambda: self.dpi_detection_details.setText(f"检测过程中发生错误: {str(e)}"))
-        
-        import threading
-        threading.Thread(target=detect).start()
-    
-    def save_config(self, login_state=False):
-        """Save current configuration to file with optional login state"""
-        try:
-            # Update configuration with UI values
+            # 更新配置
             self.config['api']['api_key'] = self.api_key_edit.text()
             self.config['api']['api_secret'] = self.api_secret_edit.text()
             self.config['api']['passphrase'] = self.passphrase_edit.text()
-            self.config['api']['api_url'] = self.api_url_edit.text()
+            self.config['api']['is_test'] = self.testnet_checkbox.isChecked()
             
-            # Get API IPs from text edit
-            api_ips = [ip.strip() for ip in self.api_ip_list.toPlainText().split('\n') if ip.strip()]
-            self.config['api']['api_ips'] = api_ips
-            # Set first IP as primary
-            if api_ips:
-                self.config['api']['api_ip'] = api_ips[0]
+            # 保存到文件
+            import json
+            config_path = "config/okx_config.json"
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
             
-            self.config['api']['timeout'] = self.timeout_spin.value()
-            
-
-            
-            # Save login state if specified
-            if login_state:
-                self.config['api']['is_logged_in'] = True
-            
-            # Save to file
-            config_path = "d:\\Projects\\okx_trading_bot\\config\\okx_config.json"
-            with open(config_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
-            
-            self.log("配置保存成功")
-            
-            # Restart API client with new configuration
-            self.restart_api_client()
-            
+            QMessageBox.information(self, "成功", "配置保存成功！")
         except Exception as e:
-            self.log(f"保存配置失败: {e}")
+            QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
     
-    def restart_api_client(self):
-        """Restart API client with new configuration in a background thread"""
-        def restart_thread():
-            try:
-                # Reinitialize API client with new configuration
-                new_api_client = OKXAPIClient(
-                    api_key=self.config['api']['api_key'],
-                    api_secret=self.config['api']['api_secret'],
-                    passphrase=self.config['api']['passphrase'],
-                is_test=self.config['api']['is_test'],
-                api_url=self.config['api']['api_url'],
-                api_ip=self.config['api'].get('api_ip'),
-                api_ips=self.config['api'].get('api_ips', []),
-                timeout=self.config['api']['timeout']
-                )
-                
-                # Update other services with new API client
-                new_market_data_service = MarketDataService(new_api_client)
-                new_order_manager = OrderManager(new_api_client)
-                new_risk_manager = RiskManager(new_api_client)
-                new_dynamics_strategy = DynamicsStrategy(new_api_client)
-                
-                # Switch to new clients on the main thread to ensure thread safety
-                def update_gui():
-                    self.api_client = new_api_client
-                    self.market_data_service = new_market_data_service
-                    self.order_manager = new_order_manager
-                    self.risk_manager = new_risk_manager
-                    self.dynamics_strategy = new_dynamics_strategy
-                    
-                    # Update DNS configuration display
-                    if hasattr(self, 'current_dns_servers'):
-                        current_region = self.api_client.get_dns_config().get('region', 'global')
-                        self.dns_region_combo.setCurrentText(current_region)
-                        self.current_dns_servers.setText(", ".join(self.api_client.get_dns_config()['servers']))
-                    
-                    self.log("API客户端已重新初始化")
-                
-                # Use QTimer to update GUI on main thread
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(0, update_gui)
-            except Exception as e:
-                self.log(f"重新初始化API客户端失败: {e}")
-        
-        # Run restart in a background thread
-        import threading
-        thread = threading.Thread(target=restart_thread)
-        thread.daemon = True
-        thread.start()
+    def on_symbol_change(self, symbol):
+        """交易对变更处理"""
+        self.current_symbol = symbol
+        self.update_market_data()
     
-    def show_dns_stats(self):
-        """
-        Show DNS resolution statistics in a dialog
-        """
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
-        
-        stats_dialog = QDialog(self)
-        stats_dialog.setWindowTitle("DNS解析统计信息")
-        stats_dialog.setGeometry(200, 200, 600, 400)
-        
-        layout = QVBoxLayout(stats_dialog)
-        
-        stats_text = QTextEdit()
-        stats_text.setReadOnly(True)
-        stats_text.setStyleSheet("font-family: Consolas, monospace;")
-        
-        # Get DNS statistics
-        dns_stats = self.api_client.get_dns_stats()
-        
-        # Format statistics
-        stats_str = f"""DNS解析统计信息
-
-总查询次数: {dns_stats['total_queries']}
-成功查询次数: {dns_stats['successful_queries']}
-失败查询次数: {dns_stats['failed_queries']}
-缓存命中次数: {dns_stats['cached_queries']}
-成功率: {dns_stats['success_rate']:.2%}
-缓存命中率: {dns_stats['cache_hit_rate']:.2%}
-平均解析时间: {dns_stats['average_resolve_time']:.3f}s
-
-DNS服务器性能:
-"""
-        
-        for server, perf in dns_stats['server_performance'].items():
-            total = perf['success'] + perf['failure']
-            if total > 0:
-                success_rate = perf['success'] / total
-                avg_time = sum(perf['time']) / len(perf['time']) if perf['time'] else 0
-                stats_str += f"{server}: 成功 {perf['success']}, 失败 {perf['failure']}, 成功率 {success_rate:.2%}, 平均时间 {avg_time:.3f}s\n"
-        
-        # Add DNS alerts information
-        stats_str += f"\nDNS告警信息:\n"
-        stats_str += f"告警次数: {dns_stats['alerts']['count']}\n"
-        stats_str += f"失败率阈值: {dns_stats['alerts']['failure_rate_threshold']:.2%}\n"
-        
-        # Add current DNS configuration
-        stats_str += f"\n当前DNS配置:\n"
-        stats_str += f"DNS区域: {dns_stats['current_config']['region']}\n"
-        stats_str += f"DNS服务器: {', '.join(dns_stats['current_config']['servers'])}\n"
-        stats_str += f"超时时间: {dns_stats['current_config']['timeout']}秒\n"
-        stats_str += f"重试次数: {dns_stats['current_config']['retry_count']}\n"
-        
-        stats_text.setText(stats_str)
-        layout.addWidget(stats_text)
-        
-        stats_dialog.exec_()
+    def update_market_data(self):
+        """更新市场数据"""
+        # 这里可以添加更新市场数据的逻辑
+        pass
     
-    def update_dns_config_display(self):
-        """
-        Update DNS configuration display in GUI
-        """
+    def update_all_data(self):
+        """更新所有数据"""
+        # 这里可以添加更新所有数据的逻辑
+        pass
+    
+    def batch_place_orders(self):
+        """批量下单"""
+        # 这里可以添加批量下单的逻辑
+        pass
+    
+    def batch_cancel_orders(self):
+        """批量撤单"""
+        # 这里可以添加批量撤单的逻辑
+        pass
+    
+    def batch_amend_orders(self):
+        """批量改单"""
+        # 这里可以添加批量改单的逻辑
+        pass
+    
+    def place_order(self):
+        """下单"""
+        # 这里可以添加下单的逻辑
+        pass
+    
+    def cancel_selected_order(self):
+        """取消选中的订单"""
+        # 这里可以添加取消选中订单的逻辑
+        pass
+    
+    def amend_selected_order(self):
+        """修改选中的订单"""
+        # 这里可以添加修改选中订单的逻辑
+        pass
+    
+    def select_all_orders(self):
+        """选择所有订单"""
+        # 这里可以添加选择所有订单的逻辑
+        pass
+    
+    def clear_order_selection(self):
+        """清除订单选择"""
+        # 这里可以添加清除订单选择的逻辑
+        pass
+    
+    def start_strategy(self):
+        """启动策略"""
+        # 这里可以添加启动策略的逻辑
+        pass
+    
+    def stop_strategy(self):
+        """停止策略"""
+        # 这里可以添加停止策略的逻辑
+        pass
+    
+    def api_login(self):
+        """API登录"""
+        # 这里可以添加API登录的逻辑
+        pass
+    
+    def api_logout(self):
+        """API登出"""
+        # 这里可以添加API登出的逻辑
+        pass
+    
+    def manual_network_adaptation(self):
+        """手动网络适配"""
+        # 这里可以添加手动网络适配的逻辑
+        pass
+    
+    def refresh_network_status(self):
+        """刷新网络状态"""
+        # 这里可以添加刷新网络状态的逻辑
+        pass
+    
+    def connect_signals(self):
+        """连接信号"""
+        # 这里可以添加连接信号的逻辑
+        pass
+    
+    def init_config_monitor(self):
+        """初始化配置监控"""
+        # 这里可以添加初始化配置监控的逻辑
+        pass
+    
+    def init_network_monitoring(self):
+        """初始化网络监控"""
+        # 这里可以添加初始化网络监控的逻辑
+        pass
+    
+    def test_api_connection(self):
+        """测试API连接"""
         try:
-            if hasattr(self, 'api_client') and self.api_client:
-                dns_config = self.api_client.get_dns_config()
-                if dns_config:
-                    region = dns_config.get('region', 'global')
-                    servers = dns_config.get('servers', [])
-                    if hasattr(self, 'dns_region_combo'):
-                        self.dns_region_combo.setCurrentText(region)
-                    if hasattr(self, 'current_dns_servers'):
-                        self.current_dns_servers.setText(", ".join(servers))
-        except Exception as e:
-            self.log(f"更新DNS配置显示失败: {e}")
-    
-    def update_dns_configuration(self):
-        """
-        Update DNS configuration based on UI settings
-        """
-        try:
-            region = self.dns_region_combo.currentText()
+            from okx_api_client import OKXAPIClient
+            api_client = OKXAPIClient(
+                api_key=self.api_key_edit.text(),
+                api_secret=self.api_secret_edit.text(),
+                passphrase=self.passphrase_edit.text(),
+                is_test=self.testnet_checkbox.isChecked()
+            )
             
-            # Update DNS configuration
-            result = self.api_client.switch_dns_region(region)
-            
-            if result:
-                # Update display
-                self.update_dns_config_display()
-                self.log(f"DNS配置已更新，区域切换到 {region}")
-                self.dns_status_label.setText("DNS状态: 已更新")
-                self.dns_status_label.setStyleSheet("color: green; font-weight: bold;")
+            # 测试获取服务器时间
+            server_time = api_client.get_server_time()
+            if server_time:
+                self.connection_status.setText("连接状态: 正常")
+                self.connection_status.setStyleSheet("font-weight: bold; color: green;")
+                QMessageBox.information(self, "成功", "API连接测试成功！")
             else:
-                self.log(f"更新DNS配置失败，无效区域: {region}")
-                self.dns_status_label.setText("DNS状态: 配置失败")
-                self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
+                self.connection_status.setText("连接状态: 失败")
+                self.connection_status.setStyleSheet("font-weight: bold; color: red;")
+                QMessageBox.warning(self, "警告", "API连接测试失败，请检查配置！")
         except Exception as e:
-            self.log(f"更新DNS配置失败: {e}")
-            self.dns_status_label.setText("DNS状态: 配置错误")
-            self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
-    
-    def init_health_check(self):
-        """Initialize health check timer and monitoring"""
-        # Health check timer
-        self.health_check_timer = QTimer()
-        self.health_check_timer.timeout.connect(self.perform_health_check)
-        
-        # Start with default interval from config or 5 minutes
-        interval = self.config.get('market_data', {}).get('update_interval', 10) * 60
-        self.health_check_timer.start(interval * 1000)  # Convert to milliseconds
-        
-        # DNS Health check timer
-        self.dns_health_check_timer = QTimer()
-        self.dns_health_check_timer.timeout.connect(self.perform_dns_health_check)
-        self.dns_health_check_timer.start(30000)  # Check DNS every 30 seconds
-        
-        # Health status variables
-        self.last_health_check = time.time()
-        self.api_health_status = "healthy"
-        self.last_api_error = None
-        
-        # DNS health status variables
-        self.dns_health_status = "unhealthy"
-        self.last_dns_check = time.time()
-        
-        self.log(f"健康检查已启动，检查间隔: {interval}秒")
-        self.log("DNS健康检查已启动，检查间隔: 30秒")
-    
-    def perform_health_check(self):
-        """Perform API health check"""
-        if not self.enable_health_check.isChecked():
-            return
-        
-        self.log("执行API健康检查...")
-        
-        def check_api_health():
-            try:
-                # Test with a simple API call
-                ticker = self.api_client.get_ticker('BTC-USDT-SWAP')
-                
-                if ticker:
-                    self.api_health_status = "healthy"
-                    self.last_api_error = None
-                    self.log("API健康检查通过")
-                    
-                    # Update current active IP display if available
-                    if hasattr(self, 'current_active_ip'):
-                        current_ip = self.api_client.get_current_ip()
-                        self.current_active_ip.setText(f"当前活跃IP: {current_ip}")
-                else:
-                    self.api_health_status = "unhealthy"
-                    self.last_api_error = "无法获取行情数据"
-                    self.log(f"API健康检查失败: {self.last_api_error}")
-                    self.show_alert("API连接警告", f"API健康检查失败: {self.last_api_error}")
-                    
-                    # Try to switch to next IP
-                    self.api_client.switch_to_next_ip()
-            except Exception as e:
-                self.api_health_status = "unhealthy"
-                self.last_api_error = str(e)
-                self.log(f"API健康检查失败: {self.last_api_error}")
-                self.show_alert("API连接错误", f"API健康检查失败: {self.last_api_error}")
-                
-                # Try to switch to next IP
-                self.api_client.switch_to_next_ip()
-            
-            # Update status indicator
-            self.update_status_indicator()
-        
-        # Run health check in a background thread
-        threading.Thread(target=check_api_health).start()
-    
-    def perform_dns_health_check(self):
-        """
-        Perform DNS health check
-        """
-        try:
-            # Get DNS statistics
-            dns_stats = self.api_client.get_dns_stats()
-            self.last_dns_check = time.time()
-            
-            # Update DNS status indicator
-            if dns_stats['total_queries'] > 0:
-                success_rate = dns_stats['success_rate']
-                if success_rate > 0.9:
-                    self.dns_health_status = "healthy"
-                    self.dns_status_label.setText("DNS状态: 良好")
-                    self.dns_status_label.setStyleSheet("color: green; font-weight: bold;")
-                elif success_rate > 0.7:
-                    self.dns_health_status = "warning"
-                    self.dns_status_label.setText(f"DNS状态: 警告 ({success_rate:.1%})")
-                    self.dns_status_label.setStyleSheet("color: orange; font-weight: bold;")
-                else:
-                    self.dns_health_status = "unhealthy"
-                    self.dns_status_label.setText(f"DNS状态: 异常 ({success_rate:.1%})")
-                    self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
-                    
-                    # Try to switch DNS region if success rate is too low
-                    self.log(f"DNS解析成功率过低: {success_rate:.2%}，尝试切换DNS区域")
-                    
-                    # Get available regions and current region
-                    regions = ["global", "asia", "europe", "north_america"]
-                    current_region = self.api_client.get_dns_config().get('region', 'global')
-                    
-                    # Find next region to switch to
-                    current_index = regions.index(current_region)
-                    next_index = (current_index + 1) % len(regions)
-                    next_region = regions[next_index]
-                    
-                    # Switch to next region
-                    result = self.api_client.switch_dns_region(next_region)
-                    if result:
-                        self.dns_region_combo.setCurrentText(next_region)
-                        self.current_dns_servers.setText(", ".join(self.api_client.get_dns_config()['servers']))
-                        self.log(f"已切换DNS区域到 {next_region}")
-                        self.dns_status_label.setText(f"DNS状态: 已切换到 {next_region}")
-                    else:
-                        self.log(f"切换DNS区域到 {next_region} 失败")
-            else:
-                # Not enough queries to determine health
-                self.dns_status_label.setText("DNS状态: 未检测")
-                self.dns_status_label.setStyleSheet("color: blue; font-weight: bold;")
-        except Exception as e:
-            self.log(f"DNS健康检查失败: {e}")
-            self.dns_status_label.setText("DNS状态: 检查失败")
-            self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
-    
-    def update_status_indicator(self):
-        """Update the status indicator based on API health"""
-        if self.api_health_status == "healthy":
-            self.status_label.setText("状态: 正常")
-            self.status_label.setStyleSheet("color: green; font-weight: bold;")
-        else:
-            self.status_label.setText(f"状态: 异常 - {self.last_api_error}")
-            self.status_label.setStyleSheet("color: red; font-weight: bold;")
-    
-    def show_alert(self, title, message):
-        """Show an alert message to the user in main thread"""
-        if self.is_closed:
-            return
-        
-        from PyQt5.QtWidgets import QMessageBox
-        from PyQt5.QtCore import QTimer
-        from PyQt5.QtCore import QThread
-        
-        def display_alert():
-            """Display the alert in main thread"""
-            if self.is_closed:
-                return
-            try:
-                QMessageBox.warning(self, title, message)
-            except Exception as e:
-                self.log(f"显示弹窗失败: {e}")
-        
-        # 确保在主线程中显示模态对话框
-        if QThread.currentThread() == QThread.mainThread():
-            display_alert()
-        else:
-            # 使用QTimer确保在主线程中执行
-            QTimer.singleShot(0, display_alert)
-            self.log("在非主线程中调用show_alert，将在主线程中显示弹窗")
-    
-    def init_data_updates(self):
-        """Initialize periodic data updates"""
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_all_data)
-        self.timer.start(5000)  # Update every 5 seconds
-
-def main():
-    """Main function"""
-    # Create application
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    
-    # Create and show GUI
-    gui = TradingGUI()
-    gui.show()
-    
-    # Run application
-    sys.exit(app.exec_())
+            self.connection_status.setText("连接状态: 错误")
+            self.connection_status.setStyleSheet("font-weight: bold; color: red;")
+            QMessageBox.critical(self, "错误", f"测试连接失败: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    import sys
+    app = QApplication(sys.argv)
+    import json
+    with open('config/okx_config.json', 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    # 创建一个模拟的trading_bot对象
+    class MockTradingBot:
+        def __init__(self):
+            pass
+    gui = TradingGUI(config, MockTradingBot())
+    sys.exit(app.exec_())
