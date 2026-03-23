@@ -1381,6 +1381,12 @@ class OKXAPIClient:
             "Pragma": "no-cache"
         })
         
+        # 清理请求头中的反引号，确保Origin和Referer字段格式正确
+        if "Origin" in self.session.headers:
+            self.session.headers["Origin"] = self.session.headers["Origin"].strip().strip('`')
+        if "Referer" in self.session.headers:
+            self.session.headers["Referer"] = self.session.headers["Referer"].strip().strip('`')
+        
         logger.info(f"已配置API客户端超时时间: {self.timeout}秒")
         logger.info(f"已配置HTTP适配器重试策略: {retry_strategy}")
         
