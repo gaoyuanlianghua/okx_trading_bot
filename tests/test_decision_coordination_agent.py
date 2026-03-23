@@ -145,7 +145,7 @@ class TestDecisionCoordinationAgent(unittest.TestCase):
         
         # 调用方法
         self.agent.activate_strategy('test_strategy')
-        mock_strategy_agent.receive_message.assert_called_once()
+        mock_strategy_agent.process_message.assert_called_once()
     
     def test_deactivate_strategy(self):
         """测试停用策略"""
@@ -155,7 +155,7 @@ class TestDecisionCoordinationAgent(unittest.TestCase):
         
         # 调用方法
         self.agent.deactivate_strategy('test_strategy')
-        mock_strategy_agent.receive_message.assert_called_once()
+        mock_strategy_agent.process_message.assert_called_once()
     
     def test_get_system_state(self):
         """测试获取系统状态"""
@@ -186,7 +186,7 @@ class TestDecisionCoordinationAgent(unittest.TestCase):
         
         # 调用方法
         self.agent.process_message(message)
-        mock_test_agent.receive_message.assert_called_once()
+        mock_test_agent.process_message.assert_called_once()
     
     def test_calculate_system_load(self):
         """测试计算系统负载"""
@@ -222,9 +222,9 @@ class TestDecisionCoordinationAgent(unittest.TestCase):
         with patch('time.sleep') as mock_sleep:
             self.agent._execute_emergency_recovery()
             # 验证订单智能体收到暂停交易消息
-            self.assertEqual(mock_order_agent.receive_message.call_count, 1)
+            self.assertEqual(mock_order_agent.process_message.call_count, 1)
             # 验证策略执行智能体收到停用所有策略消息
-            self.assertEqual(mock_strategy_agent.receive_message.call_count, 1)
+            self.assertEqual(mock_strategy_agent.process_message.call_count, 1)
             # 验证系统健康度被重置
             self.assertEqual(self.agent.system_state["system_health"], 1.0)
 

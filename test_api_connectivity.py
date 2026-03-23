@@ -4,11 +4,24 @@ import time
 import socket
 import ssl
 
-# 从配置文件读取API配置
+# 从配置管理器读取API配置
 def load_config():
-    with open('config/okx_config.json', 'r') as f:
-        config = json.load(f)
-    return config['api']
+    try:
+        from commons.config_manager import global_config_manager
+        config = global_config_manager.get_config()
+        return config['api']
+    except Exception as e:
+        # 如果配置管理器不可用，使用默认配置
+        return {
+            'api_key': '-1',
+            'api_secret': '-1',
+            'passphrase': '-1',
+            'is_test': False,
+            'api_url': 'https://www.okx.com',
+            'timeout': 30,
+            'api_ips': [],
+            'ws_ips': []
+        }
 
 def test_port_connectivity(ip, port, timeout=5):
     """测试端口连通性"""
