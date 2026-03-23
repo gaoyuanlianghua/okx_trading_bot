@@ -1,10 +1,10 @@
 import sys
 import json
 from okx_api_client import OKXAPIClient
+from commons.config_manager import global_config_manager
 
 # Load configuration
-with open('config/okx_config.json', 'r') as f:
-    config = json.load(f)
+config = global_config_manager.get_config()
 
 # Create API client
 client = OKXAPIClient(
