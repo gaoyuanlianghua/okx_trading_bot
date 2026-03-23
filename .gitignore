@@ -43,6 +43,7 @@ htmlcov/
 dist/
 build/
 *.spec
+!okx_trading_bot.spec
 *.exe
 *.app
 *.dmg
