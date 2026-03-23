@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 OKX_WS_IPS = ["104.18.43.174", "172.64.144.82"]  # 使用nslookup获取的真实IP列表
 
 # 测试单个IP地址的连接
-def test_single_ip_connection(ip):
+def check_single_ip_connection(ip):
     logger.info(f"=== 开始测试IP地址: {ip} ===")
     try:
         ws_client = OKXWebsocketClient(
@@ -60,12 +60,12 @@ def test_single_ip_connection(ip):
         logger.info(f"=== 结束测试IP地址: {ip} ===")
 
 # 测试多个IP地址
-def test_multiple_ips():
+def check_multiple_ips():
     logger.info("开始测试多个WebSocket IP地址...")
     results = {}
     
     for ip in OKX_WS_IPS:
-        results[ip] = test_single_ip_connection(ip)
+        results[ip] = check_single_ip_connection(ip)
         # 测试之间间隔5秒，避免频繁连接导致的问题
         logger.info("\n测试之间间隔5秒...\n")
         time.sleep(5)
@@ -83,7 +83,7 @@ def test_multiple_ips():
     return results
 
 # 测试IP轮询功能
-def test_ip_rotation():
+def check_ip_rotation():
     logger.info("=== 开始测试IP轮询功能 ===")
     try:
         # 创建客户端，使用IP列表
@@ -142,11 +142,11 @@ if __name__ == "__main__":
     logger.info("=== WebSocket直接IP连接测试 ===")
     
     # 测试多个IP地址
-    test_multiple_ips()
+    check_multiple_ips()
     
     logger.info("\n" + "="*50 + "\n")
     
     # 测试IP轮询功能
-    test_ip_rotation()
+    check_ip_rotation()
     
     logger.info("\n=== 所有测试完成 ===")

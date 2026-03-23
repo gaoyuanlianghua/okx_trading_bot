@@ -2,7 +2,7 @@ import socket
 import ssl
 import time
 
-def test_port(ip, port, timeout=5):
+def check_port(ip, port, timeout=5):
     """测试指定IP和端口的连通性"""
     results = {
         'ip': ip,
@@ -84,7 +84,7 @@ def main():
     
     for ip in okx_ips:
         for port in test_ports:
-            result = test_port(ip, port)
+            result = check_port(ip, port)
             all_results.append(result)
     
     # 生成总结报告

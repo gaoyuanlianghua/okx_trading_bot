@@ -23,7 +23,7 @@ def load_config():
             'ws_ips': []
         }
 
-def test_port_connectivity(ip, port, timeout=5):
+def check_port_connectivity(ip, port, timeout=5):
     """测试端口连通性"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -34,7 +34,7 @@ def test_port_connectivity(ip, port, timeout=5):
     except Exception as e:
         return False
 
-def test_ssl_certificate(ip, port, server_name):
+def check_ssl_certificate(ip, port, server_name):
     """测试SSL证书"""
     try:
         context = ssl.create_default_context()
@@ -67,18 +67,18 @@ def test_api_connection():
     
     for ip in test_ips:
         # 测试HTTP端口
-        http_ok = test_port_connectivity(ip, 443)
+        http_ok = check_port_connectivity(ip, 443)
         print(f"  {ip}:443 (HTTPS): {'✅ 可达' if http_ok else '❌ 不可达'}")
         
         # 测试WebSocket端口
-        ws_ok = test_port_connectivity(ip, 8443)
+        ws_ok = check_port_connectivity(ip, 8443)
         print(f"  {ip}:8443 (WebSocket): {'✅ 可达' if ws_ok else '❌ 不可达'}")
     
     # 测试2: SSL证书检测
     print("\n=== 测试2: SSL证书检测 ===")
     server_name = "www.okx.com" if not config['is_test'] else "testnet.okx.com"
     for ip in test_ips[:2]:  # 测试前2个IP
-        ssl_ok, cert = test_ssl_certificate(ip, 443, server_name)
+        ssl_ok, cert = check_ssl_certificate(ip, 443, server_name)
         if ssl_ok:
             print(f"  {ip}:443 SSL证书: ✅ 有效")
         else:
