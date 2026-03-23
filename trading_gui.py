@@ -18,19 +18,30 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
+# 尝试导入mplfinance和matplotlib
+try:
+    import mplfinance as mpf
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    HAS_MPL = True
+except ImportError:
+    HAS_MPL = False
+
 # 统一的样式表
 UNIFIED_STYLESHEET = """
 /* 主窗口样式 */
 QMainWindow {
     background-color: #f5f7fa;
     font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 10px;
 }
 
 /* 标签页样式 */
 QTabWidget {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 2px;
 }
 
@@ -40,14 +51,15 @@ QTabBar {
 
 QTabBar::tab {
     background-color: #f8f9fa;
-    padding: 10px 16px;
+    padding: 6px 10px;
     border: 1px solid #e0e0e0;
     border-bottom: none;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
     margin-right: 2px;
-    min-width: 100px;
+    min-width: 70px;
     font-weight: 500;
+    font-size: 10px;
 }
 
 QTabBar::tab:hover {
@@ -64,29 +76,30 @@ QTabBar::tab:selected {
 QGroupBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 8px;
+    border-radius: 6px;
+    margin-top: 6px;
+    padding-top: 4px;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 8px 0 8px;
+    left: 8px;
+    padding: 0 4px 0 4px;
     font-weight: 600;
     color: #2c3e50;
-    font-size: 14px;
+    font-size: 10px;
 }
 
 /* 按钮样式 */
 QPushButton {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 8px 16px;
+    border-radius: 3px;
+    padding: 4px 8px;
     font-weight: 500;
-    font-size: 14px;
-    min-height: 36px;
+    font-size: 10px;
+    min-height: 24px;
+    min-width: 60px;
 }
 
 QPushButton:hover {
@@ -155,10 +168,10 @@ QPushButton#danger:hover {
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 14px;
-    min-height: 36px;
+    border-radius: 3px;
+    padding: 3px 6px;
+    font-size: 10px;
+    min-height: 24px;
 }
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
@@ -170,12 +183,13 @@ QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
 QTableWidget {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
+    border-radius: 3px;
     gridline-color: #f0f0f0;
+    font-size: 9px;
 }
 
 QTableWidget::item {
-    padding: 8px 12px;
+    padding: 4px 6px;
     border-bottom: 1px solid #f8f9fa;
 }
 
@@ -190,12 +204,13 @@ QTableWidget::item:selected {
 
 QHeaderView::section {
     background-color: #f8f9fa;
-    padding: 8px 12px;
+    padding: 4px 6px;
     border: 1px solid #e0e0e0;
     font-weight: 600;
     color: #2c3e50;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    font-size: 9px;
 }
 
 QHeaderView::section:hover {
@@ -206,10 +221,10 @@ QHeaderView::section:hover {
 QTextEdit {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 10px;
-    font-size: 14px;
-    line-height: 1.5;
+    border-radius: 3px;
+    padding: 6px;
+    font-size: 10px;
+    line-height: 1.3;
 }
 
 QTextEdit[readOnly="true"] {
@@ -220,7 +235,7 @@ QTextEdit[readOnly="true"] {
 /* 标签样式 */
 QLabel {
     color: #2c3e50;
-    font-size: 14px;
+    font-size: 10px;
 }
 
 QLabel#status {
@@ -246,19 +261,19 @@ QLabel#error {
 QWidget#controlBar {
     background-color: #ffffff;
     border-bottom: 1px solid #e0e0e0;
-    padding: 10px;
+    padding: 6px;
 }
 
 /* 滚动条样式 */
 QScrollBar:vertical {
     background-color: #f8f9fa;
-    width: 8px;
-    border-radius: 4px;
+    width: 4px;
+    border-radius: 2px;
 }
 
 QScrollBar::handle:vertical {
     background-color: #cbd5e1;
-    border-radius: 4px;
+    border-radius: 2px;
 }
 
 QScrollBar::handle:vertical:hover {
@@ -267,13 +282,13 @@ QScrollBar::handle:vertical:hover {
 
 QScrollBar:horizontal {
     background-color: #f8f9fa;
-    height: 8px;
-    border-radius: 4px;
+    height: 4px;
+    border-radius: 2px;
 }
 
 QScrollBar::handle:horizontal {
     background-color: #cbd5e1;
-    border-radius: 4px;
+    border-radius: 2px;
 }
 
 QScrollBar::handle:horizontal:hover {
@@ -283,8 +298,8 @@ QScrollBar::handle:horizontal:hover {
 /* 分隔器样式 */
 QSplitter::handle {
     background-color: #e0e0e0;
-    width: 4px;
-    height: 4px;
+    width: 2px;
+    height: 2px;
 }
 
 QSplitter::handle:hover {
@@ -294,12 +309,18 @@ QSplitter::handle:hover {
 /* 对话框样式 */
 QDialog {
     background-color: #ffffff;
-    border-radius: 8px;
+    border-radius: 4px;
+    font-size: 10px;
 }
 
 /* 表单布局样式 */
 QFormLayout {
-    spacing: 8px;
+    spacing: 4px;
+}
+
+/* 表格列宽调整 */
+QTableWidget QHeaderView {
+    font-size: 9px;
 }
 """
 
@@ -691,6 +712,14 @@ class TradingGUI(QMainWindow):
         self.dns_status_label.setStyleSheet("color: orange; font-weight: bold;")
         control_layout.addWidget(self.dns_status_label)
         
+        # Font size adjustment
+        control_layout.addWidget(QLabel("字体大小:"))
+        self.font_size_combo = QComboBox()
+        self.font_size_combo.addItems(["小", "中", "大"])
+        self.font_size_combo.setCurrentIndex(1)  # 默认中等大小
+        self.font_size_combo.currentIndexChanged.connect(self.on_font_size_change)
+        control_layout.addWidget(self.font_size_combo)
+        
         # Add strategy button
         self.add_strategy_btn = QPushButton("添加策略")
         self.add_strategy_btn.setObjectName("primary")
@@ -797,36 +826,36 @@ class TradingGUI(QMainWindow):
     def add_trading_plan(self):
         """Add a trading plan"""
         try:
-            order_type = self.plan_order_type.currentText()
             direction = self.plan_direction.currentText()
-            price = self.plan_price.text().strip()
-            amount = self.plan_amount.text().strip()
+            time_horizon = self.plan_time_horizon.currentText()
+            confidence = self.plan_confidence.currentText()
+            notes = self.plan_notes.text().strip()
             
-            if not price or not amount:
-                QMessageBox.warning(self, "输入错误", "请填写价格和数量")
-                return
+            # Get current time
+            import datetime
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             # Add plan to the table
             row_position = self.plan_list.rowCount()
             self.plan_list.insertRow(row_position)
             
             # Set plan details
-            self.plan_list.setItem(row_position, 0, QTableWidgetItem(order_type))
-            self.plan_list.setItem(row_position, 1, QTableWidgetItem(direction))
-            self.plan_list.setItem(row_position, 2, QTableWidgetItem(price))
-            self.plan_list.setItem(row_position, 3, QTableWidgetItem(amount))
+            self.plan_list.setItem(row_position, 0, QTableWidgetItem(direction))
+            self.plan_list.setItem(row_position, 1, QTableWidgetItem(time_horizon))
+            self.plan_list.setItem(row_position, 2, QTableWidgetItem(confidence))
+            self.plan_list.setItem(row_position, 3, QTableWidgetItem(notes))
+            self.plan_list.setItem(row_position, 4, QTableWidgetItem(current_time))
             
             # Add execute button
             execute_btn = QPushButton("执行")
             execute_btn.setObjectName("primary")
             execute_btn.clicked.connect(lambda: self.execute_plan(row_position))
-            self.plan_list.setCellWidget(row_position, 4, execute_btn)
+            self.plan_list.setCellWidget(row_position, 5, execute_btn)
             
             # Clear input fields
-            self.plan_price.setText("0.0")
-            self.plan_amount.setText("0.0")
+            self.plan_notes.setText("")
             
-            self.log(f"添加交易规划: {direction} {amount} @ {price}")
+            self.log(f"添加交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})")
         except Exception as e:
             self.log(f"添加交易规划失败: {e}")
             QMessageBox.error(self, "错误", f"添加交易规划时出错: {str(e)}")
@@ -834,14 +863,14 @@ class TradingGUI(QMainWindow):
     def execute_plan(self, row):
         """Execute a trading plan"""
         try:
-            order_type = self.plan_list.item(row, 0).text()
-            direction = self.plan_list.item(row, 1).text()
-            price = self.plan_list.item(row, 2).text()
-            amount = self.plan_list.item(row, 3).text()
+            direction = self.plan_list.item(row, 0).text()
+            time_horizon = self.plan_list.item(row, 1).text()
+            confidence = self.plan_list.item(row, 2).text()
+            notes = self.plan_list.item(row, 3).text()
             
             # Here you would implement the actual order execution
             # For now, we'll just log the execution
-            self.log(f"执行交易规划: {direction} {amount} @ {price} ({order_type})")
+            self.log(f"执行交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})")
             
             # Remove the plan from the list
             self.plan_list.removeRow(row)
@@ -850,6 +879,50 @@ class TradingGUI(QMainWindow):
         except Exception as e:
             self.log(f"执行交易规划失败: {e}")
             QMessageBox.error(self, "错误", f"执行交易规划时出错: {str(e)}")
+    
+    def apply_plans_to_strategy(self):
+        """Apply trading plans to strategy"""
+        try:
+            # Get all plans
+            plans = []
+            for row in range(self.plan_list.rowCount()):
+                direction = self.plan_list.item(row, 0).text()
+                time_horizon = self.plan_list.item(row, 1).text()
+                confidence = self.plan_list.item(row, 2).text()
+                notes = self.plan_list.item(row, 3).text()
+                
+                plans.append({
+                    "direction": direction,
+                    "time_horizon": time_horizon,
+                    "confidence": confidence,
+                    "notes": notes
+                })
+            
+            if not plans:
+                QMessageBox.warning(self, "警告", "没有可应用的交易规划")
+                return
+            
+            # Get current strategy
+            strategy_name = self.strategy_combo.currentText()
+            
+            # Get strategy execution agent
+            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
+            if not strategy_agent:
+                QMessageBox.error(self, "错误", "策略执行智能体未初始化")
+                return
+            
+            # Apply plans to strategy
+            success = strategy_agent.apply_trading_plans(strategy_name, plans)
+            
+            if success:
+                self.log(f"成功将 {len(plans)} 个交易规划应用到策略 {strategy_name}")
+                QMessageBox.information(self, "成功", f"交易规划已应用到策略 {strategy_name}")
+            else:
+                self.log(f"应用交易规划到策略 {strategy_name} 失败")
+                QMessageBox.error(self, "错误", f"应用交易规划到策略 {strategy_name} 失败")
+        except Exception as e:
+            self.log(f"应用交易规划失败: {e}")
+            QMessageBox.error(self, "错误", f"应用交易规划时出错: {str(e)}")
     
     def switch_env(self, is_test):
         """Switch between testnet and mainnet"""
@@ -896,18 +969,12 @@ class TradingGUI(QMainWindow):
         """Initialize trading tab"""
         trading_tab = QWidget()
         trading_layout = QVBoxLayout(trading_tab)
-        
-        # Create scroll area for trading content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        
-        # Content widget for scroll area
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
+        trading_layout.setSpacing(4)
+        trading_layout.setContentsMargins(4, 4, 4, 4)
         
         # Top: Market data splitter
         market_splitter = QSplitter(Qt.Horizontal)
-        market_splitter.setMinimumHeight(600)
+        market_splitter.setMinimumHeight(500)
         # 设置拉伸因子，确保左右两部分保持固定比例
         market_splitter.setStretchFactor(0, 1)  # 左侧占1份
         market_splitter.setStretchFactor(1, 2)  # 右侧占2份
@@ -915,6 +982,8 @@ class TradingGUI(QMainWindow):
         # Left: Ticker and Order Book
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
+        left_layout.setSpacing(4)
+        left_layout.setContentsMargins(4, 4, 4, 4)
         # 设置左侧布局的大小策略
         left_widget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         
@@ -926,11 +995,16 @@ class TradingGUI(QMainWindow):
         
         market_splitter.addWidget(left_widget)
         
-        # Right: Trading controls and order table
+        # Right: Trading controls, chart and order table
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+        right_layout.setSpacing(4)
+        right_layout.setContentsMargins(4, 4, 4, 4)
         # 设置右侧布局的大小策略
         right_widget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        
+        # Chart widget
+        self.init_chart_widget(right_layout)
         
         # Trading controls
         self.init_trading_controls(right_layout)
@@ -940,15 +1014,9 @@ class TradingGUI(QMainWindow):
         
         market_splitter.addWidget(right_widget)
         # 设置初始大小比例，但允许用户调整
-        market_splitter.setSizes([400, 800])
+        market_splitter.setSizes([350, 700])
         
-        content_layout.addWidget(market_splitter)
-        
-        # Add content widget to scroll area
-        scroll_area.setWidget(content_widget)
-        
-        # Add scroll area to trading layout
-        trading_layout.addWidget(scroll_area)
+        trading_layout.addWidget(market_splitter)
         
         self.tab_widget.addTab(trading_tab, "交易")
     
@@ -1048,35 +1116,82 @@ class TradingGUI(QMainWindow):
         
         layout.addWidget(order_book_group)
     
+    def init_chart_widget(self, layout):
+        """Initialize chart widget for K-line display"""
+        chart_group = QGroupBox("K线图")
+        chart_layout = QVBoxLayout(chart_group)
+        
+        # Timeframe selector
+        timeframe_layout = QHBoxLayout()
+        timeframe_layout.addWidget(QLabel("时间周期:"))
+        self.timeframe_combo = QComboBox()
+        self.timeframe_combo.addItems(["1m", "5m", "15m", "1h", "4h", "1d"])
+        self.timeframe_combo.currentTextChanged.connect(self.update_chart)
+        timeframe_layout.addWidget(self.timeframe_combo)
+        
+        # Refresh button
+        self.refresh_chart_btn = QPushButton("刷新")
+        self.refresh_chart_btn.setObjectName("secondary")
+        self.refresh_chart_btn.clicked.connect(self.update_chart)
+        timeframe_layout.addWidget(self.refresh_chart_btn)
+        
+        timeframe_layout.addStretch()
+        chart_layout.addLayout(timeframe_layout)
+        
+        if HAS_MPL:
+            # Create figure and canvas
+            self.figure = Figure(figsize=(10, 4), dpi=100)
+            self.canvas = FigureCanvas(self.figure)
+            self.canvas.setMinimumHeight(300)
+            chart_layout.addWidget(self.canvas)
+            
+            # Initialize empty chart
+            self.update_chart()
+        else:
+            # Show placeholder if mplfinance is not installed
+            placeholder_label = QLabel("K线图需要安装 mplfinance 库\n请运行: pip install mplfinance")
+            placeholder_label.setAlignment(Qt.AlignCenter)
+            placeholder_label.setStyleSheet("font-size: 14px; color: #64748b;")
+            chart_layout.addWidget(placeholder_label)
+        
+        layout.addWidget(chart_group)
+    
     def init_trading_controls(self, layout):
         """Initialize trading controls"""
         trading_group = QGroupBox("交易控制")
         trading_layout = QVBoxLayout(trading_group)
+        trading_layout.setSpacing(6)
         
         # Main parameters section with grid layout for better organization
         main_params_group = QGroupBox("订单参数")
         main_params_layout = QGridLayout(main_params_group)
+        main_params_layout.setSpacing(6)
+        main_params_layout.setContentsMargins(6, 6, 6, 6)
         
         # Order type and side in first row
         main_params_layout.addWidget(QLabel("订单类型:"), 0, 0)
         self.order_type_combo = QComboBox()
         self.order_type_combo.addItems(["限价", "市价", "只做maker", "触发限价", "触发市价"])
+        self.order_type_combo.setMinimumWidth(120)
         main_params_layout.addWidget(self.order_type_combo, 0, 1)
         
         main_params_layout.addWidget(QLabel("方向:"), 0, 2)
         self.side_combo = QComboBox()
         self.side_combo.addItems(["买入", "卖出"])
+        self.side_combo.setMinimumWidth(80)
         main_params_layout.addWidget(self.side_combo, 0, 3)
         
         # Price and amount in second row
         main_params_layout.addWidget(QLabel("价格:"), 1, 0)
         self.price_edit = QLineEdit("0.0")
         self.price_edit.setPlaceholderText("输入价格")
+        self.price_edit.setMinimumWidth(120)
         main_params_layout.addWidget(self.price_edit, 1, 1)
         
         main_params_layout.addWidget(QLabel("数量:"), 1, 2)
         self.amount_edit = QLineEdit("0.0")
         self.amount_edit.setPlaceholderText("输入数量")
+        self.amount_edit.setMinimumWidth(120)
         main_params_layout.addWidget(self.amount_edit, 1, 3)
         
         # Leverage and trading mode in third row
@@ -1084,12 +1199,14 @@ class TradingGUI(QMainWindow):
         self.leverage_spin = QSpinBox()
         self.leverage_spin.setRange(1, 100)
         self.leverage_spin.setValue(5)
+        self.leverage_spin.setMinimumWidth(80)
         main_params_layout.addWidget(self.leverage_spin, 2, 1)
         
         main_params_layout.addWidget(QLabel("交易模式:"), 2, 2)
         self.td_mode_combo = QComboBox()
         self.td_mode_combo.addItems(["逐仓", "全仓"])
         self.td_mode_combo.setCurrentText("逐仓")
+        self.td_mode_combo.setMinimumWidth(80)
         main_params_layout.addWidget(self.td_mode_combo, 2, 3)
         
         # Position side and reduce only in fourth row
@@ -1097,6 +1214,7 @@ class TradingGUI(QMainWindow):
         self.pos_side_combo = QComboBox()
         self.pos_side_combo.addItems(["净持仓", "多头", "空头"])
         self.pos_side_combo.setCurrentText("净持仓")
+        self.pos_side_combo.setMinimumWidth(120)
         main_params_layout.addWidget(self.pos_side_combo, 3, 1)
         
         main_params_layout.addWidget(QLabel("只减仓:"), 3, 2)
@@ -1121,16 +1239,16 @@ class TradingGUI(QMainWindow):
         # Place order button with better styling
         self.place_order_btn = QPushButton("下单")
         self.place_order_btn.setObjectName("primary")
-        self.place_order_btn.setMinimumHeight(40)
+        self.place_order_btn.setMinimumHeight(32)
         self.place_order_btn.setStyleSheet("""
             QPushButton#primary {
                 background-color: #3b82f6;
                 color: white;
                 border: none;
-                border-radius: 8px;
-                font-size: 16px;
+                border-radius: 6px;
+                font-size: 14px;
                 font-weight: 600;
-                padding: 12px;
+                padding: 8px;
             }
             QPushButton#primary:hover {
                 background-color: #2563eb;
@@ -1232,53 +1350,46 @@ class TradingGUI(QMainWindow):
         self.orders_table = QTableWidget()
         self.orders_table.setColumnCount(10)
         self.orders_table.setHorizontalHeaderLabels(["订单ID", "交易对", "方向", "类型", "价格", "数量", "状态", "持仓方向", "交易模式", "客户订单ID"])
-        self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.orders_table.setStyleSheet("""
-            QTableWidget {
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-            }
-            QTableWidget::item:hover {
-                background-color: #f8f9fa;
-            }
-            QTableWidget::item:selected {
-                background-color: #dbeafe;
-                color: #1e40af;
-            }
-            QHeaderView::section {
-                background-color: #f8f9fa;
-                font-weight: 600;
-                color: #2c3e50;
-                border-radius: 6px 6px 0 0;
-            }
-        """)
+        
+        # 设置表格列宽调整模式
+        header = self.orders_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
+        
+        # 设置表格最小高度
+        self.orders_table.setMinimumHeight(150)
         
         # Order operations buttons
         order_ops_layout = QHBoxLayout()
+        order_ops_layout.setSpacing(6)
         
         # Cancel selected order button with styling
         self.cancel_order_btn = QPushButton("取消选中订单")
         self.cancel_order_btn.setObjectName("danger")
-        self.cancel_order_btn.setMinimumHeight(32)
+        self.cancel_order_btn.setMinimumHeight(28)
+        self.cancel_order_btn.setMinimumWidth(100)
         self.cancel_order_btn.clicked.connect(self.cancel_selected_order)
         order_ops_layout.addWidget(self.cancel_order_btn)
         
         # Amend selected order button with styling
         self.amend_order_btn = QPushButton("修改选中订单")
         self.amend_order_btn.setObjectName("secondary")
-        self.amend_order_btn.setMinimumHeight(32)
+        self.amend_order_btn.setMinimumHeight(28)
+        self.amend_order_btn.setMinimumWidth(100)
         self.amend_order_btn.clicked.connect(self.amend_selected_order)
         order_ops_layout.addWidget(self.amend_order_btn)
         
         # Select all orders button with styling
         self.select_all_orders_btn = QPushButton("全选订单")
-        self.select_all_orders_btn.setMinimumHeight(32)
+        self.select_all_orders_btn.setMinimumHeight(28)
+        self.select_all_orders_btn.setMinimumWidth(80)
         self.select_all_orders_btn.clicked.connect(self.select_all_orders)
         order_ops_layout.addWidget(self.select_all_orders_btn)
         
         # Clear selection button with styling
         self.clear_selection_btn = QPushButton("清空选择")
-        self.clear_selection_btn.setMinimumHeight(32)
+        self.clear_selection_btn.setMinimumHeight(28)
+        self.clear_selection_btn.setMinimumWidth(80)
         self.clear_selection_btn.clicked.connect(self.clear_order_selection)
         order_ops_layout.addWidget(self.clear_selection_btn)
         
@@ -1291,18 +1402,13 @@ class TradingGUI(QMainWindow):
         """Initialize strategy configuration tab"""
         strategy_tab = QWidget()
         strategy_layout = QVBoxLayout(strategy_tab)
-        
-        # Create scroll area for strategy content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        
-        # Content widget for scroll area
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
+        strategy_layout.setSpacing(4)
+        strategy_layout.setContentsMargins(4, 4, 4, 4)
         
         # Strategy controls
         strategy_group = QGroupBox("策略配置")
         strategy_form = QFormLayout(strategy_group)
+        strategy_form.setSpacing(4)
         
         # Strategy selection
         self.strategy_combo = QComboBox()
@@ -1349,7 +1455,7 @@ class TradingGUI(QMainWindow):
         self.take_profit_pct.setSuffix(" %")
         strategy_form.addRow("止盈:", self.take_profit_pct)
         
-        content_layout.addWidget(strategy_group)
+        strategy_layout.addWidget(strategy_group)
         
         # Strategy control buttons
         control_layout = QHBoxLayout()
@@ -1370,11 +1476,12 @@ class TradingGUI(QMainWindow):
         control_layout.addStretch()
         control_layout.addWidget(self.strategy_status)
         
-        content_layout.addLayout(control_layout)
+        strategy_layout.addLayout(control_layout)
         
         # Strategy trading information
         trading_info_group = QGroupBox("策略交易信息")
         trading_info_layout = QGridLayout(trading_info_group)
+        trading_info_layout.setSpacing(4)
         
         # Trading statistics
         self.total_trades_label = QLabel("0")
@@ -1392,49 +1499,55 @@ class TradingGUI(QMainWindow):
         trading_info_layout.addWidget(QLabel("胜率:"), 1, 2)
         trading_info_layout.addWidget(self.win_rate_label, 1, 3)
         
-        content_layout.addWidget(trading_info_group)
+        strategy_layout.addWidget(trading_info_group)
         
         # Order information
         order_info_group = QGroupBox("订单信息")
         order_info_layout = QVBoxLayout(order_info_group)
+        order_info_layout.setSpacing(4)
         
         # Order table
         self.order_table = QTableWidget()
         self.order_table.setColumnCount(6)
         self.order_table.setHorizontalHeaderLabels(["订单ID", "方向", "价格", "数量", "状态", "时间"])
-        self.order_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.order_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.order_table.horizontalHeader().setStretchLastSection(True)
         # 设置表格的最小高度
-        self.order_table.setMinimumHeight(150)
+        self.order_table.setMinimumHeight(120)
         order_info_layout.addWidget(self.order_table)
         
         # Manual planning functionality
         planning_group = QGroupBox("手动规划")
         planning_layout = QVBoxLayout(planning_group)
+        planning_layout.setSpacing(4)
         
         # Planning controls
         planning_controls = QGridLayout()
+        planning_controls.setSpacing(4)
         
-        # Order type
-        planning_controls.addWidget(QLabel("订单类型:"), 0, 0)
-        self.plan_order_type = QComboBox()
-        self.plan_order_type.addItems(["限价", "市价"])
-        planning_controls.addWidget(self.plan_order_type, 0, 1)
-        
-        # Direction
-        planning_controls.addWidget(QLabel("方向:"), 0, 2)
+        # Direction - 主要关注买入卖出方向
+        planning_controls.addWidget(QLabel("交易方向:"), 0, 0)
         self.plan_direction = QComboBox()
         self.plan_direction.addItems(["买入", "卖出"])
-        planning_controls.addWidget(self.plan_direction, 0, 3)
+        planning_controls.addWidget(self.plan_direction, 0, 1)
         
-        # Price
-        planning_controls.addWidget(QLabel("价格:"), 1, 0)
-        self.plan_price = QLineEdit("0.0")
-        planning_controls.addWidget(self.plan_price, 1, 1)
+        # Time horizon - 时间范围
+        planning_controls.addWidget(QLabel("时间范围:"), 0, 2)
+        self.plan_time_horizon = QComboBox()
+        self.plan_time_horizon.addItems(["短期", "中期", "长期"])
+        planning_controls.addWidget(self.plan_time_horizon, 0, 3)
         
-        # Amount
-        planning_controls.addWidget(QLabel("数量:"), 1, 2)
-        self.plan_amount = QLineEdit("0.0")
-        planning_controls.addWidget(self.plan_amount, 1, 3)
+        # Confidence level - 信心程度
+        planning_controls.addWidget(QLabel("信心程度:"), 1, 0)
+        self.plan_confidence = QComboBox()
+        self.plan_confidence.addItems(["低", "中", "高"])
+        planning_controls.addWidget(self.plan_confidence, 1, 1)
+        
+        # Notes - 备注
+        planning_controls.addWidget(QLabel("备注:"), 1, 2)
+        self.plan_notes = QLineEdit("")
+        self.plan_notes.setPlaceholderText("可选，添加备注")
+        planning_controls.addWidget(self.plan_notes, 1, 3)
         
         # Add plan button
         self.add_plan_btn = QPushButton("添加规划")
@@ -1442,33 +1555,34 @@ class TradingGUI(QMainWindow):
         self.add_plan_btn.clicked.connect(self.add_trading_plan)
         planning_controls.addWidget(self.add_plan_btn, 2, 0, 1, 4)
         
+        # Apply to strategy button
+        self.apply_to_strategy_btn = QPushButton("应用到策略")
+        self.apply_to_strategy_btn.setObjectName("secondary")
+        self.apply_to_strategy_btn.clicked.connect(self.apply_plans_to_strategy)
+        planning_controls.addWidget(self.apply_to_strategy_btn, 3, 0, 1, 4)
+        
         planning_layout.addLayout(planning_controls)
         
         # Plan list
         self.plan_list = QTableWidget()
-        self.plan_list.setColumnCount(5)
-        self.plan_list.setHorizontalHeaderLabels(["类型", "方向", "价格", "数量", "操作"])
-        self.plan_list.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.plan_list.setColumnCount(6)
+        self.plan_list.setHorizontalHeaderLabels(["方向", "时间范围", "信心程度", "备注", "创建时间", "操作"])
+        self.plan_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.plan_list.horizontalHeader().setStretchLastSection(True)
         # 设置表格的最小高度
-        self.plan_list.setMinimumHeight(150)
+        self.plan_list.setMinimumHeight(120)
         planning_layout.addWidget(self.plan_list)
         
-        content_layout.addWidget(order_info_group)
-        content_layout.addWidget(planning_group)
+        strategy_layout.addWidget(order_info_group)
+        strategy_layout.addWidget(planning_group)
         
         # Strategy log
         self.strategy_log = QTextEdit()
         self.strategy_log.setReadOnly(True)
         self.strategy_log.setStyleSheet("background-color: #f5f5f5;")
         # 设置日志窗口的最小高度
-        self.strategy_log.setMinimumHeight(200)
-        content_layout.addWidget(self.strategy_log)
-        
-        # Add content widget to scroll area
-        scroll_area.setWidget(content_widget)
-        
-        # Add scroll area to strategy layout
-        strategy_layout.addWidget(scroll_area)
+        self.strategy_log.setMinimumHeight(150)
+        strategy_layout.addWidget(self.strategy_log)
         
         self.tab_widget.addTab(strategy_tab, "策略")
     
@@ -1476,6 +1590,8 @@ class TradingGUI(QMainWindow):
         """Initialize account information tab"""
         account_tab = QWidget()
         account_layout = QVBoxLayout(account_tab)
+        account_layout.setSpacing(4)
+        account_layout.setContentsMargins(4, 4, 4, 4)
         
         # Account info
         account_group = QGroupBox("账户信息")
@@ -1483,10 +1599,13 @@ class TradingGUI(QMainWindow):
         
         # Balance and positions
         balance_layout = QHBoxLayout(account_group)
+        balance_layout.setSpacing(4)
+        balance_layout.setContentsMargins(4, 4, 4, 4)
         
         # Balance info
         balance_widget = QWidget()
         balance_form = QFormLayout(balance_widget)
+        balance_form.setSpacing(4)
         
         self.available_balance = QLabel("0.00")
         balance_form.addRow("可用余额:", self.available_balance)
@@ -1502,6 +1621,7 @@ class TradingGUI(QMainWindow):
         # Positions table placeholder
         positions_widget = QWidget()
         positions_layout = QVBoxLayout(positions_widget)
+        positions_layout.setSpacing(4)
         positions_label = QLabel("持仓信息将在连接后显示")
         positions_label.setAlignment(Qt.AlignCenter)
         positions_layout.addWidget(positions_label)
@@ -1511,10 +1631,13 @@ class TradingGUI(QMainWindow):
         """Initialize network status display tab"""
         network_tab = QWidget()
         network_layout = QVBoxLayout(network_tab)
+        network_layout.setSpacing(4)
+        network_layout.setContentsMargins(4, 4, 4, 4)
         
         # Network info group - current connection
         current_group = QGroupBox("当前连接信息")
         current_layout = QFormLayout(current_group)
+        current_layout.setSpacing(4)
         
         # Current IP address
         self.current_ip_label = QLabel("未检测")
@@ -1543,6 +1666,7 @@ class TradingGUI(QMainWindow):
         # Network health group
         health_group = QGroupBox("网络健康状况")
         health_layout = QGridLayout(health_group)
+        health_layout.setSpacing(4)
         
         # DNS resolution status
         self.dns_status_label = QLabel("正常")
@@ -1573,12 +1697,15 @@ class TradingGUI(QMainWindow):
         # API connection data group
         api_group = QGroupBox("API连接数据")
         api_layout = QVBoxLayout(api_group)
+        api_layout.setSpacing(4)
         
         # Connection stats table
         self.connection_stats_table = QTableWidget()
         self.connection_stats_table.setColumnCount(4)
         self.connection_stats_table.setHorizontalHeaderLabels(["IP地址", "端口", "响应时间(ms)", "状态"])
-        self.connection_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.connection_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.connection_stats_table.horizontalHeader().setStretchLastSection(True)
+        self.connection_stats_table.setMinimumHeight(120)
         api_layout.addWidget(self.connection_stats_table)
         
         network_layout.addWidget(api_group)
@@ -1586,6 +1713,7 @@ class TradingGUI(QMainWindow):
         # Network adaptation controls
         controls_group = QGroupBox("网络适配控制")
         controls_layout = QHBoxLayout(controls_group)
+        controls_layout.setSpacing(4)
         
         # Environment switch buttons
         env_layout = QVBoxLayout()
@@ -1629,6 +1757,8 @@ class TradingGUI(QMainWindow):
         """Initialize log tab"""
         log_tab = QWidget()
         log_layout = QVBoxLayout(log_tab)
+        log_layout.setSpacing(4)
+        log_layout.setContentsMargins(4, 4, 4, 4)
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
@@ -1641,6 +1771,8 @@ class TradingGUI(QMainWindow):
         """Initialize configuration management tab focused on API login"""
         config_tab = QWidget()
         config_layout = QVBoxLayout(config_tab)
+        config_layout.setSpacing(4)
+        config_layout.setContentsMargins(4, 4, 4, 4)
         
         # API Login Status
         # Initialize with login state from config
@@ -1655,6 +1787,7 @@ class TradingGUI(QMainWindow):
         # API Configuration Group
         api_config_group = QGroupBox("API登录配置")
         api_config_layout = QFormLayout(api_config_group)
+        api_config_layout.setSpacing(4)
         
         # API Key
         self.api_key_edit = QLineEdit(self.config['api']['api_key'])
@@ -1682,6 +1815,7 @@ class TradingGUI(QMainWindow):
         
         # Login/Logout Buttons
         auth_layout = QHBoxLayout()
+        auth_layout.setSpacing(4)
         
         self.api_login_btn = QPushButton("登录API")
         self.api_login_btn.clicked.connect(self.api_login)
@@ -1764,6 +1898,121 @@ class TradingGUI(QMainWindow):
         # 这里可以添加更新所有数据的逻辑
         pass
     
+    def update_chart(self):
+        """更新K线图数据"""
+        if not HAS_MPL:
+            return
+        
+        try:
+            # 获取当前选中的交易对和时间周期
+            symbol = self.symbol_combo.currentText()
+            timeframe = self.timeframe_combo.currentText()
+            
+            # 从交易机器人获取市场数据智能体
+            market_data_agent = self.trading_bot.get_agent("market_data_agent")
+            if not market_data_agent:
+                self.log("市场数据智能体未初始化")
+                return
+            
+            # 尝试从API获取K线数据
+            try:
+                from okx_api_client import OKXAPIClient
+                api_client = OKXAPIClient()
+                candles = api_client.get_candlesticks(symbol, timeframe, limit=100)
+                
+                if candles:
+                    # 处理K线数据
+                    import pandas as pd
+                    import numpy as np
+                    
+                    # 转换数据格式
+                    data = []
+                    for candle in candles:
+                        timestamp, open_price, high, low, close, volume = candle[:6]
+                        data.append({
+                            'Date': pd.to_datetime(int(timestamp), unit='ms'),
+                            'Open': float(open_price),
+                            'High': float(high),
+                            'Low': float(low),
+                            'Close': float(close),
+                            'Volume': float(volume)
+                        })
+                    
+                    # 创建DataFrame
+                    df = pd.DataFrame(data)
+                    df.set_index('Date', inplace=True)
+                    
+                    # 清空当前图表
+                    self.figure.clear()
+                    
+                    # 创建子图
+                    ax = self.figure.add_subplot(111)
+                    
+                    # 绘制K线图
+                    mpf.plot(
+                        df, 
+                        type='candle', 
+                        style='charles', 
+                        ax=ax, 
+                        show_nontrading=False,
+                        volume=True
+                    )
+                    
+                    # 刷新画布
+                    self.canvas.draw()
+                    
+                    self.log(f"更新K线图成功: {symbol} {timeframe}")
+                else:
+                    self.log("获取K线数据失败")
+                    
+            except Exception as e:
+                self.log(f"获取K线数据失败: {e}")
+                
+                # 生成模拟数据用于测试
+                import pandas as pd
+                import numpy as np
+                
+                # 生成模拟数据
+                dates = pd.date_range(end=pd.Timestamp.now(), periods=100, freq=timeframe)
+                np.random.seed(42)
+                close = 50000 + np.cumsum(np.random.randn(100) * 100)
+                open_ = close.shift(1).fillna(50000)
+                high = np.maximum(open_, close) + np.random.randn(100) * 50
+                low = np.minimum(open_, close) - np.random.randn(100) * 50
+                volume = np.random.randint(100, 1000, 100)
+                
+                df = pd.DataFrame({
+                    'Open': open_,
+                    'High': high,
+                    'Low': low,
+                    'Close': close,
+                    'Volume': volume
+                }, index=dates)
+                
+                # 清空当前图表
+                self.figure.clear()
+                
+                # 创建子图
+                ax = self.figure.add_subplot(111)
+                
+                # 绘制K线图
+                mpf.plot(
+                    df, 
+                    type='candle', 
+                    style='charles', 
+                    ax=ax, 
+                    show_nontrading=False,
+                    volume=True
+                )
+                
+                # 刷新画布
+                self.canvas.draw()
+                
+                self.log("使用模拟数据更新K线图")
+                
+        except Exception as e:
+            self.log(f"更新K线图失败: {e}")
+    
     def batch_place_orders(self):
         """批量下单"""
         # 这里可以添加批量下单的逻辑
@@ -1806,13 +2055,79 @@ class TradingGUI(QMainWindow):
     
     def start_strategy(self):
         """启动策略"""
-        # 这里可以添加启动策略的逻辑
-        pass
+        try:
+            # 获取策略配置
+            strategy_name = self.strategy_combo.currentText()
+            mode = self.strategy_mode_combo.currentText()
+            timeframe = self.timeframe_combo.currentText()
+            grid_spacing = self.grid_spacing.value()
+            grid_multiplier = self.grid_multiplier.value()
+            max_leverage = self.max_leverage.value()
+            stop_loss_pct = self.stop_loss_pct.value()
+            take_profit_pct = self.take_profit_pct.value()
+            
+            # 从交易机器人中获取策略执行智能体
+            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
+            if not strategy_agent:
+                QMessageBox.error(self, "错误", "策略执行智能体未初始化")
+                return
+            
+            # 构建策略配置
+            strategy_config = {
+                "mode": mode,
+                "timeframe": timeframe,
+                "grid_spacing": grid_spacing,
+                "grid_multiplier": grid_multiplier,
+                "max_leverage": max_leverage,
+                "stop_loss_pct": stop_loss_pct,
+                "take_profit_pct": take_profit_pct
+            }
+            
+            # 启动策略
+            success = strategy_agent.activate_strategy(strategy_name, strategy_config)
+            
+            if success:
+                self.strategy_status.setText("状态: 运行中")
+                self.strategy_status.setStyleSheet("font-weight: bold; color: green;")
+                self.log(f"策略 {strategy_name} 启动成功")
+                QMessageBox.information(self, "成功", f"策略 {strategy_name} 启动成功")
+            else:
+                self.strategy_status.setText("状态: 启动失败")
+                self.strategy_status.setStyleSheet("font-weight: bold; color: red;")
+                self.log(f"策略 {strategy_name} 启动失败")
+                QMessageBox.error(self, "错误", f"策略 {strategy_name} 启动失败")
+        except Exception as e:
+            self.log(f"启动策略失败: {e}")
+            QMessageBox.error(self, "错误", f"启动策略时出错: {str(e)}")
     
     def stop_strategy(self):
         """停止策略"""
-        # 这里可以添加停止策略的逻辑
-        pass
+        try:
+            # 获取当前策略名称
+            strategy_name = self.strategy_combo.currentText()
+            
+            # 从交易机器人中获取策略执行智能体
+            strategy_agent = self.trading_bot.get_agent("strategy_execution_agent")
+            if not strategy_agent:
+                QMessageBox.error(self, "错误", "策略执行智能体未初始化")
+                return
+            
+            # 停止策略
+            success = strategy_agent.deactivate_strategy(strategy_name)
+            
+            if success:
+                self.strategy_status.setText("状态: 已停止")
+                self.strategy_status.setStyleSheet("font-weight: bold; color: black;")
+                self.log(f"策略 {strategy_name} 停止成功")
+                QMessageBox.information(self, "成功", f"策略 {strategy_name} 停止成功")
+            else:
+                self.strategy_status.setText("状态: 停止失败")
+                self.strategy_status.setStyleSheet("font-weight: bold; color: red;")
+                self.log(f"策略 {strategy_name} 停止失败")
+                QMessageBox.error(self, "错误", f"策略 {strategy_name} 停止失败")
+        except Exception as e:
+            self.log(f"停止策略失败: {e}")
+            QMessageBox.error(self, "错误", f"停止策略时出错: {str(e)}")
     
     def api_login(self):
         """API登录"""
@@ -1898,6 +2213,343 @@ class TradingGUI(QMainWindow):
         """初始化网络监控"""
         # 这里可以添加初始化网络监控的逻辑
         pass
+    
+    def on_font_size_change(self, index):
+        """处理字体大小变化"""
+        # 根据选择的索引获取字体大小
+        font_sizes = {
+            0: 8,   # 小
+            1: 10,  # 中
+            2: 12   # 大
+        }
+        
+        font_size = font_sizes.get(index, 10)  # 默认中等大小
+        
+        # 生成新的样式表
+        new_stylesheet = f"""
+/* 主窗口样式 */
+QMainWindow {{
+    background-color: #f5f7fa;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: {font_size}px;
+}}
+
+/* 标签页样式 */
+QTabWidget {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 2px;
+}}
+
+QTabBar {{
+    background-color: transparent;
+}}
+
+QTabBar::tab {{
+    background-color: #f8f9fa;
+    padding: 6px 10px;
+    border: 1px solid #e0e0e0;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    margin-right: 2px;
+    min-width: 70px;
+    font-weight: 500;
+    font-size: {font_size}px;
+}}
+
+QTabBar::tab:hover {{
+    background-color: #e9ecef;
+}}
+
+QTabBar::tab:selected {{
+    background-color: #ffffff;
+    border-bottom: 1px solid #ffffff;
+    font-weight: 600;
+}}
+
+/* 分组框样式 */
+QGroupBox {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-top: 6px;
+    padding-top: 4px;
+}}
+
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px 0 4px;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: {font_size}px;
+}}
+
+/* 按钮样式 */
+QPushButton {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-weight: 500;
+    font-size: {font_size}px;
+    min-height: 24px;
+    min-width: 60px;
+}}
+
+QPushButton:hover {{
+    background-color: #f8f9fa;
+    border-color: #d0d0d0;
+}}
+
+QPushButton:pressed {{
+    background-color: #e9ecef;
+}}
+
+/* 特殊按钮样式 */
+QPushButton#primary {{
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    font-weight: 600;
+}}
+
+QPushButton#primary:hover {{
+    background-color: #2563eb;
+    border-color: #2563eb;
+}}
+
+QPushButton#primary:pressed {{
+    background-color: #1d4ed8;
+}}
+
+QPushButton#secondary {{
+    background-color: #64748b;
+    color: white;
+    border-color: #64748b;
+    font-weight: 600;
+}}
+
+QPushButton#secondary:hover {{
+    background-color: #475569;
+    border-color: #475569;
+}}
+
+QPushButton#warning {{
+    background-color: #f59e0b;
+    color: white;
+    border-color: #f59e0b;
+    font-weight: 600;
+}}
+
+QPushButton#warning:hover {{
+    background-color: #d97706;
+    border-color: #d97706;
+}}
+
+QPushButton#danger {{
+    background-color: #ef4444;
+    color: white;
+    border-color: #ef4444;
+    font-weight: 600;
+}}
+
+QPushButton#danger:hover {{
+    background-color: #dc2626;
+    border-color: #dc2626;
+}}
+
+/* 输入框样式 */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 3px 6px;
+    font-size: {font_size}px;
+    min-height: 24px;
+}}
+
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+    border: 2px solid #3b82f6;
+    outline: none;
+}}
+
+/* 表格样式 */
+QTableWidget {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    gridline-color: #f0f0f0;
+    font-size: {font_size - 1}px;
+}}
+
+QTableWidget::item {{
+    padding: 4px 6px;
+    border-bottom: 1px solid #f8f9fa;
+}}
+
+QTableWidget::item:hover {{
+    background-color: #f8f9fa;
+}}
+
+QTableWidget::item:selected {{
+    background-color: #dbeafe;
+    color: #1e40af;
+}}
+
+QHeaderView::section {{
+    background-color: #f8f9fa;
+    padding: 4px 6px;
+    border: 1px solid #e0e0e0;
+    font-weight: 600;
+    color: #2c3e50;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    font-size: {font_size - 1}px;
+}}
+
+QHeaderView::section:hover {{
+    background-color: #e9ecef;
+}}
+
+/* 文本编辑框样式 */
+QTextEdit {{
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 6px;
+    font-size: {font_size}px;
+    line-height: 1.3;
+}}
+
+QTextEdit[readOnly="true"] {{
+    background-color: #f8f9fa;
+    color: #64748b;
+}}
+
+/* 标签样式 */
+QLabel {{
+    color: #2c3e50;
+    font-size: {font_size}px;
+}}
+
+QLabel#status {{
+    font-weight: 600;
+}}
+
+QLabel#success {{
+    color: #10b981;
+    font-weight: 600;
+}}
+
+QLabel#warning {{
+    color: #f59e0b;
+    font-weight: 600;
+}}
+
+QLabel#error {{
+    color: #ef4444;
+    font-weight: 600;
+}}
+
+/* 控制栏样式 */
+QWidget#controlBar {{
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 6px;
+}}
+
+/* 滚动条样式 */
+QScrollBar:vertical {{
+    background-color: #f8f9fa;
+    width: 4px;
+    border-radius: 2px;
+}}
+
+QScrollBar::handle:vertical {{
+    background-color: #cbd5e1;
+    border-radius: 2px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background-color: #94a3b8;
+}}
+
+QScrollBar:horizontal {{
+    background-color: #f8f9fa;
+    height: 4px;
+    border-radius: 2px;
+}}
+
+QScrollBar::handle:horizontal {{
+    background-color: #cbd5e1;
+    border-radius: 2px;
+}}
+
+QScrollBar::handle:horizontal:hover {{
+    background-color: #94a3b8;
+}}
+
+/* 分隔器样式 */
+QSplitter::handle {{
+    background-color: #e0e0e0;
+    width: 2px;
+    height: 2px;
+}}
+
+QSplitter::handle:hover {{
+    background-color: #cbd5e1;
+}}
+
+/* 对话框样式 */
+QDialog {{
+    background-color: #ffffff;
+    border-radius: 4px;
+    font-size: {font_size}px;
+}}
+
+/* 表单布局样式 */
+QFormLayout {{
+    spacing: 4px;
+}}
+
+/* 表格列宽调整 */
+QTableWidget QHeaderView {{
+    font-size: {font_size - 1}px;
+}}
+"""
+        
+        # 应用新的样式表
+        self.setStyleSheet(new_stylesheet)
+        
+        # 递归更新所有子部件的字体大小
+        def update_font_recursive(widget):
+            if hasattr(widget, 'setFont'):
+                font = widget.font()
+                font.setPointSize(font_size)
+                widget.setFont(font)
+            
+            # 特殊处理表格和表头
+            if hasattr(widget, 'horizontalHeader'):
+                header = widget.horizontalHeader()
+                if header:
+                    header_font = header.font()
+                    header_font.setPointSize(font_size - 1)
+                    header.setFont(header_font)
+            
+            # 递归处理子部件
+            for child in widget.children():
+                if isinstance(child, QWidget):
+                    update_font_recursive(child)
+        
+        # 从主窗口开始递归更新
+        update_font_recursive(self)
+        
+        # 记录字体大小变更
+        size_names = ["小", "中", "大"]
+        self.log(f"字体大小已调整为: {size_names[index]}")
     
     def closeEvent(self, event):
         """处理窗口关闭事件"""

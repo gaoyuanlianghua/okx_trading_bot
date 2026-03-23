@@ -96,7 +96,7 @@ class RiskManager:
             logger.debug(f"获取持仓信息请求: {inst_id}")
             
             result = self.api_client.get_positions(inst_id)
-            if result:
+            if result is not None:
                 logger.info(f"获取持仓信息成功，共 {len(result)} 个持仓")
                 
                 # 更新风险状态
@@ -115,6 +115,32 @@ class RiskManager:
             
         except Exception as e:
             logger.error(f"获取持仓信息失败: {e}")
+            return []
+    
+    def get_pending_orders(self, inst_id=None):
+        """
+        获取待成交订单
+        
+        Args:
+            inst_id (str, optional): 交易对
+        
+        Returns:
+            list: 待成交订单列表
+        """
+        try:
+            logger.debug(f"获取待成交订单请求: {inst_id}")
+            
+            # 调用API客户端获取订单
+            result = self.api_client.get_orders(inst_id, state='live')
+            if result:
+                logger.info(f"获取待成交订单成功，共 {len(result)} 个订单")
+                return result
+            
+            logger.debug("获取待成交订单: 无待成交订单")
+            return []
+            
+        except Exception as e:
+            logger.error(f"获取待成交订单失败: {e}")
             return []
     
     def set_leverage(self, inst_id, lever, mgn_mode='isolated'):

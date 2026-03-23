@@ -2071,7 +2071,7 @@ class OKXAPIClient:
         try:
             result = self._request(
                 method="GET",
-                endpoint="public/ticker",
+                endpoint="market/ticker",
                 params={"instId": inst_id},
                 need_sign=False
             )
@@ -2086,7 +2086,7 @@ class OKXAPIClient:
         try:
             result = self._request(
                 method="GET",
-                endpoint="public/books",
+                endpoint="market/books",
                 params={"instId": inst_id, "sz": depth},
                 need_sign=False
             )
@@ -2101,7 +2101,7 @@ class OKXAPIClient:
         try:
             result = self._request(
                 method="GET",
-                endpoint="public/candles",
+                endpoint="market/candles",
                 params={"instId": inst_id, "bar": bar, "limit": limit},
                 need_sign=False
             )
@@ -2116,7 +2116,7 @@ class OKXAPIClient:
         try:
             result = self._request(
                 method="GET",
-                endpoint="public/trades",
+                endpoint="market/trades",
                 params={"instId": inst_id, "limit": limit},
                 need_sign=False
             )

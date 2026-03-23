@@ -220,14 +220,21 @@ class StrategyExecutionAgent(BaseAgent):
         """
         logger.info(f"策略注册事件: {data}")
     
-    def activate_strategy(self, strategy_name):
+    def activate_strategy(self, strategy_name, strategy_config=None):
         """激活策略
         
         Args:
             strategy_name (str): 策略名称
+            strategy_config (dict): 策略配置（可选）
         """
         if strategy_name in self.strategies:
             strategy = self.strategies[strategy_name]
+            
+            # 如果提供了配置，更新策略参数
+            if strategy_config:
+                strategy.set_params(strategy_config)
+                logger.info(f"更新策略 {strategy_name} 配置: {strategy_config}")
+            
             if strategy.status != "running":
                 # 如果策略是暂停状态，恢复它；否则启动它
                 if strategy.status == "paused":
@@ -762,3 +769,64 @@ class StrategyExecutionAgent(BaseAgent):
                         logger.info(f"根据风险等级 {risk_level} 调整策略 {strategy_name} 参数")
         except Exception as e:
             logger.error(f"处理风险规则更新失败: {e}")
+    
+    def apply_trading_plans(self, strategy_name, plans):
+        """应用交易规划到策略
+        
+        Args:
+            strategy_name (str): 策略名称
+            plans (list): 交易规划列表
+            
+        Returns:
+            bool: 是否成功应用
+        """
+        try:
+            strategy = self.strategies.get(strategy_name)
+            if not strategy:
+                logger.error(f"策略不存在: {strategy_name}")
+                return False
+            
+            # 处理交易规划
+            for plan in plans:
+                direction = plan.get("direction")
+                time_horizon = plan.get("time_horizon")
+                confidence = plan.get("confidence")
+                notes = plan.get("notes", "")
+                
+                # 根据时间范围和信心程度调整策略参数
+                if time_horizon == "短期":
+                    # 短期交易，调整为更敏感的参数
+                    strategy.params["grid_spacing"] = 0.005  # 减小网格间距
+                    strategy.params["max_leverage"] = 10  # 增加杠杆
+                elif time_horizon == "中期":
+                    # 中期交易，使用默认参数
+                    strategy.params["grid_spacing"] = 0.01
+                    strategy.params["max_leverage"] = 5
+                elif time_horizon == "长期":
+                    # 长期交易，调整为更保守的参数
+                    strategy.params["grid_spacing"] = 0.02  # 增大网格间距
+                    strategy.params["max_leverage"] = 2  # 减小杠杆
+                
+                # 根据信心程度调整策略行为
+                if confidence == "高":
+                    # 高信心，增加交易频率和仓位
+                    strategy.params["trade_frequency"] = "high"
+                elif confidence == "中":
+                    # 中等信心，使用默认设置
+                    strategy.params["trade_frequency"] = "medium"
+                elif confidence == "低":
+                    # 低信心，减少交易频率和仓位
+                    strategy.params["trade_frequency"] = "low"
+                
+                # 记录交易规划
+                logger.info(f"应用交易规划到策略 {strategy_name}: 方向={direction}, 时间范围={time_horizon}, 信心={confidence}")
+            
+            # 更新策略状态
+            if strategy.status == "idle":
+                # 如果策略未激活，自动激活
+                self.activate_strategy(strategy_name, strategy.params)
+            
+            return True
+        except Exception as e:
+            logger.error(f"应用交易规划失败: {e}")
+            return False
