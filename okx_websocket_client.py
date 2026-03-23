@@ -4,7 +4,7 @@ import time
 import ssl
 import websockets
 from threading import Thread, Lock
-from okx_api_client import OKXClient
+from okx_api_client import OKXAPIClient
 
 # 初始化日志配置
 from commons.logger_config import global_logger as logger
