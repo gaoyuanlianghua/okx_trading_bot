@@ -1282,6 +1282,8 @@ class OKXAPIClient:
         # API URL - 优先使用传入的api_url，然后是环境变量，最后是默认值
         # 模拟盘和实盘使用相同的REST API URL，但需要添加x-simulated-trading: 1请求头
         self.api_url = api_url or os.getenv('OKX_API_URL') or api_config.get('api_url') or 'https://www.okx.com'
+        # 清理API URL，移除可能存在的反引号或其他特殊字符
+        self.api_url = self.api_url.strip().strip('`')
         
         # 解析URL，获取主机名和路径
         self.parsed_url = urlparse(self.api_url)
