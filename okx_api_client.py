@@ -1403,6 +1403,32 @@ class OKXAPIClient:
         
         # 异步初始化网络相关配置
         self.async_init()
+        
+    def update_health_status(self):
+        """
+        更新健康检查状态
+        """
+        try:
+            from commons.health_checker import global_health_checker
+            
+            # 检查网络状态
+            network_status = 'PASS' if self.test_connection() else 'FAIL'
+            global_health_checker.update_check_status(
+                'network',
+                network_status,
+                '网络连接正常' if network_status == 'PASS' else '网络连接失败'
+            )
+            
+            # 检查API状态
+            api_status = 'PASS' if self.initialized else 'FAIL'
+            global_health_checker.update_check_status(
+                'api',
+                api_status,
+                'API客户端初始化成功' if api_status == 'PASS' else 'API客户端初始化失败',
+                last_response_time=time.time()
+            )
+        except Exception as e:
+            logger.error(f"更新健康状态失败: {e}")
     
     def async_init(self):
         """异步初始化网络相关配置，避免阻塞主线程"""
@@ -1428,9 +1454,13 @@ class OKXAPIClient:
                 
                 self.initialized = True
                 logger.info("OKX API客户端网络初始化完成")
+                # 更新健康状态
+                self.update_health_status()
             except Exception as e:
                 self.initialization_error = str(e)
                 logger.error(f"OKX API客户端网络初始化失败: {e}")
+                # 更新健康状态
+                self.update_health_status()
         
         import threading
         self.init_thread = threading.Thread(target=init_thread)

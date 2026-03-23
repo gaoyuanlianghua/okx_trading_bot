@@ -193,6 +193,15 @@ class TradingBot:
         global_health_checker.stop()
         logger.info("健康检查器已停止")
         
+        # 更新服务状态
+        global_health_checker.update_check_status(
+            'services',
+            'FAIL',
+            '交易机器人服务已停止',
+            running_services=[],
+            stopped_services=list(self.agents.keys())
+        )
+        
         logger.info("所有智能体停止完成")
     
     def start_gui(self):
@@ -249,6 +258,15 @@ class TradingBot:
         try:
             # 启动健康检查器
             global_health_checker.start()
+            
+            # 更新服务状态
+            global_health_checker.update_check_status(
+                'services',
+                'PASS',
+                '交易机器人服务启动成功',
+                running_services=list(self.agents.keys()),
+                stopped_services=[]
+            )
             
             # 启动GUI
             if use_gui:

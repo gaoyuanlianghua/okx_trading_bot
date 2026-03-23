@@ -597,6 +597,8 @@ class OKXWebsocketClient:
                     self.reconnect_delay = self.base_reconnect_delay
                     
                     logger.info(f"公共Websocket频道连接成功: {self.public_url}")
+                    # 更新健康状态
+                    self.update_health_status()
                     
                     # 重新订阅所有频道
                     if self.public_subscriptions:
@@ -633,6 +635,8 @@ class OKXWebsocketClient:
                     logger.warning(f"公共Websocket连接已关闭: {self.public_url}")
                     self.public_connected = False
                     self.public_ws = None
+                    # 更新健康状态
+                    self.update_health_status()
                     
                     if self._should_stop:
                         break
@@ -818,6 +822,26 @@ class OKXWebsocketClient:
                     logger.error(f"取消{conn_type}任务时出错: {e}")
         
         logger.info("所有WebSocket连接已关闭")
+        
+    def update_health_status(self):
+        """
+        更新健康检查状态
+        """
+        try:
+            from commons.health_checker import global_health_checker
+            
+            # 检查WebSocket状态
+            ws_status = 'PASS' if self.public_connected or self.private_connected else 'FAIL'
+            connected_channels = list(self.public_subscriptions) + list(self.private_subscriptions)
+            global_health_checker.update_check_status(
+                'websocket',
+                ws_status,
+                f'WebSocket连接正常，已订阅{len(connected_channels)}个频道' if ws_status == 'PASS' else 'WebSocket连接失败',
+                connected_channels=connected_channels,
+                last_message_time=self.last_message_time
+            )
+        except Exception as e:
+            logger.error(f"更新WebSocket健康状态失败: {e}")
 
     def update_ip_health(self, ip, success=True):
         """
@@ -928,6 +952,8 @@ class OKXWebsocketClient:
                     self.reconnect_delay = self.base_reconnect_delay
                     
                     logger.info(f"私有Websocket频道连接成功: {self.private_url}")
+                    # 更新健康状态
+                    self.update_health_status()
                     
                     # 登录
                     logger.info(f"正在登录私有Websocket频道: {self.private_url}")
@@ -963,6 +989,8 @@ class OKXWebsocketClient:
                     logger.warning(f"私有Websocket连接已关闭: {self.private_url}")
                     self.private_connected = False
                     self.private_ws = None
+                    # 更新健康状态
+                    self.update_health_status()
                     
                     if self._should_stop:
                         break
