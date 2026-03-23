@@ -2087,6 +2087,20 @@ class OKXAPIClient:
             logger.error(f"获取成交数据失败 [{inst_id}]: {e}")
             return None
     
+    @retry_with_backoff(max_retries=3, exceptions=(requests.exceptions.RequestException,))
+    def get_server_time(self):
+        """获取服务器时间"""
+        try:
+            result = self._request(
+                method="GET",
+                endpoint="public/time",
+                need_sign=False
+            )
+            return self._process_result(result)
+        except Exception as e:
+            logger.error(f"获取服务器时间失败: {e}")
+            return None
+    
     # 交易相关方法
     @retry_with_backoff(max_retries=3, exceptions=(requests.exceptions.RequestException,))
     def place_order(self, inst_id, side, ord_type, sz, px=None, td_mode=None, cl_ord_id=None, tag=None, pos_side=None, reduce_only=None, tgt_ccy=None, tp_px=None, tp_trigger_px=None, tp_ord_px=None, sl_px=None, sl_trigger_px=None, sl_ord_px=None, tp_trigger_px_type=None, sl_trigger_px_type=None, quick_mgn_type=None, req_id=None, exp_time=None):

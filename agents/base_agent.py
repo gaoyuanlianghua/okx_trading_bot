@@ -39,7 +39,7 @@ class BaseAgent(QObject):
         self._status = "idle"  # idle, running, stopped, error
         self.event_bus = global_event_bus
         self.agent_registry = global_agent_registry
-        self.thread = None
+        self.threads = []  # 存储所有线程
         
         logger.info(f"智能体基类初始化: {self.agent_id}")
     
@@ -77,11 +77,15 @@ class BaseAgent(QObject):
             logger.warning(f"智能体已停止: {self.agent_id}")
             return
         
-        # 停止线程
-        if self.thread and self.thread.isRunning():
-            self.thread.quit()
-            self.thread.wait()
-            logger.info(f"智能体线程已停止: {self.agent_id}")
+        # 停止所有线程
+        for thread in self.threads:
+            if thread and thread.isRunning():
+                thread.quit()
+                thread.wait()
+                logger.info(f"智能体线程已停止: {self.agent_id}")
+        
+        # 清空线程列表
+        self.threads.clear()
         
         self._status = "stopped"
         logger.info(f"智能体停止: {self.agent_id}")
@@ -147,7 +151,7 @@ class BaseAgent(QObject):
         Args:
             target (callable): 目标函数
         """
-        self.thread = QThread()
+        thread = QThread()
         
         # 创建一个工作对象
         class Worker(QObject):
@@ -156,16 +160,22 @@ class BaseAgent(QObject):
                 self.target = target
             
             def run(self):
-                self.target()
+                try:
+                    self.target()
+                except Exception as e:
+                    logger.error(f"线程执行失败: {e}")
         
         worker = Worker(target)
-        worker.moveToThread(self.thread)
-        self.thread.started.connect(worker.run)
-        self.thread.finished.connect(worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
         
-        self.thread.start()
-        logger.debug(f"智能体 {self.agent_id} 启动线程")
+        # 添加线程到列表
+        self.threads.append(thread)
+        
+        thread.start()
+        logger.debug(f"智能体 {self.agent_id} 启动线程，当前线程数: {len(self.threads)}")
     
     def get_status(self):
         """获取智能体状态

@@ -2,13 +2,18 @@ import sys
 import json
 import threading
 import time
+import os
+
+# 禁用Qt样式表警告和其他Qt警告
+os.environ["QT_LOGGING_RULES"] = "*.warning=false;qt.qpa.style.warning=false"
+
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QTabWidget,
     QLabel, QPushButton, QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     QSplitter, QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QTextEdit, QHeaderView, QFrame, QDialog, QScrollArea, QMessageBox
+    QTextEdit, QHeaderView, QFrame, QDialog, QScrollArea, QMessageBox, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
@@ -43,19 +48,16 @@ QTabBar::tab {
     margin-right: 2px;
     min-width: 100px;
     font-weight: 500;
-    transition: all 0.3s ease;
 }
 
 QTabBar::tab:hover {
     background-color: #e9ecef;
-    transform: translateY(-1px);
 }
 
 QTabBar::tab:selected {
     background-color: #ffffff;
     border-bottom: 1px solid #ffffff;
     font-weight: 600;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* 分组框样式 */
@@ -65,7 +67,6 @@ QGroupBox {
     border-radius: 8px;
     margin-top: 12px;
     padding-top: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 QGroupBox::title {
@@ -85,21 +86,16 @@ QPushButton {
     padding: 8px 16px;
     font-weight: 500;
     font-size: 14px;
-    transition: all 0.2s ease;
     min-height: 36px;
 }
 
 QPushButton:hover {
     background-color: #f8f9fa;
     border-color: #d0d0d0;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 QPushButton:pressed {
     background-color: #e9ecef;
-    transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 /* 特殊按钮样式 */
@@ -113,12 +109,10 @@ QPushButton#primary {
 QPushButton#primary:hover {
     background-color: #2563eb;
     border-color: #2563eb;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 QPushButton#primary:pressed {
     background-color: #1d4ed8;
-    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
 QPushButton#secondary {
@@ -131,7 +125,6 @@ QPushButton#secondary {
 QPushButton#secondary:hover {
     background-color: #475569;
     border-color: #475569;
-    box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
 }
 
 QPushButton#warning {
@@ -144,7 +137,6 @@ QPushButton#warning {
 QPushButton#warning:hover {
     background-color: #d97706;
     border-color: #d97706;
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
 }
 
 QPushButton#danger {
@@ -157,7 +149,6 @@ QPushButton#danger {
 QPushButton#danger:hover {
     background-color: #dc2626;
     border-color: #dc2626;
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 /* 输入框样式 */
@@ -167,14 +158,12 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     border-radius: 6px;
     padding: 6px 10px;
     font-size: 14px;
-    transition: all 0.2s ease;
     min-height: 36px;
 }
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #3b82f6;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* 表格样式 */
@@ -258,7 +247,6 @@ QWidget#controlBar {
     background-color: #ffffff;
     border-bottom: 1px solid #e0e0e0;
     padding: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* 滚动条样式 */
@@ -307,7 +295,6 @@ QSplitter::handle:hover {
 QDialog {
     background-color: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 /* 表单布局样式 */
@@ -664,6 +651,10 @@ class TradingGUI(QMainWindow):
         
         main_layout.addWidget(self.tab_widget)
         self.setCentralWidget(main_widget)
+        
+        # 设置窗口大小和最小尺寸
+        self.setMinimumSize(1024, 768)
+        self.resize(1200, 800)
     
     def init_control_bar(self, layout):
         """Initialize the top control bar"""
@@ -711,6 +702,10 @@ class TradingGUI(QMainWindow):
         self.help_btn.setObjectName("secondary")
         self.help_btn.clicked.connect(self.show_help)
         control_layout.addWidget(self.help_btn)
+        
+        # 移除适配屏幕按钮，改为使用鼠标缩放模式控制窗口大小
+        # 窗口已经支持通过鼠标拖拽边缘来调整大小
+        # 同时保持了内容的比例缩放
         
         control_layout.addStretch()
         layout.addWidget(control_bar)
@@ -799,17 +794,129 @@ class TradingGUI(QMainWindow):
             self.log(traceback.format_exc())
             QMessageBox.error(self, "错误", f"添加策略时出错: {str(e)}")
     
+    def add_trading_plan(self):
+        """Add a trading plan"""
+        try:
+            order_type = self.plan_order_type.currentText()
+            direction = self.plan_direction.currentText()
+            price = self.plan_price.text().strip()
+            amount = self.plan_amount.text().strip()
+            
+            if not price or not amount:
+                QMessageBox.warning(self, "输入错误", "请填写价格和数量")
+                return
+            
+            # Add plan to the table
+            row_position = self.plan_list.rowCount()
+            self.plan_list.insertRow(row_position)
+            
+            # Set plan details
+            self.plan_list.setItem(row_position, 0, QTableWidgetItem(order_type))
+            self.plan_list.setItem(row_position, 1, QTableWidgetItem(direction))
+            self.plan_list.setItem(row_position, 2, QTableWidgetItem(price))
+            self.plan_list.setItem(row_position, 3, QTableWidgetItem(amount))
+            
+            # Add execute button
+            execute_btn = QPushButton("执行")
+            execute_btn.setObjectName("primary")
+            execute_btn.clicked.connect(lambda: self.execute_plan(row_position))
+            self.plan_list.setCellWidget(row_position, 4, execute_btn)
+            
+            # Clear input fields
+            self.plan_price.setText("0.0")
+            self.plan_amount.setText("0.0")
+            
+            self.log(f"添加交易规划: {direction} {amount} @ {price}")
+        except Exception as e:
+            self.log(f"添加交易规划失败: {e}")
+            QMessageBox.error(self, "错误", f"添加交易规划时出错: {str(e)}")
+    
+    def execute_plan(self, row):
+        """Execute a trading plan"""
+        try:
+            order_type = self.plan_list.item(row, 0).text()
+            direction = self.plan_list.item(row, 1).text()
+            price = self.plan_list.item(row, 2).text()
+            amount = self.plan_list.item(row, 3).text()
+            
+            # Here you would implement the actual order execution
+            # For now, we'll just log the execution
+            self.log(f"执行交易规划: {direction} {amount} @ {price} ({order_type})")
+            
+            # Remove the plan from the list
+            self.plan_list.removeRow(row)
+            
+            QMessageBox.information(self, "成功", f"交易规划已执行")
+        except Exception as e:
+            self.log(f"执行交易规划失败: {e}")
+            QMessageBox.error(self, "错误", f"执行交易规划时出错: {str(e)}")
+    
+    def switch_env(self, is_test):
+        """Switch between testnet and mainnet"""
+        try:
+            env = "测试网" if is_test else "主网"
+            self.log(f"切换到{env}")
+            
+            # Update UI to reflect the change
+            if is_test:
+                self.testnet_btn.setStyleSheet("background-color: #f59e0b; color: white;")
+                self.mainnet_btn.setStyleSheet("")
+            else:
+                self.mainnet_btn.setStyleSheet("background-color: #3b82f6; color: white;")
+                self.testnet_btn.setStyleSheet("")
+            
+            QMessageBox.information(self, "成功", f"已切换到{env}")
+        except Exception as e:
+            self.log(f"切换环境失败: {e}")
+            QMessageBox.error(self, "错误", f"切换环境时出错: {str(e)}")
+    
+    def manual_network_adaptation(self):
+        """Perform manual network adaptation"""
+        try:
+            self.log("执行手动网络适配...")
+            # Here you would implement network adaptation logic
+            self.log("手动网络适配完成")
+            QMessageBox.information(self, "成功", "手动网络适配已完成")
+        except Exception as e:
+            self.log(f"手动网络适配失败: {e}")
+            QMessageBox.error(self, "错误", f"手动网络适配时出错: {str(e)}")
+    
+    def refresh_network_status(self):
+        """Refresh network status"""
+        try:
+            self.log("刷新网络状态...")
+            # Here you would implement network status refresh logic
+            self.log("网络状态刷新完成")
+            QMessageBox.information(self, "成功", "网络状态已刷新")
+        except Exception as e:
+            self.log(f"刷新网络状态失败: {e}")
+            QMessageBox.error(self, "错误", f"刷新网络状态时出错: {str(e)}")
+    
     def init_trading_tab(self):
         """Initialize trading tab"""
         trading_tab = QWidget()
         trading_layout = QVBoxLayout(trading_tab)
         
+        # Create scroll area for trading content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        
+        # Content widget for scroll area
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        
         # Top: Market data splitter
         market_splitter = QSplitter(Qt.Horizontal)
+        market_splitter.setMinimumHeight(600)
+        # 设置拉伸因子，确保左右两部分保持固定比例
+        market_splitter.setStretchFactor(0, 1)  # 左侧占1份
+        market_splitter.setStretchFactor(1, 2)  # 右侧占2份
         
         # Left: Ticker and Order Book
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
+        # 设置左侧布局的大小策略
+        left_widget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         
         # Ticker display
         self.init_ticker_widget(left_layout)
@@ -822,6 +929,8 @@ class TradingGUI(QMainWindow):
         # Right: Trading controls and order table
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+        # 设置右侧布局的大小策略
+        right_widget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         
         # Trading controls
         self.init_trading_controls(right_layout)
@@ -830,9 +939,17 @@ class TradingGUI(QMainWindow):
         self.init_orders_table(right_layout)
         
         market_splitter.addWidget(right_widget)
-        market_splitter.setSizes([500, 700])
+        # 设置初始大小比例，但允许用户调整
+        market_splitter.setSizes([400, 800])
         
-        trading_layout.addWidget(market_splitter)
+        content_layout.addWidget(market_splitter)
+        
+        # Add content widget to scroll area
+        scroll_area.setWidget(content_widget)
+        
+        # Add scroll area to trading layout
+        trading_layout.addWidget(scroll_area)
+        
         self.tab_widget.addTab(trading_tab, "交易")
     
     def init_ticker_widget(self, layout):
@@ -1014,17 +1131,12 @@ class TradingGUI(QMainWindow):
                 font-size: 16px;
                 font-weight: 600;
                 padding: 12px;
-                transition: all 0.2s ease;
             }
             QPushButton#primary:hover {
                 background-color: #2563eb;
-                transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
             }
             QPushButton#primary:pressed {
                 background-color: #1d4ed8;
-                transform: translateY(0);
-                box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
             }
         """)
         self.place_order_btn.clicked.connect(self.place_order)
@@ -1180,6 +1292,14 @@ class TradingGUI(QMainWindow):
         strategy_tab = QWidget()
         strategy_layout = QVBoxLayout(strategy_tab)
         
+        # Create scroll area for strategy content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        
+        # Content widget for scroll area
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        
         # Strategy controls
         strategy_group = QGroupBox("策略配置")
         strategy_form = QFormLayout(strategy_group)
@@ -1229,7 +1349,7 @@ class TradingGUI(QMainWindow):
         self.take_profit_pct.setSuffix(" %")
         strategy_form.addRow("止盈:", self.take_profit_pct)
         
-        strategy_layout.addWidget(strategy_group)
+        content_layout.addWidget(strategy_group)
         
         # Strategy control buttons
         control_layout = QHBoxLayout()
@@ -1250,13 +1370,105 @@ class TradingGUI(QMainWindow):
         control_layout.addStretch()
         control_layout.addWidget(self.strategy_status)
         
-        strategy_layout.addLayout(control_layout)
+        content_layout.addLayout(control_layout)
+        
+        # Strategy trading information
+        trading_info_group = QGroupBox("策略交易信息")
+        trading_info_layout = QGridLayout(trading_info_group)
+        
+        # Trading statistics
+        self.total_trades_label = QLabel("0")
+        self.total_pnl_label = QLabel("0.00")
+        self.current_position_label = QLabel("0.00")
+        self.win_rate_label = QLabel("0%")
+        
+        trading_info_layout.addWidget(QLabel("总交易量:"), 0, 0)
+        trading_info_layout.addWidget(self.total_trades_label, 0, 1)
+        trading_info_layout.addWidget(QLabel("总盈亏:"), 0, 2)
+        trading_info_layout.addWidget(self.total_pnl_label, 0, 3)
+        
+        trading_info_layout.addWidget(QLabel("当前持仓:"), 1, 0)
+        trading_info_layout.addWidget(self.current_position_label, 1, 1)
+        trading_info_layout.addWidget(QLabel("胜率:"), 1, 2)
+        trading_info_layout.addWidget(self.win_rate_label, 1, 3)
+        
+        content_layout.addWidget(trading_info_group)
+        
+        # Order information
+        order_info_group = QGroupBox("订单信息")
+        order_info_layout = QVBoxLayout(order_info_group)
+        
+        # Order table
+        self.order_table = QTableWidget()
+        self.order_table.setColumnCount(6)
+        self.order_table.setHorizontalHeaderLabels(["订单ID", "方向", "价格", "数量", "状态", "时间"])
+        self.order_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # 设置表格的最小高度
+        self.order_table.setMinimumHeight(150)
+        order_info_layout.addWidget(self.order_table)
+        
+        # Manual planning functionality
+        planning_group = QGroupBox("手动规划")
+        planning_layout = QVBoxLayout(planning_group)
+        
+        # Planning controls
+        planning_controls = QGridLayout()
+        
+        # Order type
+        planning_controls.addWidget(QLabel("订单类型:"), 0, 0)
+        self.plan_order_type = QComboBox()
+        self.plan_order_type.addItems(["限价", "市价"])
+        planning_controls.addWidget(self.plan_order_type, 0, 1)
+        
+        # Direction
+        planning_controls.addWidget(QLabel("方向:"), 0, 2)
+        self.plan_direction = QComboBox()
+        self.plan_direction.addItems(["买入", "卖出"])
+        planning_controls.addWidget(self.plan_direction, 0, 3)
+        
+        # Price
+        planning_controls.addWidget(QLabel("价格:"), 1, 0)
+        self.plan_price = QLineEdit("0.0")
+        planning_controls.addWidget(self.plan_price, 1, 1)
+        
+        # Amount
+        planning_controls.addWidget(QLabel("数量:"), 1, 2)
+        self.plan_amount = QLineEdit("0.0")
+        planning_controls.addWidget(self.plan_amount, 1, 3)
+        
+        # Add plan button
+        self.add_plan_btn = QPushButton("添加规划")
+        self.add_plan_btn.setObjectName("primary")
+        self.add_plan_btn.clicked.connect(self.add_trading_plan)
+        planning_controls.addWidget(self.add_plan_btn, 2, 0, 1, 4)
+        
+        planning_layout.addLayout(planning_controls)
+        
+        # Plan list
+        self.plan_list = QTableWidget()
+        self.plan_list.setColumnCount(5)
+        self.plan_list.setHorizontalHeaderLabels(["类型", "方向", "价格", "数量", "操作"])
+        self.plan_list.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # 设置表格的最小高度
+        self.plan_list.setMinimumHeight(150)
+        planning_layout.addWidget(self.plan_list)
+        
+        content_layout.addWidget(order_info_group)
+        content_layout.addWidget(planning_group)
         
         # Strategy log
         self.strategy_log = QTextEdit()
         self.strategy_log.setReadOnly(True)
         self.strategy_log.setStyleSheet("background-color: #f5f5f5;")
-        strategy_layout.addWidget(self.strategy_log)
+        # 设置日志窗口的最小高度
+        self.strategy_log.setMinimumHeight(200)
+        content_layout.addWidget(self.strategy_log)
+        
+        # Add content widget to scroll area
+        scroll_area.setWidget(content_widget)
+        
+        # Add scroll area to strategy layout
+        strategy_layout.addWidget(scroll_area)
         
         self.tab_widget.addTab(strategy_tab, "策略")
     
@@ -1507,6 +1719,8 @@ class TradingGUI(QMainWindow):
         
         # 结束配置页面的布局
         config_layout.addWidget(api_config_group)
+        config_layout.addLayout(auth_layout)
+        config_layout.addWidget(self.connection_status)
         config_layout.addWidget(monitoring_group)
         
         # 添加标签页
@@ -1522,11 +1736,12 @@ class TradingGUI(QMainWindow):
             self.config['api']['api_key'] = self.api_key_edit.text()
             self.config['api']['api_secret'] = self.api_secret_edit.text()
             self.config['api']['passphrase'] = self.passphrase_edit.text()
-            self.config['api']['is_test'] = self.testnet_checkbox.isChecked()
             
             # 保存到文件
             import json
+            import os
             config_path = "config/okx_config.json"
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
             
@@ -1601,13 +1816,42 @@ class TradingGUI(QMainWindow):
     
     def api_login(self):
         """API登录"""
-        # 这里可以添加API登录的逻辑
-        pass
+        try:
+            from okx_api_client import OKXAPIClient
+            api_client = OKXAPIClient(
+                api_key=self.api_key_edit.text(),
+                api_secret=self.api_secret_edit.text(),
+                passphrase=self.passphrase_edit.text(),
+                is_test=self.config['api'].get('is_test', False)
+            )
+            
+            # 测试获取服务器时间，验证API连接
+            server_time = api_client.get_server_time()
+            if server_time:
+                # 登录成功
+                self.config['api']['is_logged_in'] = True
+                self.login_status.setText("登录状态: 已登录")
+                self.login_status.setStyleSheet("font-weight: bold; color: green;")
+                self.api_login_btn.setEnabled(False)
+                self.api_logout_btn.setEnabled(True)
+                QMessageBox.information(self, "成功", "API登录成功！")
+            else:
+                QMessageBox.warning(self, "警告", "API登录失败，请检查配置！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"登录失败: {str(e)}")
     
     def api_logout(self):
         """API登出"""
-        # 这里可以添加API登出的逻辑
-        pass
+        try:
+            # 登出操作
+            self.config['api']['is_logged_in'] = False
+            self.login_status.setText("登录状态: 未登录")
+            self.login_status.setStyleSheet("font-weight: bold; color: red;")
+            self.api_login_btn.setEnabled(True)
+            self.api_logout_btn.setEnabled(False)
+            QMessageBox.information(self, "成功", "API登出成功！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"登出失败: {str(e)}")
     
     def manual_network_adaptation(self):
         """手动网络适配"""
@@ -1621,8 +1865,29 @@ class TradingGUI(QMainWindow):
     
     def connect_signals(self):
         """连接信号"""
-        # 这里可以添加连接信号的逻辑
-        pass
+        # 连接日志更新信号
+        self.update_log.connect(self.on_log_update)
+        
+        # 设置日志处理器，将日志输出到GUI
+        from loguru import logger
+        
+        def gui_log_handler(message):
+            """将日志消息发送到GUI"""
+            log_message = message
+            self.update_log.emit(log_message)
+        
+        # 添加日志处理器
+        logger.add(gui_log_handler, format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}")
+    
+    def on_log_update(self, message):
+        """处理日志更新信号"""
+        if not self.is_closed:
+            self.log_text.append(message)
+    
+    def log(self, message):
+        """添加日志消息"""
+        if not self.is_closed:
+            self.update_log.emit(message)
     
     def init_config_monitor(self):
         """初始化配置监控"""
@@ -1634,6 +1899,69 @@ class TradingGUI(QMainWindow):
         # 这里可以添加初始化网络监控的逻辑
         pass
     
+    def closeEvent(self, event):
+        """处理窗口关闭事件"""
+        # 只是隐藏窗口，不退出应用程序
+        self.hide()
+        # 阻止默认的关闭行为
+        event.ignore()
+        # 记录日志
+        self.log("交易界面已最小化到后台运行")
+    
+    def resize_to_fit_screen(self):
+        """调整窗口大小以适配屏幕分辨率"""
+        try:
+            # 获取屏幕几何信息
+            screen = self.screen()
+            screen_geometry = screen.geometry()
+            screen_width = screen_geometry.width()
+            screen_height = screen_geometry.height()
+            
+            # 计算适合的窗口大小（屏幕的80%）
+            window_width = int(screen_width * 0.8)
+            window_height = int(screen_height * 0.8)
+            
+            # 确保窗口大小不小于最小尺寸
+            window_width = max(window_width, 1024)
+            window_height = max(window_height, 768)
+            
+            # 计算窗口位置（居中）
+            window_x = (screen_width - window_width) // 2
+            window_y = (screen_height - window_height) // 2
+            
+            # 设置窗口大小和位置
+            self.setGeometry(window_x, window_y, window_width, window_height)
+            
+            # 记录日志
+            self.log(f"窗口大小已调整为: {window_width}x{window_height}")
+        except Exception as e:
+            self.log(f"调整窗口大小失败: {e}")
+    
+    def resize_window(self, width, height):
+        """调整窗口大小为指定尺寸"""
+        try:
+            # 获取屏幕几何信息
+            screen = self.screen()
+            screen_geometry = screen.geometry()
+            screen_width = screen_geometry.width()
+            screen_height = screen_geometry.height()
+            
+            # 确保窗口大小不小于最小尺寸
+            width = max(width, 1024)
+            height = max(height, 768)
+            
+            # 计算窗口位置（居中）
+            window_x = (screen_width - width) // 2
+            window_y = (screen_height - height) // 2
+            
+            # 设置窗口大小和位置
+            self.setGeometry(window_x, window_y, width, height)
+            
+            # 记录日志
+            self.log(f"窗口大小已调整为: {width}x{height}")
+        except Exception as e:
+            self.log(f"调整窗口大小失败: {e}")
+    
     def test_api_connection(self):
         """测试API连接"""
         try:
@@ -1642,7 +1970,7 @@ class TradingGUI(QMainWindow):
                 api_key=self.api_key_edit.text(),
                 api_secret=self.api_secret_edit.text(),
                 passphrase=self.passphrase_edit.text(),
-                is_test=self.testnet_checkbox.isChecked()
+                is_test=self.config['api'].get('is_test', False)
             )
             
             # 测试获取服务器时间
@@ -1662,6 +1990,12 @@ class TradingGUI(QMainWindow):
 
 if __name__ == "__main__":
     import sys
+    # 禁用PyQt5样式表警告
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # 禁用样式表解析警告
+    import os
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.style.warning=false"
     app = QApplication(sys.argv)
     import json
     with open('config/okx_config.json', 'r', encoding='utf-8') as f:

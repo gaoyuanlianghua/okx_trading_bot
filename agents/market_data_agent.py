@@ -44,8 +44,8 @@ class MarketDataAgent(BaseAgent):
     
     def stop(self):
         """停止市场数据智能体"""
-        super().stop()
         self.is_running = False
+        super().stop()
         logger.info(f"市场数据智能体停止完成: {self.agent_id}")
     
     def update_market_data_loop(self):

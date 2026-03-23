@@ -1,7 +1,17 @@
-from PyQt5.QtWidgets import QApplication
 import sys
 import os
 import time
+
+# 禁用Qt样式表警告
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.style.warning=false"
+
+# 导入QtCore模块来禁用Qt日志
+from PyQt5.QtCore import Qt, QLoggingCategory
+
+# 禁用Qt样式警告
+QLoggingCategory.setFilterRules("qt.qpa.style.warning=false")
+
+from PyQt5.QtWidgets import QApplication
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

@@ -15,7 +15,9 @@ class LoggerConfig:
             log_dir (str): 日志目录
             log_level (str): 日志级别，可选值：DEBUG, INFO, WARNING, ERROR, CRITICAL
         """
-        self.log_dir = log_dir
+        # 使用项目根目录作为基础路径
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.log_dir = os.path.join(project_root, log_dir)
         self.log_level = log_level
         
         # 确保日志目录存在
