@@ -70,11 +70,11 @@ def test_okx_api_client():
             logger.error("获取账户余额失败")
         
         logger.info("OKX API客户端测试完成")
-        return True
+        assert True
         
     except Exception as e:
         logger.error(f"OKX API客户端测试失败: {e}", exc_info=True)
-        return False
+        assert False
 
 if __name__ == "__main__":
     test_okx_api_client()

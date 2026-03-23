@@ -33,12 +33,12 @@ def test_dynamics_strategy():
         params = strategy.get_params()
         logger.info("✅ 成功获取策略参数")
         
-        return True
+        assert True
     except Exception as e:
         logger.error(f"❌ 动力学策略测试失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False
 
 def test_passivbot_integrator():
     """测试Passivbot集成策略加载"""
@@ -59,12 +59,12 @@ def test_passivbot_integrator():
         params = strategy.get_params()
         logger.info("✅ 成功获取策略参数")
         
-        return True
+        assert True
     except Exception as e:
         logger.error(f"❌ Passivbot集成策略测试失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False
 
 def test_base_strategy():
     """测试策略基类"""
@@ -86,22 +86,31 @@ def test_base_strategy():
         params = strategy.get_params()
         logger.info(f"✅ 策略参数: {params}")
         
-        return True
+        assert True
     except Exception as e:
         logger.error(f"❌ 策略基类测试失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False
 
 def main():
     """主测试函数"""
     logger.info("🎯 开始策略模块加载测试")
     
-    results = {
-        "BaseStrategy": test_base_strategy(),
-        "DynamicsStrategy": test_dynamics_strategy(),
-        "PassivbotIntegrator": test_passivbot_integrator()
+    # 运行测试，使用try-except捕获断言失败
+    test_functions = {
+        "BaseStrategy": test_base_strategy,
+        "DynamicsStrategy": test_dynamics_strategy,
+        "PassivbotIntegrator": test_passivbot_integrator
     }
+    
+    results = {}
+    for strategy_name, test_func in test_functions.items():
+        try:
+            test_func()
+            results[strategy_name] = True
+        except AssertionError:
+            results[strategy_name] = False
     
     logger.info("\n📊 测试结果汇总:")
     all_passed = True
