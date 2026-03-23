@@ -39,16 +39,18 @@ class LoggerConfig:
         # 控制台日志格式
         console_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> <level>{level: <8}</level> <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         
-        # 添加控制台日志
-        logger.add(
-            sys.stdout,
-            format=console_format,
-            level=self.log_level,
-            enqueue=True,  # 启用异步写入，提高性能
-            backtrace=True,  # 显示完整的调用堆栈
-            diagnose=True,  # 显示诊断信息
-            colorize=True  # 启用彩色输出
-        )
+        # 只有当sys.stdout不为None时才添加控制台日志（避免PyInstaller窗口模式下的错误）
+        if sys.stdout is not None:
+            # 添加控制台日志
+            logger.add(
+                sys.stdout,
+                format=console_format,
+                level=self.log_level,
+                enqueue=True,  # 启用异步写入，提高性能
+                backtrace=True,  # 显示完整的调用堆栈
+                diagnose=True,  # 显示诊断信息
+                colorize=True  # 启用彩色输出
+            )
     
     def _config_file_logger(self):
         """
@@ -105,10 +107,12 @@ class LoggerConfig:
             level (str): 日志级别，可选值：DEBUG, INFO, WARNING, ERROR, CRITICAL
         """
         self.log_level = level
-        logger.configure(handlers=[{
-            "sink": sys.stdout,
-            "level": level
-        }])
+        # 只有当sys.stdout不为None时才配置控制台日志级别
+        if sys.stdout is not None:
+            logger.configure(handlers=[{
+                "sink": sys.stdout,
+                "level": level
+            }])
 
 # 创建全局日志配置实例
 global_logger_config = LoggerConfig()
