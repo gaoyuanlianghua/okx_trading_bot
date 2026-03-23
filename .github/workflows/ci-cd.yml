@@ -32,9 +32,9 @@ jobs:
     - name: Run tests
       run: |
         # Debug: Check current directory and list files
-        echo "Current directory: $(pwd)"
-        echo "Files in current directory:"
-        ls -l
+        Write-Host "Current directory: $pwd"
+        Write-Host "Files in current directory:"
+        Get-ChildItem
         
         # Run pytest with auto-discovery (finds all test files)
         pytest -v
