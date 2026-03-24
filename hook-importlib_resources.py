@@ -12,8 +12,13 @@
 """
 
 import os
-from PyInstaller.compat import is_py2, is_py3, is_py37
+import sys
 from PyInstaller.utils.hooks import get_module_file_attribute
+
+# 替代已被移除的PyInstaller.compat属性
+is_py2 = sys.version_info[0] == 2
+is_py3 = sys.version_info[0] == 3
+is_py37 = sys.version_info[0] == 3 and sys.version_info[1] >= 7
 
 # Include the version.txt file, used to set __version__
 res_loc = os.path.dirname(get_module_file_attribute('importlib_resources'))
