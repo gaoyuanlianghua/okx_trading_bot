@@ -37,6 +37,38 @@ class PassivbotIntegrator(BaseStrategy):
             'strategy': 'default'
         }
         
+        # 交易统计
+        self.trade_stats = {
+            'daily_trades': 0,
+            'daily_loss': 0,
+            'consecutive_losses': 0,
+            'last_reset_time': time.time()
+        }
+        
+        # 订单参数验证配置
+        self.order_param_config = {
+            'min_order_sizes': {
+                'BTC-USDT-SWAP': 0.001,
+                'ETH-USDT-SWAP': 0.01
+            },
+            'max_order_sizes': {
+                'BTC-USDT-SWAP': 100,
+                'ETH-USDT-SWAP': 1000
+            },
+            'price_precisions': {
+                'BTC-USDT-SWAP': 2,
+                'ETH-USDT-SWAP': 2
+            }
+        }
+        
+        # 从风险管理服务导入RiskManager
+        try:
+            from services.risk_management.risk_manager import RiskManager
+            self.risk_manager = RiskManager(api_client)
+        except ImportError:
+            self.risk_manager = None
+            logger.warning("风险管理服务未导入，将使用基本风险控制")
+        
         logger.info("passivbot集成器初始化完成")
     
     def load_passivbot_config(self, config_path=None):
@@ -278,6 +310,126 @@ class PassivbotIntegrator(BaseStrategy):
         # 实际的交易决策由passivbot独立处理
         logger.debug("Passivbot策略执行 - 由独立进程处理")
         return None
+    
+    def validate_order_params(self, order_info):
+        """验证订单参数是否符合OKX API要求
+        
+        Args:
+            order_info (dict): 订单信息
+            
+        Returns:
+            tuple: (是否有效, 错误信息)
+        """
+        inst_id = order_info['inst_id']
+        order_size = float(order_info['sz'])
+        price = float(order_info['px'])
+        
+        # 检查订单大小
+        min_size = self.order_param_config['min_order_sizes'].get(inst_id, 0.001)
+        max_size = self.order_param_config['max_order_sizes'].get(inst_id, 100)
+        
+        if order_size < min_size:
+            return False, f"订单大小小于最小限制: {min_size}"
+        if order_size > max_size:
+            return False, f"订单大小超过最大限制: {max_size}"
+        
+        # 检查价格精度
+        price_precision = self.order_param_config['price_precisions'].get(inst_id, 2)
+        if not self.is_price_valid(price, price_precision):
+            return False, f"价格精度不符合要求，需要 {price_precision} 位小数"
+        
+        return True, "订单参数验证通过"
+    
+    def is_price_valid(self, price, precision):
+        """检查价格是否符合精度要求
+        
+        Args:
+            price (float): 价格
+            precision (int): 精度（小数位数）
+            
+        Returns:
+            bool: 是否有效
+        """
+        try:
+            # 检查价格是否可以表示为指定精度的小数
+            formatted_price = f"{price:.{precision}f}"
+            return abs(float(formatted_price) - price) < 1e-9
+        except Exception:
+            return False
+    
+    def check_strategy_risk(self):
+        """检查策略级别的风险
+        
+        Returns:
+            tuple: (是否通过, 原因)
+        """
+        # 检查是否需要重置每日统计
+        current_time = time.time()
+        if current_time - self.trade_stats['last_reset_time'] > 86400:  # 24小时
+            self.trade_stats['daily_trades'] = 0
+            self.trade_stats['daily_loss'] = 0
+            self.trade_stats['last_reset_time'] = current_time
+        
+        # 检查每日交易次数
+        daily_trades = self.trade_stats['daily_trades']
+        max_daily_trades = 100  # 默认最大值
+        if daily_trades > max_daily_trades:
+            logger.warning(f"每日交易次数超过限制: {daily_trades} > {max_daily_trades}")
+            return False, "每日交易次数超过限制"
+        
+        return True, "策略风险检查通过"
+    
+    def update_trade_stats(self, trade_result):
+        """更新交易统计
+        
+        Args:
+            trade_result (dict): 交易结果
+        """
+        # 更新每日交易次数
+        self.trade_stats['daily_trades'] += 1
+        
+        # 更新盈亏
+        profit = trade_result.get('profit', 0)
+        if profit < 0:
+            self.trade_stats['daily_loss'] += abs(profit)
+            self.trade_stats['consecutive_losses'] += 1
+        else:
+            self.trade_stats['consecutive_losses'] = 0
+        
+        logger.debug(f"交易统计更新: {self.trade_stats}")
+    
+    def run_live_trading(self, config_path=None, symbol=None):
+        """运行实盘交易"""
+        symbol = symbol or self.default_config['symbol']
+        config = self.load_passivbot_config(config_path)
+        
+        # 策略风险检查
+        is_strategy_safe, strategy_reason = self.check_strategy_risk()
+        if not is_strategy_safe:
+            logger.warning(f"⚠️ 策略风险检查失败: {strategy_reason}")
+            return {"success": False, "error": strategy_reason}
+        
+        logger.info(f"开始实盘交易: {symbol}")
+        
+        try:
+            # 使用命令行调用passivbot的实盘交易功能
+            passivbot_script = os.path.join(os.path.dirname(__file__), 'passivbot', 'src', 'main.py')
+            cmd = [
+                sys.executable, passivbot_script,
+                '--live',
+                '--broker', 'okx',
+                '--symbol', symbol,
+                '--config-path', config_path or '',
+                '--api-keys-path', self.api_keys_path
+            ]
+            
+            # 以非阻塞方式启动实盘交易
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            logger.info(f"实盘交易运行中: {symbol}, PID: {process.pid}")
+            return {"success": True, "pid": process.pid, "process": process}
+        except Exception as e:
+            logger.error(f"启动实盘交易失败: {e}")
+            return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     # 测试passivbot集成器

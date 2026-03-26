@@ -52,6 +52,30 @@ class DynamicsStrategy(BaseStrategy):
         self.price_history = []
         self.phase_history = []
         
+        # 交易统计
+        self.trade_stats = {
+            'daily_trades': 0,
+            'daily_loss': 0,
+            'consecutive_losses': 0,
+            'last_reset_time': time.time()
+        }
+        
+        # 订单参数验证配置
+        self.order_param_config = {
+            'min_order_sizes': {
+                'BTC-USDT-SWAP': 0.001,
+                'ETH-USDT-SWAP': 0.01
+            },
+            'max_order_sizes': {
+                'BTC-USDT-SWAP': 100,
+                'ETH-USDT-SWAP': 1000
+            },
+            'price_precisions': {
+                'BTC-USDT-SWAP': 2,
+                'ETH-USDT-SWAP': 2
+            }
+        }
+        
         # 更新配置
         if config:
             if 'dynamics' in config:
@@ -60,6 +84,8 @@ class DynamicsStrategy(BaseStrategy):
                 self.spring_params.update(config['spring'])
             if 'risk' in config:
                 self.risk_manager.update_risk_params(**config['risk'])
+            if 'order_params' in config:
+                self.order_param_config.update(config['order_params'])
         
         logger.info("原子核互反动力学策略初始化完成")
     
@@ -209,6 +235,12 @@ class DynamicsStrategy(BaseStrategy):
                 logger.info("⚖️ 信号强度中性，保持观望")
                 return True
             
+            # 策略风险检查
+            is_strategy_safe, strategy_reason = self.check_strategy_risk()
+            if not is_strategy_safe:
+                logger.warning(f"⚠️ 策略风险检查失败: {strategy_reason}")
+                return False
+            
             # 风险评估: 检查整体风险状态
             overall_risk = self.risk_manager.assess_overall_risk()
             if not overall_risk or not overall_risk['is_account_healthy']:
@@ -238,6 +270,12 @@ class DynamicsStrategy(BaseStrategy):
                 'px': str(current_price)
             }
             
+            # 订单参数验证
+            is_params_valid, params_reason = self.validate_order_params(order_info)
+            if not is_params_valid:
+                logger.warning(f"⚠️ 订单参数验证失败: {params_reason}")
+                return False
+            
             # 风险检查: 使用风险管理服务检查订单风险
             is_allowed, reason = self.risk_manager.check_order_risk(order_info)
             if not is_allowed:
@@ -245,23 +283,49 @@ class DynamicsStrategy(BaseStrategy):
                 return False
             
             # 执行交易
-            order_id = self.api_client.place_order(
-                inst_id=inst_id,
-                side=side,
-                order_type="limit",
-                price=current_price,
-                amount=order_size
-            )
-            
-            if order_id:
-                logger.info(f"✅ 订单执行成功: {side} {inst_id} {order_size} @ {current_price}")
-                return True
-            else:
-                logger.error("❌ 订单失败")
+            try:
+                order_id = self.api_client.place_order(
+                    inst_id=inst_id,
+                    side=side,
+                    order_type="limit",
+                    price=current_price,
+                    amount=order_size
+                )
+                
+                if order_id:
+                    logger.info(f"✅ 订单执行成功: {side} {inst_id} {order_size} @ {current_price}")
+                    # 更新交易统计
+                    self.update_trade_stats({'profit': 0})  # 暂时假设盈亏为0，实际应从订单结果获取
+                    return True
+                else:
+                    logger.error("❌ 订单失败")
+                    # 更新交易统计
+                    self.update_trade_stats({'profit': -0.01})  # 假设小亏损
+                    return False
+            except Exception as api_error:
+                # 尝试提取错误码和错误信息
+                error_message = str(api_error)
+                error_code = None
+                
+                # 简单的错误码提取逻辑
+                import re
+                match = re.search(r'error_code=(\d+)', error_message)
+                if match:
+                    error_code = match.group(1)
+                
+                if error_code:
+                    self.handle_api_error(error_code, error_message)
+                else:
+                    logger.error(f"🔥 API交易异常: {error_message}")
+                
+                # 更新交易统计
+                self.update_trade_stats({'profit': -0.01})  # 假设小亏损
                 return False
                 
         except Exception as e:
             logger.error(f"🔥 交易异常: {str(e)}")
+            # 更新交易统计
+            self.update_trade_stats({'profit': -0.01})  # 假设小亏损
             return False
     
     async def run_live_trading(self, inst_id='BTC-USDT-SWAP', interval=60):
@@ -275,14 +339,25 @@ class DynamicsStrategy(BaseStrategy):
         logger.info("🚀 启动原子核互反动力学交易策略...")
         
         iteration_count = 0
+        current_interval = interval
         
         while True:
             try:
                 # 获取市场数据
                 current_price = await self.get_market_data(inst_id)
                 if not current_price:
-                    await asyncio.sleep(interval)
+                    await asyncio.sleep(current_interval)
                     continue
+                
+                # 计算市场波动率
+                volatility = 0
+                if len(self.price_history) > 10:
+                    returns = np.diff(np.log(self.price_history[-10:]))
+                    volatility = np.std(returns)
+                
+                # 计算动态交易间隔
+                current_interval = self.calculate_dynamic_interval(volatility)
+                logger.debug(f"市场波动率: {volatility:.4f}, 动态交易间隔: {current_interval}秒")
                 
                 # 计算信号强度
                 signal_strength = self.calculate_signal_strength()
@@ -304,14 +379,14 @@ class DynamicsStrategy(BaseStrategy):
                         self.reduce_param_set()
                 
                 # 等待下一个周期
-                await asyncio.sleep(interval)
+                await asyncio.sleep(current_interval)
                 
             except KeyboardInterrupt:
                 logger.info("🛑 策略手动终止")
                 break
             except Exception as e:
                 logger.error(f"⚠️ 策略执行异常: {str(e)}")
-                await asyncio.sleep(interval)
+                await asyncio.sleep(current_interval)
     
     def run_backtest(self, historical_data):
         """
@@ -475,6 +550,193 @@ class DynamicsStrategy(BaseStrategy):
         """停止交易"""
         logger.info("🛑 停止原子核互反动力学策略")
         return True
+    
+    def validate_order_params(self, order_info):
+        """验证订单参数是否符合OKX API要求
+        
+        Args:
+            order_info (dict): 订单信息
+            
+        Returns:
+            tuple: (是否有效, 错误信息)
+        """
+        inst_id = order_info['inst_id']
+        order_size = float(order_info['sz'])
+        price = float(order_info['px'])
+        
+        # 检查订单大小
+        min_size = self.order_param_config['min_order_sizes'].get(inst_id, 0.001)
+        max_size = self.order_param_config['max_order_sizes'].get(inst_id, 100)
+        
+        if order_size < min_size:
+            return False, f"订单大小小于最小限制: {min_size}"
+        if order_size > max_size:
+            return False, f"订单大小超过最大限制: {max_size}"
+        
+        # 检查价格精度
+        price_precision = self.order_param_config['price_precisions'].get(inst_id, 2)
+        if not self.is_price_valid(price, price_precision):
+            return False, f"价格精度不符合要求，需要 {price_precision} 位小数"
+        
+        return True, "订单参数验证通过"
+    
+    def is_price_valid(self, price, precision):
+        """检查价格是否符合精度要求
+        
+        Args:
+            price (float): 价格
+            precision (int): 精度（小数位数）
+            
+        Returns:
+            bool: 是否有效
+        """
+        try:
+            # 检查价格是否可以表示为指定精度的小数
+            formatted_price = f"{price:.{precision}f}"
+            return abs(float(formatted_price) - price) < 1e-9
+        except Exception:
+            return False
+    
+    def calculate_dynamic_interval(self, volatility):
+        """根据市场波动率计算动态交易间隔
+        
+        Args:
+            volatility (float): 市场波动率
+            
+        Returns:
+            int: 交易间隔（秒）
+        """
+        # 基础间隔
+        base_interval = 60
+        
+        # 根据波动率调整间隔
+        if volatility > 0.02:
+            # 高波动率，缩短间隔
+            return max(10, int(base_interval * 0.5))
+        elif volatility < 0.005:
+            # 低波动率，延长间隔
+            return min(300, int(base_interval * 2))
+        else:
+            # 正常波动率，使用基础间隔
+            return base_interval
+    
+    def handle_api_error(self, error_code, error_msg):
+        """处理API错误
+        
+        Args:
+            error_code (str): 错误码
+            error_msg (str): 错误信息
+            
+        Returns:
+            bool: 是否处理成功
+        """
+        error_handlers = {
+            '50011': self.handle_rate_limit_error,
+            '500001': self.handle_system_error,
+            '100002': self.handle_signature_error,
+            '100003': self.handle_timestamp_error,
+            '102001': self.handle_insufficient_balance,
+            '102002': self.handle_order_size_limit
+        }
+        
+        if error_code in error_handlers:
+            return error_handlers[error_code](error_msg)
+        else:
+            logger.error(f"未知API错误: {error_code} - {error_msg}")
+            return False
+    
+    def handle_rate_limit_error(self, error_msg):
+        """处理速率限制错误"""
+        logger.warning(f"API速率限制: {error_msg}")
+        # 增加等待时间
+        time.sleep(2)
+        return False
+    
+    def handle_system_error(self, error_msg):
+        """处理系统错误"""
+        logger.error(f"系统错误: {error_msg}")
+        # 等待一段时间后重试
+        time.sleep(5)
+        return False
+    
+    def handle_signature_error(self, error_msg):
+        """处理签名错误"""
+        logger.error(f"签名错误: {error_msg}")
+        # 检查API密钥
+        return False
+    
+    def handle_timestamp_error(self, error_msg):
+        """处理时间戳错误"""
+        logger.error(f"时间戳错误: {error_msg}")
+        # 同步时间
+        return False
+    
+    def handle_insufficient_balance(self, error_msg):
+        """处理余额不足错误"""
+        logger.warning(f"余额不足: {error_msg}")
+        # 减少订单大小
+        return False
+    
+    def handle_order_size_limit(self, error_msg):
+        """处理订单大小限制错误"""
+        logger.warning(f"订单大小限制: {error_msg}")
+        # 调整订单大小
+        return False
+    
+    def check_strategy_risk(self):
+        """检查策略级别的风险
+        
+        Returns:
+            tuple: (是否通过, 原因)
+        """
+        # 检查是否需要重置每日统计
+        current_time = time.time()
+        if current_time - self.trade_stats['last_reset_time'] > 86400:  # 24小时
+            self.trade_stats['daily_trades'] = 0
+            self.trade_stats['daily_loss'] = 0
+            self.trade_stats['last_reset_time'] = current_time
+        
+        # 检查最大单日亏损
+        daily_loss = self.trade_stats['daily_loss']
+        max_daily_loss = self.risk_manager.risk_params.get('max_daily_loss', 0.05)
+        if daily_loss > max_daily_loss:
+            logger.warning(f"单日亏损超过限制: {daily_loss:.2%} > {max_daily_loss:.2%}")
+            return False, "单日亏损超过限制"
+        
+        # 检查连续亏损
+        consecutive_losses = self.trade_stats['consecutive_losses']
+        max_consecutive_losses = self.risk_manager.risk_params.get('max_consecutive_losses', 5)
+        if consecutive_losses > max_consecutive_losses:
+            logger.warning(f"连续亏损次数超过限制: {consecutive_losses} > {max_consecutive_losses}")
+            return False, "连续亏损次数超过限制"
+        
+        # 检查每日交易次数
+        daily_trades = self.trade_stats['daily_trades']
+        max_daily_trades = self.risk_manager.risk_params.get('max_daily_trades', 100)
+        if daily_trades > max_daily_trades:
+            logger.warning(f"每日交易次数超过限制: {daily_trades} > {max_daily_trades}")
+            return False, "每日交易次数超过限制"
+        
+        return True, "策略风险检查通过"
+    
+    def update_trade_stats(self, trade_result):
+        """更新交易统计
+        
+        Args:
+            trade_result (dict): 交易结果
+        """
+        # 更新每日交易次数
+        self.trade_stats['daily_trades'] += 1
+        
+        # 更新盈亏
+        profit = trade_result.get('profit', 0)
+        if profit < 0:
+            self.trade_stats['daily_loss'] += abs(profit)
+            self.trade_stats['consecutive_losses'] += 1
+        else:
+            self.trade_stats['consecutive_losses'] = 0
+        
+        logger.debug(f"交易统计更新: {self.trade_stats}")
     
     def execute(self, market_data):
         """执行策略，生成交易信号

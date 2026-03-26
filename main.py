@@ -23,6 +23,9 @@ logger.info("启动交易机器人...")
 # 初始化健康检查器
 from commons.health_checker import global_health_checker
 
+# 初始化告警管理器
+from commons.alert_manager import global_alert_manager
+
 from commons.agent_registry import global_agent_registry
 from commons.event_bus import global_event_bus
 
@@ -193,6 +196,10 @@ class TradingBot:
         global_health_checker.stop()
         logger.info("健康检查器已停止")
         
+        # 停止告警管理器
+        global_alert_manager.stop()
+        logger.info("告警管理器已停止")
+        
         # 更新服务状态
         global_health_checker.update_check_status(
             'services',
@@ -258,6 +265,9 @@ class TradingBot:
         try:
             # 启动健康检查器
             global_health_checker.start()
+            
+            # 启动告警管理器
+            global_alert_manager.start()
             
             # 更新服务状态
             global_health_checker.update_check_status(
