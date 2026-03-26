@@ -24,7 +24,8 @@ from network.network_errors import NetworkError, ConnectionError, TimeoutError, 
 from network.dns_resolver import (
     custom_dns_resolve, prewarm_dns_cache, batch_dns_resolve, 
     update_dns_config, switch_dns_region, get_dns_stats, reset_dns_stats,
-    async_custom_dns_resolve, DNS_WHITELIST, CURRENT_DNS_CONFIG
+    async_custom_dns_resolve, DNS_WHITELIST, CURRENT_DNS_CONFIG,
+    validate_domain, DNS_CACHE
 )
 
 # 导入HTTP适配器模块
