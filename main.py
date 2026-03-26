@@ -26,6 +26,9 @@ from commons.health_checker import global_health_checker
 # 初始化告警管理器
 from commons.alert_manager import global_alert_manager
 
+# 初始化进程监控
+from commons.process_monitor import global_process_monitor
+
 from commons.agent_registry import global_agent_registry
 from commons.event_bus import global_event_bus
 
@@ -269,6 +272,9 @@ class TradingBot:
             # 启动告警管理器
             global_alert_manager.start()
             
+            # 启动进程监控
+            global_process_monitor.start_monitoring()
+            
             # 更新服务状态
             global_health_checker.update_check_status(
                 'services',
@@ -314,6 +320,9 @@ class TradingBot:
         finally:
             # 停止所有智能体
             self.stop_agents()
+            
+            # 停止进程监控
+            global_process_monitor.stop_monitoring()
         
         return 0
     
