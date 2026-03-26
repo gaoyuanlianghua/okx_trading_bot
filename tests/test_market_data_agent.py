@@ -31,24 +31,36 @@ class TestMarketDataAgent(unittest.TestCase):
         self.assertIsInstance(self.agent.cache_timestamp, dict)
         self.assertIsInstance(self.agent.last_market_data, dict)
     
-    def test_start(self):
+    @patch('agents.market_data_agent.MarketDataService')
+    @patch('okx_api_client.OKXAPIClient')
+    def test_start(self, mock_api_client_class, mock_market_service_class):
         """测试启动"""
         # 模拟OKXAPIClient和MarketDataService
         mock_api_client = Mock()
         mock_market_service = Mock()
+        mock_api_client_class.return_value = mock_api_client
+        mock_market_service_class.return_value = mock_market_service
         
-        with patch('okx_api_client.OKXAPIClient', return_value=mock_api_client):
-            with patch('services.market_data.market_data_service.MarketDataService', 
-                      return_value=mock_market_service):
-                self.agent.start()
-                
-                self.assertEqual(self.agent.status, "running")
-                self.assertTrue(self.agent.is_running)
-                self.assertIsNotNone(self.agent.market_data_service)
-    
-    def test_stop(self):
-        """测试停止"""
         self.agent.start()
+        
+        self.assertEqual(self.agent.status, "running")
+        self.assertTrue(self.agent.is_running)
+        self.assertIsNotNone(self.agent.market_data_service)
+    
+    @patch('agents.market_data_agent.MarketDataService')
+    @patch('okx_api_client.OKXAPIClient')
+    def test_stop(self, mock_api_client_class, mock_market_service_class):
+        """测试停止"""
+        # 先启动
+        mock_api_client = Mock()
+        mock_market_service = Mock()
+        mock_api_client_class.return_value = mock_api_client
+        mock_market_service_class.return_value = mock_market_service
+        
+        self.agent.start()
+        self.assertEqual(self.agent.status, "running")
+        
+        # 再停止
         self.agent.stop()
         self.assertEqual(self.agent.status, "stopped")
         self.assertFalse(self.agent.is_running)

@@ -10,12 +10,13 @@ from okx_websocket_client import OKXWebsocketClient
 class MarketDataService:
     """市场数据服务，封装OKX API的市场数据功能"""
     
-    def __init__(self, api_client=None):
+    def __init__(self, api_client=None, enable_websocket=True):
         """
         初始化市场数据服务
         
         Args:
             api_client (OKXAPIClient, optional): OKX API客户端实例
+            enable_websocket (bool, optional): 是否启用WebSocket，默认为True
         """
         if api_client:
             self.api_client = api_client
@@ -36,23 +37,15 @@ class MarketDataService:
                 timeout=api_config.get('timeout', 30)
             )
         
-        # 初始化WebSocket客户端
-        self.ws_client = OKXWebsocketClient(
-            api_key=self.api_client.api_key,
-            api_secret=self.api_client.api_secret,
-            passphrase=self.api_client.passphrase,
-            is_test=self.api_client.is_test
-        )
-        
-        # 添加消息处理器
-        self.ws_client.add_message_handler('tickers', self._handle_websocket_message)
-        
         # WebSocket数据缓存
         self.ws_data_cache = {}
         self.ws_subscriptions = set()
+        self.ws_client = None
+        self._enable_websocket = enable_websocket
         
-        # 启动WebSocket连接
-        self._start_websocket()
+        # 初始化WebSocket客户端（仅在启用时）
+        if enable_websocket:
+            self._init_websocket()
         
         self.data_dir = os.path.join(os.path.dirname(__file__), '../../data')
         
@@ -60,6 +53,28 @@ class MarketDataService:
         os.makedirs(self.data_dir, exist_ok=True)
         
         logger.info("市场数据服务初始化完成")
+    
+    def _init_websocket(self):
+        """初始化WebSocket客户端"""
+        try:
+            # 检查是否有运行的事件循环
+            loop = asyncio.get_running_loop()
+            
+            self.ws_client = OKXWebsocketClient(
+                api_key=self.api_client.api_key,
+                api_secret=self.api_client.api_secret,
+                passphrase=self.api_client.passphrase,
+                is_test=self.api_client.is_test
+            )
+            
+            # 添加消息处理器
+            self.ws_client.add_message_handler('tickers', self._handle_websocket_message)
+            
+            # 启动WebSocket连接
+            self._start_websocket()
+        except RuntimeError:
+            # 没有运行的事件循环，跳过WebSocket初始化
+            logger.debug("没有运行的事件循环，跳过WebSocket初始化")
     
     def _start_websocket(self):
         """启动WebSocket连接"""
@@ -122,8 +137,8 @@ class MarketDataService:
             dict: 行情数据
         """
         try:
-            # 优先从WebSocket缓存获取数据
-            if inst_id in self.ws_data_cache:
+            # 优先从WebSocket缓存获取数据（仅在WebSocket启用时）
+            if self.ws_client and inst_id in self.ws_data_cache:
                 logger.debug(f"从WebSocket缓存获取实时行情: {inst_id}，最新价格: {self.ws_data_cache[inst_id]['last']}")
                 return self.ws_data_cache[inst_id]
             
@@ -131,10 +146,14 @@ class MarketDataService:
             ticker_data = self.api_client.get_ticker(inst_id)
             if ticker_data:
                 logger.debug(f"获取实时行情成功: {inst_id}，最新价格: {ticker_data[0]['last']}")
-                # 添加到WebSocket订阅
-                if inst_id not in self.ws_subscriptions:
+                # 添加到WebSocket订阅（仅在WebSocket启用时）
+                if self.ws_client and inst_id not in self.ws_subscriptions:
                     self.ws_subscriptions.add(inst_id)
-                    asyncio.create_task(self._subscribe_websocket(inst_id))
+                    try:
+                        asyncio.create_task(self._subscribe_websocket(inst_id))
+                    except RuntimeError:
+                        # 没有运行的事件循环，跳过订阅
+                        pass
                 return ticker_data[0]
             return None
         except Exception as e:
