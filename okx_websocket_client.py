@@ -386,6 +386,7 @@ class OKXWebsocketClient:
             if channel not in self.message_handlers:
                 self.message_handlers[channel] = []
             self.message_handlers[channel].append(handler)
+            logger.info(f"添加消息处理器到频道: {channel}")
     
     def remove_message_handler(self, channel, handler):
         """

@@ -1,9 +1,11 @@
 import os
 import json
 import time
+import asyncio
 from datetime import datetime, timedelta
 from loguru import logger
 from okx_api_client import OKXAPIClient
+from okx_websocket_client import OKXWebsocketClient
 
 class MarketDataService:
     """市场数据服务，封装OKX API的市场数据功能"""
@@ -34,12 +36,80 @@ class MarketDataService:
                 timeout=api_config.get('timeout', 30)
             )
         
+        # 初始化WebSocket客户端
+        self.ws_client = OKXWebsocketClient(
+            api_key=self.api_client.api_key,
+            api_secret=self.api_client.api_secret,
+            passphrase=self.api_client.passphrase,
+            is_test=self.api_client.is_test
+        )
+        
+        # 添加消息处理器
+        self.ws_client.add_message_handler('tickers', self._handle_websocket_message)
+        
+        # WebSocket数据缓存
+        self.ws_data_cache = {}
+        self.ws_subscriptions = set()
+        
+        # 启动WebSocket连接
+        self._start_websocket()
+        
         self.data_dir = os.path.join(os.path.dirname(__file__), '../../data')
         
         # 确保数据目录存在
         os.makedirs(self.data_dir, exist_ok=True)
         
         logger.info("市场数据服务初始化完成")
+    
+    def _start_websocket(self):
+        """启动WebSocket连接"""
+        # 启动公共频道连接
+        asyncio.create_task(self._run_websocket())
+        logger.info("WebSocket连接启动中...")
+    
+    async def _run_websocket(self):
+        """运行WebSocket连接"""
+        try:
+            # 启动公共频道连接
+            public_task = asyncio.create_task(self.ws_client._public_handler())
+            
+            # 等待连接建立
+            await asyncio.sleep(2)
+            
+            # 订阅已有的交易对
+            for symbol in self.ws_subscriptions:
+                await self._subscribe_websocket(symbol)
+                
+        except Exception as e:
+            logger.error(f"WebSocket运行失败: {e}")
+    
+    async def _subscribe_websocket(self, inst_id):
+        """订阅WebSocket频道
+        
+        Args:
+            inst_id (str): 交易对
+        """
+        if self.ws_client.public_ws:
+            await self.ws_client._subscribe(self.ws_client.public_ws, 'tickers', inst_id, is_public=True)
+            logger.info(f"已订阅WebSocket行情频道: {inst_id}")
+    
+    def _handle_websocket_message(self, message):
+        """处理WebSocket消息
+        
+        Args:
+            message (dict): WebSocket消息
+        """
+        try:
+            if 'data' in message and 'arg' in message:
+                channel = message['arg']['channel']
+                inst_id = message['arg']['instId']
+                
+                if channel == 'tickers':
+                    # 更新行情数据缓存
+                    self.ws_data_cache[inst_id] = message['data'][0]
+                    logger.debug(f"WebSocket行情更新: {inst_id}，最新价格: {message['data'][0]['last']}")
+        except Exception as e:
+            logger.error(f"处理WebSocket消息失败: {e}")
     
     def get_real_time_ticker(self, inst_id):
         """
@@ -52,9 +122,19 @@ class MarketDataService:
             dict: 行情数据
         """
         try:
+            # 优先从WebSocket缓存获取数据
+            if inst_id in self.ws_data_cache:
+                logger.debug(f"从WebSocket缓存获取实时行情: {inst_id}，最新价格: {self.ws_data_cache[inst_id]['last']}")
+                return self.ws_data_cache[inst_id]
+            
+            # 否则使用REST API
             ticker_data = self.api_client.get_ticker(inst_id)
             if ticker_data:
                 logger.debug(f"获取实时行情成功: {inst_id}，最新价格: {ticker_data[0]['last']}")
+                # 添加到WebSocket订阅
+                if inst_id not in self.ws_subscriptions:
+                    self.ws_subscriptions.add(inst_id)
+                    asyncio.create_task(self._subscribe_websocket(inst_id))
                 return ticker_data[0]
             return None
         except Exception as e:
