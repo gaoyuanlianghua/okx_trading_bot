@@ -1359,3 +1359,18 @@ if __name__ == "__main__":
         
     except Exception as e:
         logger.error(f"测试失败: {e}")
+
+# 创建全局WebSocket客户端实例
+global_ws_client = None
+
+def get_global_ws_client():
+    """
+    获取全局WebSocket客户端实例
+    
+    Returns:
+        OKXWebsocketClient: 全局WebSocket客户端实例
+    """
+    global global_ws_client
+    if not global_ws_client:
+        global_ws_client = OKXWebsocketClient()
+    return global_ws_client

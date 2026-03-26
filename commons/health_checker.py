@@ -207,24 +207,48 @@ class HealthChecker:
         """
         try:
             from okx_websocket_client import OKXWebsocketClient
-            # 检查是否有活跃的WebSocket连接
-            # 这里我们不创建新的连接，只检查现有的连接状态
+            # 尝试获取全局WebSocket客户端实例
+            # 注意：这里我们不创建新的连接，只检查现有的连接状态
             # 实际的WebSocket健康检查应该由WebSocket客户端自己处理
             # 这里只是一个简单的检查
             websocket_status = 'UNKNOWN'
             websocket_message = 'WebSocket状态未检查'
+            
+            # 检查是否有全局WebSocket客户端实例
+            try:
+                from okx_websocket_client import global_ws_client
+                if global_ws_client:
+                    # 检查WebSocket连接状态
+                    if hasattr(global_ws_client, 'public_connected') and global_ws_client.public_connected:
+                        websocket_status = 'PASS'
+                        websocket_message = 'WebSocket连接正常'
+                    else:
+                        websocket_status = 'FAIL'
+                        websocket_message = 'WebSocket未连接'
+                else:
+                    # 尝试获取全局WebSocket客户端实例
+                    from okx_websocket_client import get_global_ws_client
+                    ws_client = get_global_ws_client()
+                    if hasattr(ws_client, 'public_connected') and ws_client.public_connected:
+                        websocket_status = 'PASS'
+                        websocket_message = 'WebSocket连接正常'
+                    else:
+                        websocket_status = 'FAIL'
+                        websocket_message = 'WebSocket未连接'
+            except ImportError:
+                # 全局WebSocket客户端不存在，保持UNKNOWN状态
+                pass
         except Exception as e:
             websocket_status = 'FAIL'
             websocket_message = f'WebSocket检查失败: {str(e)}'
         
-        # 如果WebSocket状态仍然是UNKNOWN，保持不变
-        if self.health_status['checks']['websocket']['status'] == 'UNKNOWN':
-            self.health_status['checks']['websocket'] = {
-                'status': websocket_status,
-                'message': websocket_message,
-                'connected_channels': [],
-                'last_message_time': 0.0
-            }
+        # 更新WebSocket状态
+        self.health_status['checks']['websocket'] = {
+            'status': websocket_status,
+            'message': websocket_message,
+            'connected_channels': [],
+            'last_message_time': 0.0
+        }
     
     def _check_system_health(self):
         """
