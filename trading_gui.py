@@ -615,6 +615,9 @@ class TradingGUI(QMainWindow):
         # GUI状态标志位，用于线程安全检查
         self.is_closed = False
         
+        # 日志消息列表，存储(时间戳, 消息)元组
+        self.log_messages = []
+        
         # Initialize timer for data updates
         self.timer = QTimer()
         self.timer.setInterval(5000)  # 5秒更新一次
@@ -2375,7 +2378,18 @@ class TradingGUI(QMainWindow):
     def on_log_update(self, message):
         """处理日志更新信号"""
         if not self.is_closed:
-            self.log_text.append(message)
+            import time
+            # 添加带有时间戳的日志消息
+            current_time = time.time()
+            self.log_messages.append((current_time, message))
+            
+            # 过滤掉超过一分钟的消息
+            one_minute_ago = current_time - 60
+            self.log_messages = [(timestamp, msg) for timestamp, msg in self.log_messages if timestamp >= one_minute_ago]
+            
+            # 显示最近一分钟的日志
+            log_text = "\n".join([msg for _, msg in self.log_messages])
+            self.log_text.setPlainText(log_text)
     
     def on_market_data_updated(self, data):
         """处理市场数据更新事件"""
