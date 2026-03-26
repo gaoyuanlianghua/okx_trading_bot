@@ -136,11 +136,95 @@ class HealthChecker:
         # 执行自定义健康检查钩子
         self._run_custom_checks()
         
+        # 检查网络连接状态
+        self._check_network_status()
+        
+        # 检查API状态
+        self._check_api_status()
+        
+        # 检查WebSocket状态
+        self._check_websocket_status()
+        
         # 更新整体健康状态
         self._update_overall_status()
         
         # 记录健康状态
         self._log_health_status()
+    
+    def _check_network_status(self):
+        """
+        检查网络连接状态
+        """
+        try:
+            import socket
+            # 尝试连接到OKX服务器
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5)
+            # 尝试连接到OKX API服务器
+            s.connect(('www.okx.com', 443))
+            s.close()
+            network_status = 'PASS'
+            network_message = '网络连接正常'
+        except Exception as e:
+            network_status = 'FAIL'
+            network_message = f'网络连接失败: {str(e)}'
+        
+        self.health_status['checks']['network'] = {
+            'status': network_status,
+            'message': network_message,
+            'latency': 0.0
+        }
+    
+    def _check_api_status(self):
+        """
+        检查API状态
+        """
+        try:
+            from okx_api_client import OKXAPIClient
+            api_client = OKXAPIClient()
+            # 尝试获取服务器时间来验证API连接
+            server_time = api_client.get_server_time()
+            if server_time:
+                api_status = 'PASS'
+                api_message = 'API连接正常'
+            else:
+                api_status = 'FAIL'
+                api_message = 'API连接失败'
+        except Exception as e:
+            api_status = 'FAIL'
+            api_message = f'API连接失败: {str(e)}'
+        
+        self.health_status['checks']['api'] = {
+            'status': api_status,
+            'message': api_message,
+            'latency': 0.0,
+            'last_response_time': time.time()
+        }
+    
+    def _check_websocket_status(self):
+        """
+        检查WebSocket状态
+        """
+        try:
+            from okx_websocket_client import OKXWebsocketClient
+            # 检查是否有活跃的WebSocket连接
+            # 这里我们不创建新的连接，只检查现有的连接状态
+            # 实际的WebSocket健康检查应该由WebSocket客户端自己处理
+            # 这里只是一个简单的检查
+            websocket_status = 'UNKNOWN'
+            websocket_message = 'WebSocket状态未检查'
+        except Exception as e:
+            websocket_status = 'FAIL'
+            websocket_message = f'WebSocket检查失败: {str(e)}'
+        
+        # 如果WebSocket状态仍然是UNKNOWN，保持不变
+        if self.health_status['checks']['websocket']['status'] == 'UNKNOWN':
+            self.health_status['checks']['websocket'] = {
+                'status': websocket_status,
+                'message': websocket_message,
+                'connected_channels': [],
+                'last_message_time': 0.0
+            }
     
     def _check_system_health(self):
         """
