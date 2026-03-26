@@ -253,3 +253,75 @@ class MarketDataAgent(BaseAgent):
                 incremental_data[key] = value
         
         return incremental_data
+    
+    def get_network_status(self):
+        """获取网络状态
+        
+        Returns:
+            dict: 网络状态信息
+        """
+        try:
+            # 导入网络监控模块
+            from network.network_monitor import global_network_monitor
+            
+            # 获取性能报告
+            performance_report = global_network_monitor.get_performance_report()
+            
+            # 构建网络状态信息
+            network_status = {
+                'connection_status': True,  # 假设连接正常
+                'current_ip': '127.0.0.1',  # 占位符，实际应该从配置或网络模块获取
+                'response_times': {
+                    '127.0.0.1': performance_report.get('avg_response_time', 0) * 1000  # 转换为毫秒
+                },
+                'dns_stats': {
+                    'success_count': 1,  # 占位符
+                    'failure_count': 0  # 占位符
+                }
+            }
+            
+            return network_status
+        except Exception as e:
+            logger.error(f"获取网络状态失败: {e}")
+            return {
+                'connection_status': False,
+                'current_ip': '未检测',
+                'response_times': {},
+                'dns_stats': {
+                    'success_count': 0,
+                    'failure_count': 1
+                }
+            }
+    
+    def get_market_data(self, symbol):
+        """获取指定交易对的市场数据
+        
+        Args:
+            symbol (str): 交易对
+            
+        Returns:
+            dict: 市场数据
+        """
+        try:
+            if not self.market_data_service:
+                return None
+            
+            # 获取实时行情数据
+            ticker = self.market_data_service.get_real_time_ticker(symbol)
+            if ticker:
+                # 构建市场数据
+                market_data = {
+                    'symbol': symbol,
+                    'price': float(ticker.get('last', 0)),
+                    'open': float(ticker.get('open24h', 0)),
+                    'high': float(ticker.get('high24h', 0)),
+                    'low': float(ticker.get('low24h', 0)),
+                    'volume': float(ticker.get('vol24h', 0)),
+                    'change': float(ticker.get('change24h', 0)),
+                    'change_pct': float(ticker.get('change24hPct', 0))
+                }
+                return market_data
+            return None
+        except Exception as e:
+            logger.error(f"获取市场数据失败: {symbol}, 错误: {e}")
+            return None

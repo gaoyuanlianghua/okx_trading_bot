@@ -417,11 +417,19 @@ class TradingBot:
 # trading_bot.register_strategy(MyCustomStrategy)
 
 if __name__ == "__main__":
-    # 创建交易机器人实例
-    trading_bot = TradingBot()
-    
-    # 启动交易机器人
-    exit_code = trading_bot.start(use_gui=True)
-    
-    logger.info(f"交易机器人退出，退出码: {exit_code}")
-    sys.exit(exit_code)
+    try:
+        # 创建交易机器人实例
+        logger.info("创建交易机器人实例...")
+        trading_bot = TradingBot()
+        
+        # 启动交易机器人
+        logger.info("启动交易机器人...")
+        exit_code = trading_bot.start(use_gui=True)
+        
+        logger.info(f"交易机器人退出，退出码: {exit_code}")
+        sys.exit(exit_code)
+    except Exception as e:
+        logger.error(f"交易机器人启动失败: {e}")
+        import traceback
+        logger.error(f"异常堆栈: {traceback.format_exc()}")
+        sys.exit(1)

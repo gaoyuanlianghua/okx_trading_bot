@@ -617,6 +617,8 @@ class TradingGUI(QMainWindow):
         
         # Initialize timer for data updates
         self.timer = QTimer()
+        self.timer.setInterval(5000)  # 5秒更新一次
+        self.timer.timeout.connect(self.update_all_data)
         
         # Load configuration
         self.config = config
@@ -637,6 +639,9 @@ class TradingGUI(QMainWindow):
         
         # 初始化网络状态监控
         self.init_network_monitoring()
+        
+        # 启动数据更新定时器
+        self.timer.start()
         
         # 注意：智能体系统交互和服务初始化将在用户点击"加载功能"按钮后进行
     
@@ -1890,13 +1895,182 @@ class TradingGUI(QMainWindow):
     
     def update_market_data(self):
         """更新市场数据"""
-        # 这里可以添加更新市场数据的逻辑
-        pass
+        try:
+            # 获取当前选中的交易对
+            symbol = self.symbol_combo.currentText()
+            
+            # 从交易机器人获取市场数据智能体
+            market_data_agent = self.trading_bot.get_agent("market_data_agent")
+            if not market_data_agent:
+                self.log("市场数据智能体未初始化")
+                return
+            
+            # 确保交易对已订阅
+            if symbol not in market_data_agent.get_subscribed_symbols():
+                market_data_agent.subscribe_symbol(symbol)
+            
+            # 直接获取市场数据
+            market_data = market_data_agent.get_market_data(symbol)
+            if market_data:
+                # 更新行情数据
+                self.ticker_price.setText(f"{market_data['price']:.2f}")
+                
+                # 计算涨跌幅
+                change = market_data['change']
+                change_pct = market_data['change_pct'] * 100
+                
+                # 设置涨跌颜色
+                if change >= 0:
+                    self.ticker_change.setStyleSheet("color: #10b981; font-weight: bold;")
+                    self.ticker_change_pct.setStyleSheet("color: #10b981; font-weight: bold;")
+                else:
+                    self.ticker_change.setStyleSheet("color: #ef4444; font-weight: bold;")
+                    self.ticker_change_pct.setStyleSheet("color: #ef4444; font-weight: bold;")
+                
+                self.ticker_change.setText(f"{change:.2f}")
+                self.ticker_change_pct.setText(f"{change_pct:.2f}%")
+                
+                # 更新最后更新时间
+                from datetime import datetime
+                current_time = datetime.now().strftime("%H:%M:%S")
+                self.last_update_time.setText(f"更新时间: {current_time}")
+                
+                self.log(f"更新市场数据成功: {symbol}")
+            else:
+                self.log("获取市场数据失败")
+        except Exception as e:
+            self.log(f"更新市场数据失败: {e}")
     
     def update_all_data(self):
         """更新所有数据"""
-        # 这里可以添加更新所有数据的逻辑
-        pass
+        try:
+            # 更新市场数据
+            self.update_market_data()
+            
+            # 更新K线图
+            self.update_chart()
+            
+            # 更新订单信息
+            self.update_orders()
+            
+            # 更新账户信息
+            self.update_account_info()
+            
+            # 更新网络状态
+            self.update_network_status()
+            
+            self.log("更新所有数据完成")
+        except Exception as e:
+            self.log(f"更新所有数据失败: {e}")
+    
+    def update_orders(self):
+        """更新订单信息"""
+        try:
+            # 从交易机器人获取订单管理智能体
+            order_agent = self.trading_bot.get_agent("order_agent")
+            if not order_agent:
+                self.log("订单管理智能体未初始化")
+                return
+            
+            # 获取当前选中的交易对
+            symbol = self.symbol_combo.currentText()
+            
+            # 获取订单信息
+            orders = order_agent.get_orders(symbol)
+            if orders:
+                # 清空订单表格
+                self.orders_table.setRowCount(0)
+                
+                # 填充订单数据
+                for order in orders:
+                    row_position = self.orders_table.rowCount()
+                    self.orders_table.insertRow(row_position)
+                    
+                    # 填充订单信息
+                    self.orders_table.setItem(row_position, 0, QTableWidgetItem(order.get('ordId', '')))
+                    self.orders_table.setItem(row_position, 1, QTableWidgetItem(order.get('instId', '')))
+                    self.orders_table.setItem(row_position, 2, QTableWidgetItem(order.get('side', '')))
+                    self.orders_table.setItem(row_position, 3, QTableWidgetItem(order.get('ordType', '')))
+                    self.orders_table.setItem(row_position, 4, QTableWidgetItem(str(order.get('px', 0))))
+                    self.orders_table.setItem(row_position, 5, QTableWidgetItem(str(order.get('sz', 0))))
+                    self.orders_table.setItem(row_position, 6, QTableWidgetItem(order.get('state', '')))
+                    self.orders_table.setItem(row_position, 7, QTableWidgetItem(order.get('posSide', '')))
+                    self.orders_table.setItem(row_position, 8, QTableWidgetItem(order.get('tdMode', '')))
+                    self.orders_table.setItem(row_position, 9, QTableWidgetItem(order.get('clOrdId', '')))
+                
+                self.log(f"更新订单信息成功，共 {len(orders)} 个订单")
+            else:
+                self.log("获取订单信息失败")
+        except Exception as e:
+            self.log(f"更新订单信息失败: {e}")
+    
+    def update_account_info(self):
+        """更新账户信息"""
+        try:
+            # 从交易机器人获取风险控制智能体
+            risk_agent = self.trading_bot.get_agent("risk_management_agent")
+            if not risk_agent:
+                self.log("风险控制智能体未初始化")
+                return
+            
+            # 获取账户余额
+            balance = risk_agent.get_account_balance()
+            if balance:
+                # 更新余额信息
+                self.available_balance.setText(f"{balance.get('availBal', 0):.2f}")
+                self.total_balance.setText(f"{balance.get('totalEq', 0):.2f}")
+                
+                # 获取持仓信息
+                positions = risk_agent.get_positions()
+                if positions:
+                    # 计算未实现盈亏
+                    unrealized_pnl = sum(float(pos.get('upl', 0)) for pos in positions)
+                    self.unrealized_pnl.setText(f"{unrealized_pnl:.2f}")
+                
+                self.log("更新账户信息成功")
+            else:
+                self.log("获取账户信息失败")
+        except Exception as e:
+            self.log(f"更新账户信息失败: {e}")
+    
+    def update_network_status(self):
+        """更新网络状态"""
+        try:
+            # 从交易机器人获取市场数据智能体
+            market_data_agent = self.trading_bot.get_agent("market_data_agent")
+            if not market_data_agent:
+                self.log("市场数据智能体未初始化")
+                return
+            
+            # 获取网络状态
+            network_status = market_data_agent.get_network_status()
+            if network_status:
+                # 更新网络状态信息
+                self.current_ip_label.setText(network_status.get('current_ip', '未检测'))
+                self.response_time_label.setText(f"{network_status.get('response_times', {}).get(network_status.get('current_ip'), 0)} ms")
+                
+                # 更新连接状态
+                if network_status.get('connection_status', False):
+                    self.connection_status_label.setText("正常")
+                    self.connection_status_label.setStyleSheet("color: green; font-weight: bold;")
+                else:
+                    self.connection_status_label.setText("异常")
+                    self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
+                
+                # 更新DNS状态
+                dns_stats = network_status.get('dns_stats', {})
+                if dns_stats.get('success_count', 0) > 0:
+                    self.dns_status_label.setText("正常")
+                    self.dns_status_label.setStyleSheet("color: green; font-weight: bold;")
+                else:
+                    self.dns_status_label.setText("异常")
+                    self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
+                
+                self.log("更新网络状态成功")
+            else:
+                self.log("获取网络状态失败")
+        except Exception as e:
+            self.log(f"更新网络状态失败: {e}")
     
     def update_chart(self):
         """更新K线图数据"""
@@ -2193,11 +2367,48 @@ class TradingGUI(QMainWindow):
         
         # 添加日志处理器
         logger.add(gui_log_handler, format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}")
+        
+        # 订阅市场数据更新事件
+        from commons.event_bus import global_event_bus
+        global_event_bus.subscribe('market_data_updated', self.on_market_data_updated)
     
     def on_log_update(self, message):
         """处理日志更新信号"""
         if not self.is_closed:
             self.log_text.append(message)
+    
+    def on_market_data_updated(self, data):
+        """处理市场数据更新事件"""
+        try:
+            symbol = data.get('symbol')
+            market_data = data.get('data')
+            
+            # 只有当更新的交易对是当前选中的交易对时才更新界面
+            if symbol == self.symbol_combo.currentText() and market_data:
+                # 更新行情数据
+                self.ticker_price.setText(f"{market_data['price']:.2f}")
+                
+                # 计算涨跌幅
+                change = market_data['change']
+                change_pct = market_data['change_pct'] * 100
+                
+                # 设置涨跌颜色
+                if change >= 0:
+                    self.ticker_change.setStyleSheet("color: #10b981; font-weight: bold;")
+                    self.ticker_change_pct.setStyleSheet("color: #10b981; font-weight: bold;")
+                else:
+                    self.ticker_change.setStyleSheet("color: #ef4444; font-weight: bold;")
+                    self.ticker_change_pct.setStyleSheet("color: #ef4444; font-weight: bold;")
+                
+                self.ticker_change.setText(f"{change:.2f}")
+                self.ticker_change_pct.setText(f"{change_pct:.2f}%")
+                
+                # 更新最后更新时间
+                from datetime import datetime
+                current_time = datetime.now().strftime("%H:%M:%S")
+                self.last_update_time.setText(f"更新时间: {current_time}")
+        except Exception as e:
+            self.log(f"处理市场数据更新事件失败: {e}")
     
     def log(self, message):
         """添加日志消息"""
@@ -2211,8 +2422,24 @@ class TradingGUI(QMainWindow):
     
     def init_network_monitoring(self):
         """初始化网络监控"""
-        # 这里可以添加初始化网络监控的逻辑
-        pass
+        try:
+            # 从交易机器人获取市场数据智能体
+            market_data_agent = self.trading_bot.get_agent("market_data_agent")
+            if market_data_agent:
+                # 订阅默认交易对
+                market_data_agent.subscribe_symbol(self.symbol_combo.currentText())
+                
+                # 立即更新一次网络状态
+                self.update_network_status()
+                
+                # 立即更新一次市场数据
+                self.update_market_data()
+                
+                self.log("网络状态监控初始化完成")
+            else:
+                self.log("市场数据智能体未初始化，网络状态监控暂时不可用")
+        except Exception as e:
+            self.log(f"初始化网络状态监控失败: {e}")
     
     def on_font_size_change(self, index):
         """处理字体大小变化"""

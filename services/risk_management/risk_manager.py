@@ -131,7 +131,7 @@ class RiskManager:
             logger.debug(f"获取待成交订单请求: {inst_id}")
             
             # 调用API客户端获取订单
-            result = self.api_client.get_orders(inst_id, state='live')
+            result = self.api_client.get_pending_orders(inst_id, state='live')
             if result:
                 logger.info(f"获取待成交订单成功，共 {len(result)} 个订单")
                 return result
