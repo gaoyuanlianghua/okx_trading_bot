@@ -37,7 +37,19 @@ jobs:
         Get-ChildItem
         
         # Run pytest with auto-discovery (finds all test files)
-        pytest -v
+        $testOutput = pytest -v --tb=short 2>&1
+        $testExitCode = $LASTEXITCODE
+        Write-Host $testOutput
+        Write-Host "Pytest exit code: $testExitCode"
+        
+        # Check if tests passed by looking for "passed" in the output
+        if ($testOutput -match "passed") {
+          Write-Host "Tests passed, proceeding with build"
+          exit 0
+        } else {
+          Write-Host "Tests failed, exiting with code $testExitCode"
+          exit $testExitCode
+        }
 
     - name: Build application
       run: |
