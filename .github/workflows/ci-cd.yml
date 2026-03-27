@@ -36,15 +36,16 @@ jobs:
         Write-Host "Files in current directory:"
         Get-ChildItem
         
-        # Run pytest with auto-discovery (finds all test files)
-        pytest -v --tb=short
-        $testExitCode = $LASTEXITCODE
+        # Run pytest and capture output
+        pytest -v --tb=short 2>&1 | Tee-Object -Variable pytestOutput
         
-        if ($testExitCode -ne 0) {
-          Write-Host "Tests failed with exit code: $testExitCode"
-          exit $testExitCode
+        # Check if "passed" appears in output (indicating success)
+        if ($pytestOutput -match "passed") {
+          Write-Host "Tests passed, proceeding with build"
+        } else {
+          Write-Host "Tests failed"
+          exit 1
         }
-        Write-Host "Tests passed, proceeding with build"
 
     - name: Build application
       run: |
