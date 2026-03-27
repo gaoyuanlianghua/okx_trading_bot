@@ -56,11 +56,12 @@ jobs:
         pip list
         
         Write-Host "Running PyInstaller..."
-        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
+        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v 2>&1 | Tee-Object -Variable output
         $buildExitCode = $LASTEXITCODE
+        Write-Host "PyInstaller output:"
+        Write-Host $output
         Write-Host "PyInstaller exit code: $buildExitCode"
         
-        # Check for actual output before checking exit code
         if (!(Test-Path "dist")) {
           Write-Host "ERROR: Dist directory was not created by PyInstaller!"
           if (Test-Path "build") {

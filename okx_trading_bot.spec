@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['main.py'],
-             pathex=['.'],
+             pathex=['.', 'agents', 'services', 'strategies', 'commons'],  # Add module paths
              binaries=[],
              datas=[],
              hiddenimports=[
@@ -48,7 +48,7 @@ a = Analysis(['main.py'],
                  'scipy',
                  'mplfinance'
              ],
-             hookspath=['.'],
+             hookspath=[],  # Remove this or verify hook files exist
              runtime_hooks=[],
              excludes=[],
              win_no_prefer_redirects=False,
