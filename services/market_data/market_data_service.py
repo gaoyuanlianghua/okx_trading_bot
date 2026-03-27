@@ -57,9 +57,6 @@ class MarketDataService:
     def _init_websocket(self):
         """初始化WebSocket客户端"""
         try:
-            # 检查是否有运行的事件循环
-            loop = asyncio.get_running_loop()
-            
             self.ws_client = OKXWebsocketClient(
                 api_key=self.api_client.api_key,
                 api_secret=self.api_client.api_secret,
@@ -72,14 +69,13 @@ class MarketDataService:
             
             # 启动WebSocket连接
             self._start_websocket()
-        except RuntimeError:
-            # 没有运行的事件循环，跳过WebSocket初始化
-            logger.debug("没有运行的事件循环，跳过WebSocket初始化")
+        except Exception as e:
+            logger.error(f"初始化WebSocket客户端失败: {e}")
     
     def _start_websocket(self):
         """启动WebSocket连接"""
-        # 启动公共频道连接
-        asyncio.create_task(self._run_websocket())
+        # 使用WebSocket客户端的start方法启动连接
+        self.ws_client.start()
         logger.info("WebSocket连接启动中...")
     
     async def _run_websocket(self):

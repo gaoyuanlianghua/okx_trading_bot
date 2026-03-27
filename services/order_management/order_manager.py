@@ -257,6 +257,19 @@ class OrderManager:
             logger.error(f"获取订单历史记录失败: {e}")
             return []
     
+    def get_orders(self, inst_id=None):
+        """
+        获取订单信息
+        
+        Args:
+            inst_id (str, optional): 交易对
+        
+        Returns:
+            list: 订单列表
+        """
+        # 调用get_pending_orders获取未成交订单
+        return self.get_pending_orders(inst_id)
+    
     def get_fills(self, ord_id=None, inst_id=None, limit=100):
         """
         获取成交明细

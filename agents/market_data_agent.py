@@ -277,7 +277,8 @@ class MarketDataAgent(BaseAgent):
                 'dns_stats': {
                     'success_count': 1,  # 占位符
                     'failure_count': 0  # 占位符
-                }
+                },
+                'websocket_status': self.get_websocket_status()
             }
             
             return network_status
@@ -290,5 +291,20 @@ class MarketDataAgent(BaseAgent):
                 'dns_stats': {
                     'success_count': 0,
                     'failure_count': 1
-                }
+                },
+                'websocket_status': False
             }
+    
+    def get_websocket_status(self):
+        """获取WebSocket连接状态
+        
+        Returns:
+            bool: WebSocket连接状态
+        """
+        try:
+            if self.market_data_service and self.market_data_service.ws_client:
+                return self.market_data_service.ws_client.is_connected('public')
+            return False
+        except Exception as e:
+            logger.error(f"获取WebSocket状态失败: {e}")
+            return False

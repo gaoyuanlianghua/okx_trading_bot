@@ -2069,6 +2069,15 @@ class TradingGUI(QMainWindow):
                     self.dns_status_label.setText("异常")
                     self.dns_status_label.setStyleSheet("color: red; font-weight: bold;")
                 
+                # 更新WebSocket状态
+                websocket_status = network_status.get('websocket_status', False)
+                if websocket_status:
+                    self.ws_status_label.setText("已连接")
+                    self.ws_status_label.setStyleSheet("color: green; font-weight: bold;")
+                else:
+                    self.ws_status_label.setText("未连接")
+                    self.ws_status_label.setStyleSheet("color: red; font-weight: bold;")
+                
                 self.log("更新网络状态成功")
             else:
                 self.log("获取网络状态失败")
@@ -2153,7 +2162,8 @@ class TradingGUI(QMainWindow):
                 dates = pd.date_range(end=pd.Timestamp.now(), periods=100, freq=timeframe)
                 np.random.seed(42)
                 close = 50000 + np.cumsum(np.random.randn(100) * 100)
-                open_ = close.shift(1).fillna(50000)
+                # 使用NumPy方法实现shift功能
+                open_ = np.concatenate([[50000], close[:-1]])
                 high = np.maximum(open_, close) + np.random.randn(100) * 50
                 low = np.minimum(open_, close) - np.random.randn(100) * 50
                 volume = np.random.randint(100, 1000, 100)
