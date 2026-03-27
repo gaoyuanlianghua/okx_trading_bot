@@ -48,9 +48,9 @@ a = Analysis(['main.py'],
                  'scipy',
                  'mplfinance'
              ],
-             hookspath=[],  # Remove this or verify hook files exist
+             hookspath=[],
              runtime_hooks=[],
-             excludes=[],
+             excludes=['matplotlib', 'tcl', 'tk'],  # Exclude unnecessary packages
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -68,7 +68,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
-          console=False,
+          console=True,  # Change to True for better error visibility
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,

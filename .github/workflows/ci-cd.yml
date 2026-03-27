@@ -67,10 +67,8 @@ jobs:
         pip list
         
         Write-Host "Running PyInstaller..."
-        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v 2>&1 | Tee-Object -Variable output
+        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
         $buildExitCode = $LASTEXITCODE
-        Write-Host "PyInstaller output:"
-        Write-Host $output
         Write-Host "PyInstaller exit code: $buildExitCode"
         
         if (!(Test-Path "dist")) {
