@@ -31,11 +31,26 @@ class MarketDataService:
             self.api_client = api_client
         else:
             # 从配置文件加载API配置
-            config_path = os.path.join(os.path.dirname(__file__), '../../config/okx_config.json')
-            with open(config_path, 'r') as f:
-                config = json.load(f)
+            api_config = {}
+            try:
+                from commons.config_manager import global_config_manager
+                api_config = global_config_manager.get("api", {})
+                logger.info("从配置管理器加载API配置成功")
+            except ImportError as e:
+                logger.warning(f"无法导入配置管理器，将使用本地配置加载: {e}")
+                # 回退到本地配置文件加载
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                config_path = os.path.join(project_root, 'config', 'okx_config.json')
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                    api_config = config.get('api', {})
+                    logger.info(f"从配置文件加载配置成功: {config_path}")
+                except Exception as ex:
+                    logger.warning(f"回退配置文件加载也失败: {ex}")
+            except Exception as e:
+                logger.error(f"从配置管理器加载配置失败: {e}")
             
-            api_config = config.get('api', {})
             self.api_client = OKXAPIClient(
                 api_key=api_config.get('api_key'),
                 api_secret=api_config.get('api_secret'),
