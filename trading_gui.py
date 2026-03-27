@@ -519,7 +519,7 @@ class ConfigFileHandler(FileSystemEventHandler):
     
     def check_content_changed(self):
         """检查配置文件内容是否变化"""
-        config_path = "d:\Projects\okx_trading_bot\config\okx_config.json"
+        config_path = r"d:\Projects\okx_trading_bot\config\okx_config.json"
         current_content = self.get_file_content(config_path)
         
         # 如果获取内容失败，返回False，不重新加载
@@ -544,7 +544,7 @@ class ConfigFileHandler(FileSystemEventHandler):
             return
         
         # Check if the modified file is our configuration file
-        config_path = "d:\Projects\okx_trading_bot\config\okx_config.json"
+        config_path = r"d:\Projects\okx_trading_bot\config\okx_config.json"
         if event.src_path == config_path:
             current_time = time.time()
             

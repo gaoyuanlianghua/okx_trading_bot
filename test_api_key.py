@@ -66,11 +66,10 @@ def test_api_key():
         if test1_passed or test2_passed:
             # 如果认证相关测试通过，说明API密钥有效
             logger.success("🎉 API密钥测试成功！密钥有效")
-            return True
         elif test3_passed:
             # 如果只有公共API测试通过，说明网络连接正常，但API密钥可能存在问题
             logger.warning("⚠️  网络连接正常，但API密钥认证可能存在问题")
-            return False
+            raise Exception("API密钥认证可能存在问题")
         else:
             # 所有测试都失败，可能是网络问题或API密钥问题
             logger.error("❌ API密钥测试失败！")
@@ -78,18 +77,18 @@ def test_api_key():
             logger.error("   1. 网络连接问题")
             logger.error("   2. API密钥无效")
             logger.error("   3. API密钥权限不足")
-            return False
+            raise Exception("API密钥测试失败")
         
     except Exception as e:
         logger.error(f"测试过程中发生错误: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 
 if __name__ == "__main__":
-    success = test_api_key()
-    if success:
+    try:
+        test_api_key()
         logger.success("\n🎉 API密钥测试成功！密钥有效。")
-    else:
+    except Exception as e:
         logger.error("\n❌ API密钥测试失败！密钥可能无效或权限不足。")

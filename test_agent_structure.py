@@ -85,15 +85,13 @@ def test_agent_structure():
         logger.info("智能体系统架构设计合理，各组件能够正常初始化和工作")
         logger.info("策略扩展端口已预留，支持动态加载和执行多种交易策略")
         
-        return True
-        
     except ImportError as e:
         logger.error(f"导入错误: {e}")
         logger.error("请检查模块路径和依赖")
-        return False
+        raise
     except Exception as e:
         logger.error(f"测试失败: {e}", exc_info=True)
-        return False
+        raise
 
 # 测试策略扩展端口
 def test_strategy_extension():
@@ -161,11 +159,9 @@ def test_strategy_extension():
         logger.info("策略扩展机制正常工作，支持自定义策略的创建、配置和执行")
         logger.info("策略可以通过继承BaseStrategy类轻松扩展，实现各种交易逻辑")
         
-        return True
-        
     except Exception as e:
         logger.error(f"策略扩展测试失败: {e}", exc_info=True)
-        return False
+        raise
 
 if __name__ == "__main__":
     logger.info("=" * 50)
