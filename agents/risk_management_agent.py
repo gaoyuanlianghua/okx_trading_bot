@@ -1,4 +1,5 @@
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Risk")
 from agents.base_agent import BaseAgent
 from services.risk_management.risk_manager import RiskManager
 import time

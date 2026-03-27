@@ -754,8 +754,6 @@ class TradingGUI(QMainWindow):
     
     def add_strategy(self):
         """Add a new strategy"""
-        from PyQt5.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout, QMessageBox
-        
         # Create dialog
         dialog = QDialog(self)
         dialog.setWindowTitle("添加策略")
@@ -1420,7 +1418,7 @@ class TradingGUI(QMainWindow):
         
         # Strategy selection
         self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems(["passivbot_grid", "passivbot_trailing", "原子核互反动力学策略"])
+        self.strategy_combo.addItems(["passivbot_grid", "passivbot_trailing", "DynamicsStrategy"])
         strategy_form.addRow("策略:", self.strategy_combo)
         
         # Mode selection
@@ -2395,9 +2393,17 @@ class TradingGUI(QMainWindow):
             one_minute_ago = current_time - 60
             self.log_messages = [(timestamp, msg) for timestamp, msg in self.log_messages if timestamp >= one_minute_ago]
             
-            # 显示最近一分钟的日志
-            log_text = "\n".join([msg for _, msg in self.log_messages])
-            self.log_text.setPlainText(log_text)
+            # 只显示最近一次的变化和最近一分钟的变化
+            if self.log_messages:
+                # 获取最近一次的变化
+                latest_message = self.log_messages[-1][1]
+                
+                # 显示最近一次的变化和最近一分钟的变化
+                log_text = f"最近一次变化:\n{latest_message}\n\n最近一分钟的变化:\n"
+                log_text += "\n".join([msg for _, msg in self.log_messages])
+                self.log_text.setPlainText(log_text)
+            else:
+                self.log_text.setPlainText("")
     
     def on_market_data_updated(self, data):
         """处理市场数据更新事件"""

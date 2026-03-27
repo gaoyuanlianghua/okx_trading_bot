@@ -1,4 +1,5 @@
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="MarketData")
 from agents.base_agent import BaseAgent
 from services.market_data.market_data_service import MarketDataService
 import time
@@ -103,6 +104,10 @@ class MarketDataAgent(BaseAgent):
             # 获取实时行情数据
             ticker = self.market_data_service.get_real_time_ticker(symbol)
             if ticker:
+                # 处理返回值可能是列表的情况
+                if isinstance(ticker, list) and len(ticker) > 0:
+                    ticker = ticker[0]
+                
                 # 构建市场数据
                 market_data = {
                     'symbol': symbol,

@@ -1,4 +1,5 @@
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Strategy")
 
 class BaseStrategy:
     """策略基类，所有交易策略的父类"""

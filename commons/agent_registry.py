@@ -1,5 +1,6 @@
 import threading
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Agent")
 
 class AgentRegistry:
     """智能体注册表，用于管理所有智能体"""

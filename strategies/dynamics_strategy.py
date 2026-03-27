@@ -1,7 +1,8 @@
 import asyncio
 import time
 import numpy as np
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Strategy")
 from strategies.base_strategy import BaseStrategy
 
 # 尝试导入scipy，如不可用则使用替代实现
@@ -287,9 +288,9 @@ class DynamicsStrategy(BaseStrategy):
                 order_id = self.api_client.place_order(
                     inst_id=inst_id,
                     side=side,
-                    order_type="limit",
-                    price=current_price,
-                    amount=order_size
+                    ord_type="limit",
+                    px=str(current_price),
+                    sz=str(order_size)
                 )
                 
                 if order_id:

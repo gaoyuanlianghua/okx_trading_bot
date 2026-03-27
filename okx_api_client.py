@@ -793,12 +793,20 @@ class OKXAPIClient:
         if body:
             api_logger.debug(f"请求体: {body}")
         
+        # 记录请求开始时间
+        start_time = time.time()
+        success = False
+        response_size = 0
+        
         try:
             # 发送请求
             if method == "GET":
                 response = self.session.get(url, headers=headers)
             else:
                 response = self.session.post(url, headers=headers, data=body)
+            
+            # 记录响应大小
+            response_size = len(response.content) if response.content else 0
             
             # 解析响应
             response_data = response.json()
@@ -808,6 +816,7 @@ class OKXAPIClient:
             if not self._validate_response(response_data, method, url):
                 return None
             
+            success = True
             return response_data
         except requests.exceptions.RequestException as e:
             api_logger.error(f"HTTP请求失败: {e}")
@@ -815,6 +824,20 @@ class OKXAPIClient:
         except json.JSONDecodeError as e:
             api_logger.error(f"解析API响应失败: {e}")
             return None
+        finally:
+            # 计算请求耗时
+            request_time = time.time() - start_time
+            
+            # 记录网络请求信息
+            try:
+                from network.network_monitor import global_network_monitor
+                global_network_monitor.record_request(
+                    success=success,
+                    request_time=request_time,
+                    response_size=response_size
+                )
+            except Exception as e:
+                api_logger.error(f"记录网络请求信息失败: {e}")
     
     def _validate_response(self, response, method, url):
         """

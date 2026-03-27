@@ -1,4 +1,5 @@
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Order")
 from agents.base_agent import BaseAgent
 from services.order_management.order_manager import OrderManager
 import time
@@ -263,6 +264,21 @@ class OrderAgent(BaseAgent):
             return self.order_manager.get_order_history(limit)
         except Exception as e:
             logger.error(f"获取订单历史失败: {e}")
+            return []
+    
+    def get_orders(self, symbol=None):
+        """获取订单信息
+        
+        Args:
+            symbol (str, optional): 交易对
+            
+        Returns:
+            list: 订单列表
+        """
+        try:
+            return self.order_manager.get_orders(symbol)
+        except Exception as e:
+            logger.error(f"获取订单信息失败: {e}")
             return []
     
     def on_agent_status_changed(self, data):

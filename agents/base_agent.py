@@ -1,5 +1,6 @@
 from PyQt5.QtCore import QObject, QThread
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Agent")
 from commons.event_bus import global_event_bus
 from commons.agent_registry import global_agent_registry
 

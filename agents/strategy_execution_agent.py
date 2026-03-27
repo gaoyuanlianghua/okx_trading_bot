@@ -1,4 +1,5 @@
-from loguru import logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Strategy")
 from agents.base_agent import BaseAgent
 import importlib.util
 import os
