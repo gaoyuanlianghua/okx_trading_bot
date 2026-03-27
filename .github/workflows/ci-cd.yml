@@ -67,20 +67,20 @@ jobs:
         pip list
         
         Write-Host "Running PyInstaller..."
-        # Capture both stdout and stderr to a file for inspection
-        pyinstaller okx_trading_bot.spec --clean --noconfirm -v 2>&1 | Tee-Object -Variable buildOutput
+        # Run PyInstaller with output visible and captured
+        pyinstaller okx_trading_bot.spec --clean --noconfirm -v 2>&1 | Out-File -FilePath build_output.log -Encoding UTF8
         $buildExitCode = $LASTEXITCODE
         Write-Host "PyInstaller exit code: $buildExitCode"
         
         # Show the build output for debugging
         Write-Host "Build output:"
-        Write-Host $buildOutput
+        Get-Content build_output.log
         
         # Check dist directory exists BEFORE checking exit code
         if (!(Test-Path "dist")) {
           Write-Host "ERROR: Dist directory was not created by PyInstaller!"
           Write-Host "Build output:"
-          Write-Host $buildOutput
+          Get-Content build_output.log
           if (Test-Path "build") {
             Write-Host "Build folder contents:"
             Get-ChildItem -Path build -Recurse
