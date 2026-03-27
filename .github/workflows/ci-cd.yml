@@ -65,7 +65,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: okx_trading_bot
-        path: dist/okx_trading_bot.exe
+        path: dist/
 
   release:
     needs: test_and_build
