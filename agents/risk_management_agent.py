@@ -282,6 +282,34 @@ class RiskManagementAgent(BaseAgent):
         """
         return self.current_risk_state.copy()
     
+    def get_account_balance(self):
+        """获取账户余额
+        
+        Returns:
+            dict: 账户余额信息
+        """
+        try:
+            if self.risk_manager:
+                return self.risk_manager.get_account_balance()
+            return None
+        except Exception as e:
+            logger.error(f"获取账户余额失败: {e}")
+            return None
+    
+    def get_positions(self):
+        """获取持仓信息
+        
+        Returns:
+            list: 持仓信息列表
+        """
+        try:
+            if self.risk_manager:
+                return self.risk_manager.get_positions()
+            return []
+        except Exception as e:
+            logger.error(f"获取持仓信息失败: {e}")
+            return []
+    
     def on_market_data_updated(self, data):
         """处理市场数据更新事件
         

@@ -2140,8 +2140,7 @@ class TradingGUI(QMainWindow):
                         type='candle', 
                         style='charles', 
                         ax=ax, 
-                        show_nontrading=False,
-                        volume=True
+                        show_nontrading=False
                     )
                     
                     # 刷新画布
@@ -2188,8 +2187,7 @@ class TradingGUI(QMainWindow):
                     type='candle', 
                     style='charles', 
                     ax=ax, 
-                    show_nontrading=False,
-                    volume=True
+                    show_nontrading=False
                 )
                 
                 # 刷新画布

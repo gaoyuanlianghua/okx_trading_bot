@@ -102,17 +102,17 @@ class MarketDataAgent(BaseAgent):
             
             # 获取实时行情数据
             ticker = self.market_data_service.get_real_time_ticker(symbol)
-            if ticker and ticker:
+            if ticker:
                 # 构建市场数据
                 market_data = {
                     'symbol': symbol,
-                    'price': float(ticker[0].get('last', 0)),
-                    'open': float(ticker[0].get('open24h', 0)),
-                    'high': float(ticker[0].get('high24h', 0)),
-                    'low': float(ticker[0].get('low24h', 0)),
-                    'volume': float(ticker[0].get('vol24h', 0)),
-                    'change': float(ticker[0].get('change24h', 0)),
-                    'change_pct': float(ticker[0].get('change24h', 0))
+                    'price': float(ticker.get('last', 0)),
+                    'open': float(ticker.get('open24h', 0)),
+                    'high': float(ticker.get('high24h', 0)),
+                    'low': float(ticker.get('low24h', 0)),
+                    'volume': float(ticker.get('vol24h', 0)),
+                    'change': float(ticker.get('change24h', 0)),
+                    'change_pct': float(ticker.get('change24h', 0))
                 }
                 return market_data
             return None
