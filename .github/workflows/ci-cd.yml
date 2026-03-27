@@ -45,13 +45,21 @@ jobs:
         Write-Host "Current directory: $pwd"
         Write-Host "Files in current directory:"
         Get-ChildItem
+        Write-Host "Installed packages:"
         pip list
-        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
+        Write-Host "Running PyInstaller..."
+        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v 2>&1
         if ($LASTEXITCODE -ne 0) {
           Write-Host "Build failed with exit code: $LASTEXITCODE"
+          Write-Host "Build directory contents:"
           Get-ChildItem -Path build -Recurse -ErrorAction SilentlyContinue
+          Write-Host "Dist directory contents:"
+          Get-ChildItem -Path dist -Recurse -ErrorAction SilentlyContinue
           exit 1
         }
+        Write-Host "Build completed successfully"
+        Write-Host "Dist directory contents:"
+        Get-ChildItem -Path dist -Recurse
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
