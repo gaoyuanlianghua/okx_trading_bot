@@ -5,7 +5,16 @@
 
 import time
 from threading import Lock
-from commons.logger_config import global_logger as logger
+
+# 初始化日志配置
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("Network")
 
 
 class NetworkMonitor:

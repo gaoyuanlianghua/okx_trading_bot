@@ -7,7 +7,14 @@ from threading import Thread, Lock
 from okx_api_client import OKXAPIClient
 
 # 初始化日志配置
-from commons.logger_config import global_logger as logger
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("WebSocket")
 
 class OKXWebsocketClient:
     """OKX Websocket客户端，支持订阅市场数据和订单更新"""
@@ -413,25 +420,28 @@ class OKXWebsocketClient:
             
             # 处理登录响应
             if "event" in msg_data and msg_data["event"] == "login":
+                auth_logger = get_logger("Auth")
                 if msg_data["code"] == "0":
-                    logger.info("Websocket私有频道登录成功")
+                    auth_logger.info("Websocket私有频道登录成功")
                     self.private_connected = True
                 else:
-                    logger.error(f"Websocket私有频道登录失败: {msg_data['msg']}")
+                    auth_logger.error(f"Websocket私有频道登录失败: {msg_data['msg']}")
                     self.private_connected = False
                 return
             
             # 处理订阅响应
             if "event" in msg_data and msg_data["event"] == "subscribe":
+                sub_logger = get_logger("Subscription")
                 if msg_data["code"] == "0":
-                    logger.info(f"成功订阅频道: {msg_data['arg']['channel']}")
+                    sub_logger.info(f"成功订阅频道: {msg_data['arg']['channel']}")
                 else:
-                    logger.error(f"订阅频道失败: {msg_data['msg']}")
+                    sub_logger.error(f"订阅频道失败: {msg_data['msg']}")
                 return
             
             # 处理心跳响应
             if "event" in msg_data and msg_data["event"] == "pong":
-                logger.debug("收到心跳响应pong")
+                heartbeat_logger = get_logger("Heartbeat")
+                heartbeat_logger.debug("收到心跳响应pong")
                 self.last_message_time = time.time()  # 重置消息时间
                 self.last_ping_time = 0  # 重置ping时间
                 return
@@ -441,38 +451,51 @@ class OKXWebsocketClient:
             
             # 处理频道连接数统计
             if "event" in msg_data and msg_data["event"] == "channel-conn-count":
+                stats_logger = get_logger("Stats")
                 channel = msg_data.get("channel", "")
                 conn_count = msg_data.get("connCount", "")
                 conn_id = msg_data.get("connId", "")
-                logger.info(f"频道连接数统计 - 频道: {channel}, 连接数: {conn_count}, 连接ID: {conn_id}")
+                stats_logger.info(f"频道连接数统计 - 频道: {channel}, 连接数: {conn_count}, 连接ID: {conn_id}")
                 return
             
             # 处理频道连接数超过限制错误
             if "event" in msg_data and msg_data["event"] == "channel-conn-count-error":
+                error_logger = get_logger("Error")
                 channel = msg_data.get("channel", "")
                 conn_count = msg_data.get("connCount", "")
                 conn_id = msg_data.get("connId", "")
-                logger.error(f"频道连接数超过限制 - 频道: {channel}, 连接数: {conn_count}, 连接ID: {conn_id}")
+                error_logger.error(f"频道连接数超过限制 - 频道: {channel}, 连接数: {conn_count}, 连接ID: {conn_id}")
                 # 可以在这里添加重连逻辑或其他处理
                 return
             
             # 处理通知消息，如服务升级断线通知
             if "event" in msg_data and msg_data["event"] == "notice":
+                notice_logger = get_logger("Notice")
                 code = msg_data.get("code", "")
                 msg = msg_data.get("msg", "")
                 conn_id = msg_data.get("connId", "")
-                logger.warning(f"收到通知消息 - 代码: {code}, 消息: {msg}, 连接ID: {conn_id}")
+                notice_logger.warning(f"收到通知消息 - 代码: {code}, 消息: {msg}, 连接ID: {conn_id}")
                 
                 # 服务升级断线通知，代码64008
                 if code == "64008":
-                    logger.warning("WebSocket服务即将升级，将在60秒后断开连接")
-                    logger.warning("建议重新建立新的连接")
+                    notice_logger.warning("WebSocket服务即将升级，将在60秒后断开连接")
+                    notice_logger.warning("建议重新建立新的连接")
                     # 可以在这里添加自动重连逻辑
                 return
             
             # 处理数据消息
             if "data" in msg_data and "arg" in msg_data:
                 channel = msg_data["arg"]["channel"]
+                
+                # 根据频道类型确定区域
+                if channel.startswith('ticker') or channel.startswith('books') or channel.startswith('candles') or channel.startswith('trades'):
+                    data_logger = get_logger("MarketData")
+                elif channel.startswith('orders') or channel.startswith('trades'):
+                    data_logger = get_logger("Trade")
+                elif channel.startswith('account') or channel.startswith('balance'):
+                    data_logger = get_logger("Account")
+                else:
+                    data_logger = get_logger("WebSocket")
                 
                 # 调用对应的消息处理器
                 with self.lock:
@@ -481,11 +504,13 @@ class OKXWebsocketClient:
                             try:
                                 handler(msg_data)
                             except Exception as e:
-                                logger.error(f"处理{channel}频道消息失败: {e}")
+                                data_logger.error(f"处理{channel}频道消息失败: {e}")
         except json.JSONDecodeError as e:
-            logger.error(f"解析Websocket消息失败: {e}")
+            error_logger = get_logger("Error")
+            error_logger.error(f"解析Websocket消息失败: {e}")
         except Exception as e:
-            logger.error(f"处理Websocket消息失败: {e}")
+            error_logger = get_logger("Error")
+            error_logger.error(f"处理Websocket消息失败: {e}")
     
     async def _heartbeat_handler(self, ws):
         """
@@ -497,6 +522,7 @@ class OKXWebsocketClient:
         Args:
             ws: WebSocket连接
         """
+        heartbeat_logger = get_logger("Heartbeat")
         while not self._should_stop:
             try:
                 current_time = time.time()
@@ -505,7 +531,7 @@ class OKXWebsocketClient:
                 if current_time - self.last_message_time > self.heartbeat_interval:
                     # 发送ping
                     await ws.send(json.dumps({"event": "ping"}))
-                    logger.debug("发送心跳ping")
+                    heartbeat_logger.debug("发送心跳ping")
                     self.last_ping_time = current_time
                     
                     # 等待pong响应，超时则断开连接
@@ -513,18 +539,19 @@ class OKXWebsocketClient:
                     
                     # 检查是否收到pong响应
                     if current_time == self.last_ping_time:  # 未更新，说明未收到pong
-                        logger.error("心跳超时，未收到pong响应")
+                        heartbeat_logger.error("心跳超时，未收到pong响应")
                         break
                 
                 # 每1秒检查一次
                 await asyncio.sleep(1)
             except Exception as e:
-                logger.error(f"心跳处理失败: {e}")
+                heartbeat_logger.error(f"心跳处理失败: {e}")
                 break
     
     async def _public_handler(self):
         """处理公共频道连接"""
         self.reconnect_attempts = 0
+        ws_logger = get_logger("WebSocket")
         
         while self.reconnect_attempts < self.max_reconnect_attempts and not self._should_stop:
             try:
@@ -532,20 +559,20 @@ class OKXWebsocketClient:
                 import re
                 ip_match = re.search(r'wss://([^:]+):', self.public_url)
                 if not ip_match:
-                    logger.error(f"无效的WebSocket URL: {self.public_url}")
+                    ws_logger.error(f"无效的WebSocket URL: {self.public_url}")
                     await asyncio.sleep(self.reconnect_delay)
                     self.reconnect_attempts += 1
                     continue
                 
                 current_ip = ip_match.group(1)
-                logger.info(f"连接到公共Websocket频道: {self.public_url} (IP: {current_ip}) (尝试 {self.reconnect_attempts + 1}/{self.max_reconnect_attempts})")
+                ws_logger.info(f"连接到公共Websocket频道: {self.public_url} (IP: {current_ip}) (尝试 {self.reconnect_attempts + 1}/{self.max_reconnect_attempts})")
                 
                 # 更新IP健康状态 - 记录尝试
                 self.ip_health[current_ip]['last_attempt'] = time.time()
                 
                 # 异步TCP连接预热
                 if not await self._tcp_ping(current_ip, timeout=3):
-                    logger.warning(f"TCP ping失败: {current_ip}:8443，跳过连接尝试")
+                    ws_logger.warning(f"TCP ping失败: {current_ip}:8443，跳过连接尝试")
                     # 更新IP健康状态 - 失败
                     self.ip_health[current_ip]['fail_count'] += 1
                     self.ip_health[current_ip]['available'] = False
@@ -578,10 +605,10 @@ class OKXWebsocketClient:
                 
                 try:
                     # 直接连接WebSocket
-                    logger.info(f"直接连接到公共Websocket: {self.public_url}")
-                    logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws_logger.info(f"直接连接到公共Websocket: {self.public_url}")
+                    ws_logger.debug(f"WebSocket连接参数: {connect_kwargs}")
                     ws = await websockets.connect(self.public_url, **connect_kwargs)
-                    logger.info(f"公共Websocket直接连接成功")
+                    ws_logger.info(f"公共Websocket直接连接成功")
                     
                     # 设置连接状态
                     self.public_ws = ws
@@ -597,29 +624,30 @@ class OKXWebsocketClient:
                     self.reconnect_attempts = 0
                     self.reconnect_delay = self.base_reconnect_delay
                     
-                    logger.info(f"公共Websocket频道连接成功: {self.public_url}")
+                    ws_logger.info(f"公共Websocket频道连接成功: {self.public_url}")
                     # 更新健康状态
                     self.update_health_status()
                     
                     # 重新订阅所有频道
                     if self.public_subscriptions:
-                        logger.info(f"重新订阅 {len(self.public_subscriptions)} 个公共频道")
+                        sub_logger = get_logger("Subscription")
+                        sub_logger.info(f"重新订阅 {len(self.public_subscriptions)} 个公共频道")
                         await self._resubscribe_public()
                     
                     # 启动心跳任务
                     heartbeat_task = asyncio.create_task(self._heartbeat_handler(ws))
                     
                     # 接收消息
-                    logger.info(f"开始接收公共Websocket消息: {self.public_url}")
+                    ws_logger.info(f"开始接收公共Websocket消息: {self.public_url}")
                     async for message in ws:
                         if self._should_stop:
                             break
                         await self._handle_message(message)
                     
                 except websockets.exceptions.ConnectionClosedError as e:
-                    logger.warning(f"公共Websocket连接被关闭: {e}")
+                    ws_logger.warning(f"公共Websocket连接被关闭: {e}")
                 except Exception as e:
-                    logger.error(f"接收公共Websocket消息时发生错误: {e}")
+                    ws_logger.error(f"接收公共Websocket消息时发生错误: {e}")
                 finally:
                     # 取消心跳任务
                     if 'heartbeat_task' in locals():
@@ -633,7 +661,7 @@ class OKXWebsocketClient:
                     if ws:
                         await ws.close()
                     
-                    logger.warning(f"公共Websocket连接已关闭: {self.public_url}")
+                    ws_logger.warning(f"公共Websocket连接已关闭: {self.public_url}")
                     self.public_connected = False
                     self.public_ws = None
                     # 更新健康状态
@@ -646,10 +674,10 @@ class OKXWebsocketClient:
                     self._calculate_next_reconnect_delay()
                     
                     # 等待一段时间后重连
-                    logger.info(f"{self.reconnect_delay}秒后尝试重新连接公共Websocket")
+                    ws_logger.info(f"{self.reconnect_delay}秒后尝试重新连接公共Websocket")
                     await asyncio.sleep(self.reconnect_delay)
                     self.reconnect_attempts += 1
-                    logger.info(f"尝试重新连接公共Websocket，第{self.reconnect_attempts}次")
+                    ws_logger.info(f"尝试重新连接公共Websocket，第{self.reconnect_attempts}次")
                     
                     # 切换到下一个WebSocket IP
                     self.switch_to_next_ws_ip()
@@ -659,16 +687,16 @@ class OKXWebsocketClient:
                 exception_type = type(e).__name__
                 
                 if exception_type == 'WebSocketException':
-                    logger.error(f"公共Websocket连接异常: {e}，URL: {self.public_url}")
-                    logger.error(f"WebSocket异常类型: {exception_type}")
+                    ws_logger.error(f"公共Websocket连接异常: {e}，URL: {self.public_url}")
+                    ws_logger.error(f"WebSocket异常类型: {exception_type}")
                 elif exception_type == 'ConnectionResetError':
-                    logger.error(f"公共Websocket连接被重置: {e}，URL: {self.public_url}")
-                    logger.error(f"异常类型: {exception_type} - 这通常是网络层问题或SSL握手失败")
+                    ws_logger.error(f"公共Websocket连接被重置: {e}，URL: {self.public_url}")
+                    ws_logger.error(f"异常类型: {exception_type} - 这通常是网络层问题或SSL握手失败")
                 else:
-                    logger.error(f"公共Websocket连接失败: {e}，URL: {self.public_url}")
-                    logger.error(f"异常类型: {exception_type}")
+                    ws_logger.error(f"公共Websocket连接失败: {e}，URL: {self.public_url}")
+                    ws_logger.error(f"异常类型: {exception_type}")
                     import traceback
-                    logger.error(f"异常堆栈: {traceback.format_exc()}")
+                    ws_logger.error(f"异常堆栈: {traceback.format_exc()}")
                 
                 # 更新IP健康状态 - 失败
                 self.ip_health[current_ip]['fail_count'] += 1
@@ -676,7 +704,7 @@ class OKXWebsocketClient:
                 # 如果连续失败3次，标记为不可用
                 if self.ip_health[current_ip]['fail_count'] >= 3:
                     self.ip_health[current_ip]['available'] = False
-                    logger.warning(f"IP {current_ip} 连续 {self.ip_health[current_ip]['fail_count']} 次失败，标记为不可用")
+                    ws_logger.warning(f"IP {current_ip} 连续 {self.ip_health[current_ip]['fail_count']} 次失败，标记为不可用")
                 
                 self.public_connected = False
                 self.public_ws = None
@@ -688,18 +716,18 @@ class OKXWebsocketClient:
                 self._calculate_next_reconnect_delay()
                 
                 # 等待一段时间后重连
-                logger.info(f"{self.reconnect_delay}秒后尝试重新连接公共Websocket")
+                ws_logger.info(f"{self.reconnect_delay}秒后尝试重新连接公共Websocket")
                 await asyncio.sleep(self.reconnect_delay)
                 self.reconnect_attempts += 1
-                logger.info(f"尝试重新连接公共Websocket，第{self.reconnect_attempts}次")
+                ws_logger.info(f"尝试重新连接公共Websocket，第{self.reconnect_attempts}次")
                 
                 # 切换到下一个WebSocket IP
                 self.switch_to_next_ws_ip()
         
         if not self._should_stop:
-            logger.error("公共Websocket重连次数已达上限")
+            ws_logger.error("公共Websocket重连次数已达上限")
         else:
-            logger.info("公共Websocket连接已停止")
+            ws_logger.info("公共Websocket连接已停止")
     
     def _calculate_next_reconnect_delay(self):
         """
@@ -881,6 +909,7 @@ class OKXWebsocketClient:
     async def _private_handler(self):
         """处理私有频道连接"""
         self.reconnect_attempts = 0
+        ws_logger = get_logger("WebSocket")
         
         while self.reconnect_attempts < self.max_reconnect_attempts and not self._should_stop:
             try:
@@ -888,20 +917,20 @@ class OKXWebsocketClient:
                 import re
                 ip_match = re.search(r'wss://([^:]+):', self.private_url)
                 if not ip_match:
-                    logger.error(f"无效的WebSocket URL: {self.private_url}")
+                    ws_logger.error(f"无效的WebSocket URL: {self.private_url}")
                     await asyncio.sleep(self.reconnect_delay)
                     self.reconnect_attempts += 1
                     continue
                 
                 current_ip = ip_match.group(1)
-                logger.info(f"连接到私有Websocket频道: {self.private_url} (IP: {current_ip}) (尝试 {self.reconnect_attempts + 1}/{self.max_reconnect_attempts})")
+                ws_logger.info(f"连接到私有Websocket频道: {self.private_url} (IP: {current_ip}) (尝试 {self.reconnect_attempts + 1}/{self.max_reconnect_attempts})")
                 
                 # 更新IP健康状态 - 记录尝试
                 self.ip_health[current_ip]['last_attempt'] = time.time()
                 
                 # 异步TCP连接预热
                 if not await self._tcp_ping(current_ip, timeout=3):
-                    logger.warning(f"TCP ping失败: {current_ip}:8443，跳过连接尝试")
+                    ws_logger.warning(f"TCP ping失败: {current_ip}:8443，跳过连接尝试")
                     # 更新IP健康状态 - 失败
                     self.ip_health[current_ip]['fail_count'] += 1
                     self.ip_health[current_ip]['available'] = False
@@ -934,10 +963,10 @@ class OKXWebsocketClient:
                 
                 try:
                     # 直接连接WebSocket
-                    logger.info(f"直接连接到私有Websocket: {self.private_url}")
-                    logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws_logger.info(f"直接连接到私有Websocket: {self.private_url}")
+                    ws_logger.debug(f"WebSocket连接参数: {connect_kwargs}")
                     ws = await websockets.connect(self.private_url, **connect_kwargs)
-                    logger.info(f"私有Websocket直接连接成功")
+                    ws_logger.info(f"私有Websocket直接连接成功")
                     
                     # 设置连接状态
                     self.private_ws = ws
@@ -952,28 +981,29 @@ class OKXWebsocketClient:
                     self.reconnect_attempts = 0
                     self.reconnect_delay = self.base_reconnect_delay
                     
-                    logger.info(f"私有Websocket频道连接成功: {self.private_url}")
+                    ws_logger.info(f"私有Websocket频道连接成功: {self.private_url}")
                     # 更新健康状态
                     self.update_health_status()
                     
                     # 登录
-                    logger.info(f"正在登录私有Websocket频道: {self.private_url}")
+                    auth_logger = get_logger("Auth")
+                    auth_logger.info(f"正在登录私有Websocket频道: {self.private_url}")
                     await self._login(ws)
                     
                     # 启动心跳任务
                     heartbeat_task = asyncio.create_task(self._heartbeat_handler(ws))
                     
                     # 接收消息
-                    logger.info(f"开始接收私有Websocket消息: {self.private_url}")
+                    ws_logger.info(f"开始接收私有Websocket消息: {self.private_url}")
                     async for message in ws:
                         if self._should_stop:
                             break
                         await self._handle_message(message)
                     
                 except websockets.exceptions.ConnectionClosedError as e:
-                    logger.warning(f"私有Websocket连接被关闭: {e}")
+                    ws_logger.warning(f"私有Websocket连接被关闭: {e}")
                 except Exception as e:
-                    logger.error(f"接收私有Websocket消息时发生错误: {e}")
+                    ws_logger.error(f"接收私有Websocket消息时发生错误: {e}")
                 finally:
                     # 取消心跳任务
                     if 'heartbeat_task' in locals():
@@ -987,7 +1017,7 @@ class OKXWebsocketClient:
                     if ws:
                         await ws.close()
                     
-                    logger.warning(f"私有Websocket连接已关闭: {self.private_url}")
+                    ws_logger.warning(f"私有Websocket连接已关闭: {self.private_url}")
                     self.private_connected = False
                     self.private_ws = None
                     # 更新健康状态
@@ -1000,10 +1030,10 @@ class OKXWebsocketClient:
                     self._calculate_next_reconnect_delay()
                     
                     # 等待一段时间后重连
-                    logger.info(f"{self.reconnect_delay}秒后尝试重新连接私有Websocket")
+                    ws_logger.info(f"{self.reconnect_delay}秒后尝试重新连接私有Websocket")
                     await asyncio.sleep(self.reconnect_delay)
                     self.reconnect_attempts += 1
-                    logger.info(f"尝试重新连接私有Websocket，第{self.reconnect_attempts}次")
+                    ws_logger.info(f"尝试重新连接私有Websocket，第{self.reconnect_attempts}次")
                     
                     # 切换到下一个WebSocket IP
                     self.switch_to_next_ws_ip()
@@ -1013,16 +1043,16 @@ class OKXWebsocketClient:
                 exception_type = type(e).__name__
                 
                 if exception_type == 'WebSocketException':
-                    logger.error(f"私有Websocket连接异常: {e}，URL: {self.private_url}")
-                    logger.error(f"WebSocket异常类型: {exception_type}")
+                    ws_logger.error(f"私有Websocket连接异常: {e}，URL: {self.private_url}")
+                    ws_logger.error(f"WebSocket异常类型: {exception_type}")
                 elif exception_type == 'ConnectionResetError':
-                    logger.error(f"私有Websocket连接被重置: {e}，URL: {self.private_url}")
-                    logger.error(f"异常类型: {exception_type} - 这通常是网络层问题或SSL握手失败")
+                    ws_logger.error(f"私有Websocket连接被重置: {e}，URL: {self.private_url}")
+                    ws_logger.error(f"异常类型: {exception_type} - 这通常是网络层问题或SSL握手失败")
                 else:
-                    logger.error(f"私有Websocket连接失败: {e}，URL: {self.private_url}")
-                    logger.error(f"异常类型: {exception_type}")
+                    ws_logger.error(f"私有Websocket连接失败: {e}，URL: {self.private_url}")
+                    ws_logger.error(f"异常类型: {exception_type}")
                     import traceback
-                    logger.error(f"异常堆栈: {traceback.format_exc()}")
+                    ws_logger.error(f"异常堆栈: {traceback.format_exc()}")
                 
                 # 更新IP健康状态 - 失败
                 self.ip_health[current_ip]['fail_count'] += 1
@@ -1030,7 +1060,7 @@ class OKXWebsocketClient:
                 # 如果连续失败3次，标记为不可用
                 if self.ip_health[current_ip]['fail_count'] >= 3:
                     self.ip_health[current_ip]['available'] = False
-                    logger.warning(f"IP {current_ip} 连续 {self.ip_health[current_ip]['fail_count']} 次失败，标记为不可用")
+                    ws_logger.warning(f"IP {current_ip} 连续 {self.ip_health[current_ip]['fail_count']} 次失败，标记为不可用")
                 
                 self.private_connected = False
                 self.private_ws = None
@@ -1042,18 +1072,18 @@ class OKXWebsocketClient:
                 self._calculate_next_reconnect_delay()
                 
                 # 等待一段时间后重连
-                logger.info(f"{self.reconnect_delay}秒后尝试重新连接私有Websocket")
+                ws_logger.info(f"{self.reconnect_delay}秒后尝试重新连接私有Websocket")
                 await asyncio.sleep(self.reconnect_delay)
                 self.reconnect_attempts += 1
-                logger.info(f"尝试重新连接私有Websocket，第{self.reconnect_attempts}次")
+                ws_logger.info(f"尝试重新连接私有Websocket，第{self.reconnect_attempts}次")
                 
                 # 切换到下一个WebSocket IP
                 self.switch_to_next_ws_ip()
         
         if not self._should_stop:
-            logger.error("私有Websocket重连次数已达上限")
+            ws_logger.error("私有Websocket重连次数已达上限")
         else:
-            logger.info("私有Websocket连接已停止")
+            ws_logger.info("私有Websocket连接已停止")
     
     async def _login(self, ws):
         """
@@ -1062,6 +1092,7 @@ class OKXWebsocketClient:
         Args:
             ws: WebSocket连接
         """
+        auth_logger = get_logger("Auth")
         try:
             # 获取Unix Epoch时间戳，单位是秒
             timestamp = str(int(time.time()))
@@ -1080,9 +1111,9 @@ class OKXWebsocketClient:
             }
             
             await ws.send(json.dumps(login_params))
-            logger.info("发送Websocket登录请求")
+            auth_logger.info("发送Websocket登录请求")
         except Exception as e:
-            logger.error(f"发送Websocket登录请求失败: {e}")
+            auth_logger.error(f"发送Websocket登录请求失败: {e}")
     
     def _generate_signature(self, timestamp):
         """

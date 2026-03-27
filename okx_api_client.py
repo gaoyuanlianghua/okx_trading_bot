@@ -13,7 +13,14 @@ from dotenv import load_dotenv
 from threading import Lock
 
 # 初始化日志配置
-from commons.logger_config import global_logger as logger
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("API")
 from urllib.parse import urlparse, urlencode
 
 # 导入网络相关模块
@@ -318,8 +325,9 @@ class OKXAPIClient:
         Returns:
             dict: 验证结果，包含status和message字段
         """
+        auth_logger = get_logger("Auth")
         try:
-            logger.info(f"正在验证API密钥有效性，API URL: {self.api_url}")
+            auth_logger.info(f"正在验证API密钥有效性，API URL: {self.api_url}")
             
             # 使用账户余额接口验证API密钥
             path = f"/api/{self.api_version}/account/balance"
@@ -348,7 +356,7 @@ class OKXAPIClient:
             # 解析响应
             result = response.json()
             if result.get("code") == "0":
-                logger.info("API密钥验证成功")
+                auth_logger.info("API密钥验证成功")
                 return {
                     "status": "success",
                     "message": "API密钥验证成功",
@@ -356,27 +364,27 @@ class OKXAPIClient:
                 }
             else:
                 error_msg = result.get("msg", "未知错误")
-                logger.error(f"API密钥验证失败: {error_msg}")
+                auth_logger.error(f"API密钥验证失败: {error_msg}")
                 return {
                     "status": "error",
                     "message": f"API密钥验证失败: {error_msg}",
                     "code": result.get("code")
                 }
         except ConnectionResetError as e:
-            logger.error(f"API密钥验证时连接被重置: {e}")
+            auth_logger.error(f"API密钥验证时连接被重置: {e}")
             return {
                 "status": "error",
                 "message": f"连接被远程服务器重置: {e}",
                 "hint": "这可能是DPI拦截或服务器限流导致的，请检查代理配置或降低请求频率"
             }
         except requests.exceptions.RequestException as e:
-            logger.error(f"API密钥验证失败: {e}")
+            auth_logger.error(f"API密钥验证失败: {e}")
             return {
                 "status": "error",
                 "message": f"请求失败: {e}"
             }
         except Exception as e:
-            logger.error(f"API密钥验证过程中发生未知错误: {e}")
+            auth_logger.error(f"API密钥验证过程中发生未知错误: {e}")
             return {
                 "status": "error",
                 "message": f"未知错误: {e}"
@@ -386,7 +394,8 @@ class OKXAPIClient:
         """
         自动配置DNS解析IP，将解析结果保存到环境变量中
         """
-        logger.info("自动配置DNS解析IP...")
+        dns_logger = get_logger("DNS")
+        dns_logger.info("自动配置DNS解析IP...")
         
         try:
             # 解析OKX API域名
@@ -395,7 +404,7 @@ class OKXAPIClient:
                 ip = custom_dns_resolve(domain)
                 if ip:
                     okx_ips.append(ip)
-                    logger.info(f"解析 {domain} 到 {ip}")
+                    dns_logger.info(f"解析 {domain} 到 {ip}")
             
             # 去重并转换为逗号分隔的字符串
             unique_ips = list(set(okx_ips))
@@ -403,13 +412,13 @@ class OKXAPIClient:
             
             # 设置环境变量
             os.environ["OKX_API_IPS"] = ips_str
-            logger.info(f"已设置环境变量 OKX_API_IPS: {ips_str}")
+            dns_logger.info(f"已设置环境变量 OKX_API_IPS: {ips_str}")
             
             # 写入配置文件
             self.write_dns_config(unique_ips)
             
         except Exception as e:
-            logger.error(f"自动配置DNS解析IP失败: {e}")
+            dns_logger.error(f"自动配置DNS解析IP失败: {e}")
     
     def write_dns_config(self, ips):
         """
@@ -418,6 +427,7 @@ class OKXAPIClient:
         Args:
             ips (list): 解析到的IP地址列表
         """
+        dns_logger = get_logger("DNS")
         try:
             config_path = os.path.join(os.path.dirname(__file__), 'config/okx_config.json')
             
@@ -434,59 +444,60 @@ class OKXAPIClient:
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=2)
             
-            logger.info(f"已更新配置文件，添加API IP地址: {ips}")
+            dns_logger.info(f"已更新配置文件，添加API IP地址: {ips}")
         except Exception as e:
-            logger.error(f"写入DNS配置失败: {e}")
+            dns_logger.error(f"写入DNS配置失败: {e}")
     
     def test_network_connection(self):
         """测试网络连接"""
-        logger.info("测试网络连接...")
+        network_logger = get_logger("Network")
+        network_logger.info("测试网络连接...")
         
         try:
             # 测试DNS解析
-            logger.info(f"正在解析主机名: {self.host_name}")
+            network_logger.info(f"正在解析主机名: {self.host_name}")
             ip = custom_dns_resolve(self.host_name)
             
             # 如果DNS解析失败，使用配置文件中的API IP地址
             if not ip or ip.startswith('169.254.'):
-                logger.warning(f"DNS解析失败或返回无效IP: {ip}")
+                network_logger.warning(f"DNS解析失败或返回无效IP: {ip}")
                 # 从配置文件中获取API IP地址
                 api_ip = self.config_manager.get("api", {}).get("api_ip")
                 if api_ip and not api_ip.startswith('169.254.'):
-                    logger.info(f"使用配置文件中的API IP地址: {api_ip}")
+                    network_logger.info(f"使用配置文件中的API IP地址: {api_ip}")
                     ip = api_ip
                 else:
                     # 从API IP列表中获取第一个有效IP
                     api_ips = self.config_manager.get("api", {}).get("api_ips", [])
                     for api_ip_candidate in api_ips:
                         if api_ip_candidate and not api_ip_candidate.startswith('169.254.'):
-                            logger.info(f"使用配置文件中的API IP地址: {api_ip_candidate}")
+                            network_logger.info(f"使用配置文件中的API IP地址: {api_ip_candidate}")
                             ip = api_ip_candidate
                             break
                 
                 if not ip or ip.startswith('169.254.'):
-                    logger.error(f"无法解析主机名: {self.host_name}，且配置文件中没有有效API IP地址")
-                    logger.error("可能的原因:")
-                    logger.error("1. 系统DNS配置问题")
-                    logger.error("2. 网络环境对DNS查询的拦截")
-                    logger.error("3. 域名不存在或已过期")
-                    logger.error("4. 配置文件中没有有效API IP地址")
-                    logger.error("建议: 检查网络连接或禁用自定义DNS解析")
+                    network_logger.error(f"无法解析主机名: {self.host_name}，且配置文件中没有有效API IP地址")
+                    network_logger.error("可能的原因:")
+                    network_logger.error("1. 系统DNS配置问题")
+                    network_logger.error("2. 网络环境对DNS查询的拦截")
+                    network_logger.error("3. 域名不存在或已过期")
+                    network_logger.error("4. 配置文件中没有有效API IP地址")
+                    network_logger.error("建议: 检查网络连接或禁用自定义DNS解析")
                     return False
             
-            logger.info(f"使用IP地址: {ip}")
+            network_logger.info(f"使用IP地址: {ip}")
             
             # 测试socket连接
-            logger.info(f"正在测试Socket连接: {ip}:443")
+            network_logger.info(f"正在测试Socket连接: {ip}:443")
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(5)
             s.connect((ip, 443))
             s.close()
             
-            logger.info(f"Socket连接成功: {ip}:443")
+            network_logger.info(f"Socket连接成功: {ip}:443")
             
             # 测试SSL握手
-            logger.info(f"正在测试SSL握手: {ip}:443")
+            network_logger.info(f"正在测试SSL握手: {ip}:443")
             context = ssl.create_default_context()
             context.check_hostname = True
             context.verify_mode = ssl.CERT_REQUIRED
@@ -499,47 +510,47 @@ class OKXAPIClient:
             ssl_sock.close()
             s.close()
             
-            logger.info(f"SSL握手成功: {ip}:443")
-            logger.info("网络连接测试通过")
+            network_logger.info(f"SSL握手成功: {ip}:443")
+            network_logger.info("网络连接测试通过")
             return True
             
         except ssl.SSLError as e:
-            logger.error(f"SSL握手失败: {e}")
-            logger.error("可能的原因:")
-            logger.error("1. 防火墙或代理服务器阻止了SSL连接")
-            logger.error("2. SSL证书验证失败")
-            logger.error("3. 网络环境问题")
-            logger.error("4. 服务器配置问题")
-            logger.error("建议: 检查网络连接或使用代理服务器")
-            logger.error(f"详细错误信息: {type(e).__name__}: {e}")
+            network_logger.error(f"SSL握手失败: {e}")
+            network_logger.error("可能的原因:")
+            network_logger.error("1. 防火墙或代理服务器阻止了SSL连接")
+            network_logger.error("2. SSL证书验证失败")
+            network_logger.error("3. 网络环境问题")
+            network_logger.error("4. 服务器配置问题")
+            network_logger.error("建议: 检查网络连接或使用代理服务器")
+            network_logger.error(f"详细错误信息: {type(e).__name__}: {e}")
             return False
         except socket.timeout:
-            logger.error(f"连接超时: 无法连接到 {ip if 'ip' in locals() else self.host_name}:443")
-            logger.error("可能的原因:")
-            logger.error("1. 网络延迟过高")
-            logger.error("2. 服务器负载过高")
-            logger.error("3. 防火墙或代理服务器阻止了连接")
-            logger.error("建议: 检查网络连接或调整超时时间")
+            network_logger.error(f"连接超时: 无法连接到 {ip if 'ip' in locals() else self.host_name}:443")
+            network_logger.error("可能的原因:")
+            network_logger.error("1. 网络延迟过高")
+            network_logger.error("2. 服务器负载过高")
+            network_logger.error("3. 防火墙或代理服务器阻止了连接")
+            network_logger.error("建议: 检查网络连接或调整超时时间")
             return False
         except socket.error as e:
-            logger.error(f"网络连接失败: {e}")
-            logger.error("可能的原因:")
-            logger.error("1. 网络连接断开")
-            logger.error("2. 服务器不可用")
-            logger.error("3. 防火墙或代理服务器阻止了连接")
-            logger.error("建议: 检查网络连接或API服务器状态")
-            logger.error(f"详细错误信息: {type(e).__name__}: {e}")
+            network_logger.error(f"网络连接失败: {e}")
+            network_logger.error("可能的原因:")
+            network_logger.error("1. 网络连接断开")
+            network_logger.error("2. 服务器不可用")
+            network_logger.error("3. 防火墙或代理服务器阻止了连接")
+            network_logger.error("建议: 检查网络连接或API服务器状态")
+            network_logger.error(f"详细错误信息: {type(e).__name__}: {e}")
             return False
         except Exception as e:
-            logger.error(f"网络连接测试失败: {e}")
-            logger.error("可能的原因:")
-            logger.error("1. 未知的网络错误")
-            logger.error("2. 代码逻辑错误")
-            logger.error("3. 依赖库问题")
-            logger.error("建议: 检查日志详细信息或联系开发者")
-            logger.error(f"详细错误信息: {type(e).__name__}: {e}")
+            network_logger.error(f"网络连接测试失败: {e}")
+            network_logger.error("可能的原因:")
+            network_logger.error("1. 未知的网络错误")
+            network_logger.error("2. 代码逻辑错误")
+            network_logger.error("3. 依赖库问题")
+            network_logger.error("建议: 检查日志详细信息或联系开发者")
+            network_logger.error(f"详细错误信息: {type(e).__name__}: {e}")
             import traceback
-            logger.error(f"异常堆栈: {traceback.format_exc()}")
+            network_logger.error(f"异常堆栈: {traceback.format_exc()}")
             return False
     
     def run_network_adapter(self, auto_update=True):
@@ -554,7 +565,8 @@ class OKXAPIClient:
         import subprocess
         import os
         
-        logger.info("运行网络自动适配脚本...")
+        network_logger = get_logger("Network")
+        network_logger.info("运行网络自动适配脚本...")
         
         # 构建PowerShell命令
         script_path = os.path.join(os.path.dirname(__file__), "AutoNetworkAdapter.ps1")
@@ -577,17 +589,17 @@ class OKXAPIClient:
                 timeout=60
             )
             
-            logger.info(f"网络自动适配脚本执行结果: {result.returncode}")
-            logger.debug(f"脚本输出: {result.stdout}")
+            network_logger.info(f"网络自动适配脚本执行结果: {result.returncode}")
+            network_logger.debug(f"脚本输出: {result.stdout}")
             if result.stderr:
-                logger.error(f"脚本错误: {result.stderr}")
+                network_logger.error(f"脚本错误: {result.stderr}")
             
             return result.returncode == 0
         except subprocess.TimeoutExpired:
-            logger.error("网络自动适配脚本执行超时")
+            network_logger.error("网络自动适配脚本执行超时")
             return False
         except Exception as e:
-            logger.error(f"执行网络自动适配脚本失败: {e}")
+            network_logger.error(f"执行网络自动适配脚本失败: {e}")
             return False
     
     def switch_to_next_ip(self):
@@ -741,6 +753,21 @@ class OKXAPIClient:
         Returns:
             dict: API响应
         """
+        # 确定请求区域
+        if endpoint.startswith('market/'):
+            request_region = "MarketData"
+        elif endpoint.startswith('trade/'):
+            request_region = "Trade"
+        elif endpoint.startswith('account/'):
+            request_region = "Account"
+        elif endpoint.startswith('public/'):
+            request_region = "Public"
+        else:
+            request_region = "API"
+        
+        # 获取区域化日志记录器
+        api_logger = get_logger(request_region)
+        
         # 构建请求URL
         request_path = f"{self.base_path}/api/{self.api_version}/{endpoint}"
         url = f"{self.parsed_url.scheme}://{self.host_name}{request_path}"
@@ -761,10 +788,10 @@ class OKXAPIClient:
         # 获取请求头
         headers = self._get_headers(timestamp, sign, exp_time) if need_sign else self._get_public_headers()
         
-        logger.debug(f"发送API请求: {method} {url}")
-        logger.debug(f"请求头: {headers}")
+        api_logger.debug(f"发送API请求: {method} {url}")
+        api_logger.debug(f"请求头: {headers}")
         if body:
-            logger.debug(f"请求体: {body}")
+            api_logger.debug(f"请求体: {body}")
         
         try:
             # 发送请求
@@ -775,7 +802,7 @@ class OKXAPIClient:
             
             # 解析响应
             response_data = response.json()
-            logger.debug(f"API响应: {response_data}")
+            api_logger.debug(f"API响应: {response_data}")
             
             # 验证响应
             if not self._validate_response(response_data, method, url):
@@ -783,10 +810,10 @@ class OKXAPIClient:
             
             return response_data
         except requests.exceptions.RequestException as e:
-            logger.error(f"HTTP请求失败: {e}")
+            api_logger.error(f"HTTP请求失败: {e}")
             return None
         except json.JSONDecodeError as e:
-            logger.error(f"解析API响应失败: {e}")
+            api_logger.error(f"解析API响应失败: {e}")
             return None
     
     def _validate_response(self, response, method, url):
@@ -801,23 +828,38 @@ class OKXAPIClient:
         Returns:
             bool: 是否验证通过
         """
+        # 确定响应区域
+        if 'market' in url:
+            response_region = "MarketData"
+        elif 'trade' in url:
+            response_region = "Trade"
+        elif 'account' in url:
+            response_region = "Account"
+        elif 'public' in url:
+            response_region = "Public"
+        else:
+            response_region = "API"
+        
+        # 获取区域化日志记录器
+        api_logger = get_logger(response_region)
+        
         if not response:
-            logger.error(f"API请求失败，未收到响应: {method} {url}")
+            api_logger.error(f"API请求失败，未收到响应: {method} {url}")
             return False
         
         if not isinstance(response, dict):
-            logger.error(f"API响应格式错误，预期为字典类型: {method} {url}")
+            api_logger.error(f"API响应格式错误，预期为字典类型: {method} {url}")
             return False
         
         if response.get('code') != '0':
             error_msg = response.get('msg', 'Unknown error')
             error_code = response.get('code', 'Unknown code')
-            self._handle_api_error(error_code, error_msg, method, url)
+            self._handle_api_error(error_code, error_msg, method, url, response_region)
             return False
         
         return True
     
-    def _handle_api_error(self, error_code, error_msg, method, url):
+    def _handle_api_error(self, error_code, error_msg, method, url, region="API"):
         """
         处理API错误，根据OKX API错误代码文档提供详细解释和处理建议
         
@@ -826,7 +868,11 @@ class OKXAPIClient:
             error_msg (str): 错误信息
             method (str): HTTP方法
             url (str): 请求URL
+            region (str): 错误发生的区域
         """
+        # 获取区域化日志记录器
+        api_logger = get_logger(region)
+        
         # 错误码分类处理
         error_info = {
             # 认证相关错误
@@ -858,12 +904,12 @@ class OKXAPIClient:
         # 获取错误解释和处理建议
         if error_code in error_info:
             error_desc, error_suggestion = error_info[error_code]
-            logger.error(f"API请求失败 (错误码: {error_code}): {error_msg} - {method} {url}")
-            logger.error(f"错误解释: {error_desc}")
-            logger.error(f"处理建议: {error_suggestion}")
+            api_logger.error(f"API请求失败 (错误码: {error_code}): {error_msg} - {method} {url}")
+            api_logger.error(f"错误解释: {error_desc}")
+            api_logger.error(f"处理建议: {error_suggestion}")
         else:
-            logger.error(f"API请求失败 (错误码: {error_code}): {error_msg} - {method} {url}")
-            logger.error(f"请参考OKX API文档了解详细错误信息: https://www.oyuzh.org/docs-v5/zh/#error-code-rest-api-account")
+            api_logger.error(f"API请求失败 (错误码: {error_code}): {error_msg} - {method} {url}")
+            api_logger.error(f"请参考OKX API文档了解详细错误信息: https://www.oyuzh.org/docs-v5/zh/#error-code-rest-api-account")
     
     def _process_result(self, result):
         """
@@ -875,7 +921,7 @@ class OKXAPIClient:
             else:
                 error_msg = result.get('msg', 'Unknown error')
                 error_code = result.get('code', 'Unknown code')
-                self._handle_api_error(error_code, error_msg, "N/A", "N/A")
+                self._handle_api_error(error_code, error_msg, "N/A", "N/A", "API")
                 return None
         return result
     

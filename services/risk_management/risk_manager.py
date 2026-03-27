@@ -1,7 +1,16 @@
 import os
 import time
-from loguru import logger
-from okx_api_client import OKXAPIClient, get_client
+from okx_api_client import OKXAPIClient
+
+# 初始化日志配置
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("Risk")
 
 class RiskManager:
     """风险管理服务，封装OKX API的风险管理功能"""
@@ -13,7 +22,11 @@ class RiskManager:
         Args:
             api_client (OKXAPIClient, optional): OKX API客户端实例
         """
-        self.api_client = api_client or get_client()
+        if api_client:
+            self.api_client = api_client
+        else:
+            # 创建默认的API客户端
+            self.api_client = OKXAPIClient()
         
         # 默认风险参数
         self.risk_params = {

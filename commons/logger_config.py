@@ -37,7 +37,7 @@ class LoggerConfig:
         配置控制台日志
         """
         # 控制台日志格式
-        console_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> <level>{level: <8}</level> <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+        console_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> <level>{level: <8}</level> <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <magenta>{extra[region]}</magenta> - <level>{message}</level>"
         
         # 只有当sys.stdout不为None时才添加控制台日志（避免PyInstaller窗口模式下的错误）
         if sys.stdout is not None:
@@ -57,7 +57,7 @@ class LoggerConfig:
         配置文件日志
         """
         # 文件日志格式，包含更多上下文信息
-        file_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {process.name}:{process.id} | {thread.name}:{thread.id} | {message}"
+        file_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {extra[region]} | {process.name}:{process.id} | {thread.name}:{thread.id} | {message}"
         
         # 主日志文件
         logger.add(
@@ -85,18 +85,23 @@ class LoggerConfig:
             diagnose=True,  # 显示诊断信息
         )
     
-    def get_logger(self, name=None):
+    def get_logger(self, name=None, region=None):
         """
         获取日志记录器
         
         Args:
             name (str, optional): 日志记录器名称
+            region (str, optional): 日志区域名称
             
         Returns:
             loguru.Logger: 日志记录器
         """
-        if name:
+        if name and region:
+            return logger.bind(module=name, region=region)
+        elif name:
             return logger.bind(module=name)
+        elif region:
+            return logger.bind(region=region)
         return logger
     
     def set_level(self, level):
@@ -119,3 +124,17 @@ global_logger_config = LoggerConfig()
 
 # 获取全局日志记录器
 global_logger = global_logger_config.get_logger()
+
+# 全局 get_logger 函数，方便其他模块直接使用
+def get_logger(name=None, region=None):
+    """
+    获取日志记录器
+    
+    Args:
+        name (str, optional): 日志记录器名称
+        region (str, optional): 日志区域名称
+        
+    Returns:
+        loguru.Logger: 日志记录器
+    """
+    return global_logger_config.get_logger(name, region)

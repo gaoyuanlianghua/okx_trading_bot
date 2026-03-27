@@ -8,8 +8,17 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.connection import HTTPSConnection
 from urllib3.poolmanager import PoolManager
-from commons.logger_config import global_logger as logger
 from .dns_resolver import custom_dns_resolve, CURRENT_DNS_CONFIG
+
+# 初始化日志配置
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("Network")
 
 
 class CustomHTTPSConnection(HTTPSConnection):

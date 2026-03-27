@@ -3,9 +3,18 @@ import json
 import time
 import asyncio
 from datetime import datetime, timedelta
-from loguru import logger
 from okx_api_client import OKXAPIClient
 from okx_websocket_client import OKXWebsocketClient
+
+# 初始化日志配置
+from commons.logger_config import global_logger_config
+
+# 获取区域化日志记录器
+def get_logger(region=None):
+    return global_logger_config.get_logger(region=region)
+
+# 创建默认日志记录器
+logger = get_logger("MarketData")
 
 class MarketDataService:
     """市场数据服务，封装OKX API的市场数据功能"""

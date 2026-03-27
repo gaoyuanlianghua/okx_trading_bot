@@ -815,20 +815,20 @@ class TradingGUI(QMainWindow):
             success = self.trading_bot.register_strategy(strategy_class_obj)
             
             if success:
-                self.log(f"策略添加成功: {strategy_name}")
+                self.log(f"策略添加成功: {strategy_name}", region="Strategy")
                 QMessageBox.information(self, "成功", f"策略 {strategy_name} 添加成功")
                 # Reload strategy list
                 if hasattr(self, 'load_strategy_list'):
                     self.load_strategy_list()
             else:
-                self.log(f"策略添加失败: {strategy_name}")
+                self.log(f"策略添加失败: {strategy_name}", region="Strategy")
                 QMessageBox.error(self, "失败", f"策略 {strategy_name} 添加失败")
             
             dialog.accept()
         except Exception as e:
-            self.log(f"添加策略失败: {e}")
+            self.log(f"添加策略失败: {e}", region="Strategy")
             import traceback
-            self.log(traceback.format_exc())
+            self.log(traceback.format_exc(), region="Strategy")
             QMessageBox.error(self, "错误", f"添加策略时出错: {str(e)}")
     
     def add_trading_plan(self):
@@ -863,9 +863,9 @@ class TradingGUI(QMainWindow):
             # Clear input fields
             self.plan_notes.setText("")
             
-            self.log(f"添加交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})")
+            self.log(f"添加交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})", region="TradingPlan")
         except Exception as e:
-            self.log(f"添加交易规划失败: {e}")
+            self.log(f"添加交易规划失败: {e}", region="TradingPlan")
             QMessageBox.error(self, "错误", f"添加交易规划时出错: {str(e)}")
     
     def execute_plan(self, row):
@@ -878,14 +878,14 @@ class TradingGUI(QMainWindow):
             
             # Here you would implement the actual order execution
             # For now, we'll just log the execution
-            self.log(f"执行交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})")
+            self.log(f"执行交易规划: {direction} (时间范围: {time_horizon}, 信心: {confidence})", region="TradingPlan")
             
             # Remove the plan from the list
             self.plan_list.removeRow(row)
             
             QMessageBox.information(self, "成功", f"交易规划已执行")
         except Exception as e:
-            self.log(f"执行交易规划失败: {e}")
+            self.log(f"执行交易规划失败: {e}", region="TradingPlan")
             QMessageBox.error(self, "错误", f"执行交易规划时出错: {str(e)}")
     
     def apply_plans_to_strategy(self):
@@ -923,20 +923,20 @@ class TradingGUI(QMainWindow):
             success = strategy_agent.apply_trading_plans(strategy_name, plans)
             
             if success:
-                self.log(f"成功将 {len(plans)} 个交易规划应用到策略 {strategy_name}")
+                self.log(f"成功将 {len(plans)} 个交易规划应用到策略 {strategy_name}", region="TradingPlan")
                 QMessageBox.information(self, "成功", f"交易规划已应用到策略 {strategy_name}")
             else:
-                self.log(f"应用交易规划到策略 {strategy_name} 失败")
+                self.log(f"应用交易规划到策略 {strategy_name} 失败", region="TradingPlan")
                 QMessageBox.error(self, "错误", f"应用交易规划到策略 {strategy_name} 失败")
         except Exception as e:
-            self.log(f"应用交易规划失败: {e}")
+            self.log(f"应用交易规划失败: {e}", region="TradingPlan")
             QMessageBox.error(self, "错误", f"应用交易规划时出错: {str(e)}")
     
     def switch_env(self, is_test):
         """Switch between testnet and mainnet"""
         try:
             env = "测试网" if is_test else "主网"
-            self.log(f"切换到{env}")
+            self.log(f"切换到{env}", region="Environment")
             
             # Update UI to reflect the change
             if is_test:
@@ -948,29 +948,29 @@ class TradingGUI(QMainWindow):
             
             QMessageBox.information(self, "成功", f"已切换到{env}")
         except Exception as e:
-            self.log(f"切换环境失败: {e}")
+            self.log(f"切换环境失败: {e}", region="Environment")
             QMessageBox.error(self, "错误", f"切换环境时出错: {str(e)}")
     
     def manual_network_adaptation(self):
         """Perform manual network adaptation"""
         try:
-            self.log("执行手动网络适配...")
+            self.log("执行手动网络适配...", region="Network")
             # Here you would implement network adaptation logic
-            self.log("手动网络适配完成")
+            self.log("手动网络适配完成", region="Network")
             QMessageBox.information(self, "成功", "手动网络适配已完成")
         except Exception as e:
-            self.log(f"手动网络适配失败: {e}")
+            self.log(f"手动网络适配失败: {e}", region="Network")
             QMessageBox.error(self, "错误", f"手动网络适配时出错: {str(e)}")
     
     def refresh_network_status(self):
         """Refresh network status"""
         try:
-            self.log("刷新网络状态...")
+            self.log("刷新网络状态...", region="Network")
             # Here you would implement network status refresh logic
-            self.log("网络状态刷新完成")
+            self.log("网络状态刷新完成", region="Network")
             QMessageBox.information(self, "成功", "网络状态已刷新")
         except Exception as e:
-            self.log(f"刷新网络状态失败: {e}")
+            self.log(f"刷新网络状态失败: {e}", region="Network")
             QMessageBox.error(self, "错误", f"刷新网络状态时出错: {str(e)}")
     
     def init_trading_tab(self):
@@ -1905,7 +1905,7 @@ class TradingGUI(QMainWindow):
             # 从交易机器人获取市场数据智能体
             market_data_agent = self.trading_bot.get_agent("market_data_agent")
             if not market_data_agent:
-                self.log("市场数据智能体未初始化")
+                self.log("市场数据智能体未初始化", region="MarketData")
                 return
             
             # 确保交易对已订阅
@@ -1938,11 +1938,11 @@ class TradingGUI(QMainWindow):
                 current_time = datetime.now().strftime("%H:%M:%S")
                 self.last_update_time.setText(f"更新时间: {current_time}")
                 
-                self.log(f"更新市场数据成功: {symbol}")
+                self.log(f"更新市场数据成功: {symbol}", region="MarketData")
             else:
-                self.log("获取市场数据失败")
+                self.log("获取市场数据失败", region="MarketData")
         except Exception as e:
-            self.log(f"更新市场数据失败: {e}")
+            self.log(f"更新市场数据失败: {e}", region="MarketData")
     
     def update_all_data(self):
         """更新所有数据"""
@@ -1962,7 +1962,7 @@ class TradingGUI(QMainWindow):
             # 更新网络状态
             self.update_network_status()
             
-            self.log("更新所有数据完成")
+            self.log("更新所有数据完成", region="DataUpdate")
         except Exception as e:
             self.log(f"更新所有数据失败: {e}")
     
@@ -2042,7 +2042,7 @@ class TradingGUI(QMainWindow):
             # 从交易机器人获取市场数据智能体
             market_data_agent = self.trading_bot.get_agent("market_data_agent")
             if not market_data_agent:
-                self.log("市场数据智能体未初始化")
+                self.log("市场数据智能体未初始化", region="MarketData")
                 return
             
             # 获取网络状态
@@ -2097,7 +2097,7 @@ class TradingGUI(QMainWindow):
             # 从交易机器人获取市场数据智能体
             market_data_agent = self.trading_bot.get_agent("market_data_agent")
             if not market_data_agent:
-                self.log("市场数据智能体未初始化")
+                self.log("市场数据智能体未初始化", region="MarketData")
                 return
             
             # 尝试从API获取K线数据
@@ -2432,10 +2432,17 @@ class TradingGUI(QMainWindow):
         except Exception as e:
             self.log(f"处理市场数据更新事件失败: {e}")
     
-    def log(self, message):
-        """添加日志消息"""
+    def log(self, message, region="General"):
+        """添加日志消息
+        
+        Args:
+            message (str): 日志消息
+            region (str): 日志区域，默认为"General"
+        """
         if not self.is_closed:
-            self.update_log.emit(message)
+            # 格式化消息，包含区域信息
+            formatted_message = f"[{region}] {message}"
+            self.update_log.emit(formatted_message)
     
     def init_config_monitor(self):
         """初始化配置监控"""

@@ -9,7 +9,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
 
 # 初始化日志配置
-from commons.logger_config import global_logger as logger
+from commons.logger_config import get_logger
+logger = get_logger(region="Config")
 
 class ConfigManager:
     """
