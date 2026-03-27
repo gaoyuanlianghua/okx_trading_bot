@@ -52,6 +52,17 @@ jobs:
         Write-Host "Current directory: $pwd"
         Write-Host "Files in current directory:"
         Get-ChildItem
+        
+        # Verify spec file exists
+        if (!(Test-Path "okx_trading_bot.spec")) {
+          Write-Host "ERROR: okx_trading_bot.spec file not found!"
+          exit 1
+        }
+        
+        # Show spec file content for debugging
+        Write-Host "Spec file content:"
+        Get-Content "okx_trading_bot.spec"
+        
         Write-Host "Installed packages:"
         pip list
         
