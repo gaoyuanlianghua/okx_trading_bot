@@ -28,6 +28,36 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pyinstaller
+        
+        # Verify critical packages are installed
+        python -c "import PyQt5; import requests; import websockets; import numpy; import pandas; print('All critical packages installed')"
+
+    - name: Verify imports
+      run: |
+        python -c "
+        import sys
+        modules_to_check = [
+            'agents.market_data_agent',
+            'agents.order_agent',
+            'commons.logger_config',
+            'strategies.base_strategy',
+            'okx_api_client',
+            'trading_gui'
+        ]
+        
+        failed = []
+        for module in modules_to_check:
+            try:
+                __import__(module)
+                print(f'✓ {module}')
+            except Exception as e:
+                print(f'✗ {module}: {e}')
+                failed.append(module)
+        
+        if failed:
+            print(f'\nFailed to import: {failed}')
+            sys.exit(1)
+        "
 
     - name: Run tests
       run: |
@@ -76,25 +106,24 @@ jobs:
         pip list
         
         Write-Host "Running PyInstaller..."
-        # Run PyInstaller with more verbose output
-        pyinstaller okx_trading_bot.spec --clean --noconfirm -v 2>&1 | Tee-Object -FilePath build_output.log
+        # Run PyInstaller and capture full output
+        pyinstaller okx_trading_bot.spec --clean --noconfirm 2>&1 | Tee-Object -FilePath build_output.log
         $buildExitCode = $LASTEXITCODE
         
         Write-Host "PyInstaller exit code: $buildExitCode"
-        Write-Host "Checking for dist directory..."
+        Write-Host "=== Full Build Output ==="
+        Get-Content build_output.log
+        Write-Host "=========================="
         
-        # List all directories created
-        Get-ChildItem -Directory
-        
+        # Check build result
         if (!(Test-Path "dist")) {
           Write-Host "ERROR: Dist directory was not created!"
-          Write-Host "Build output:"
-          Get-Content build_output.log
+          Write-Host "This usually means PyInstaller encountered an error during bundling."
+          Write-Host "Check the output above for import errors or missing dependencies."
           exit 1
         }
         
         Write-Host "Build completed successfully"
-        Get-ChildItem -Path dist -Recurse
 
     - name: Verify artifact exists before upload
       run: |
