@@ -52,7 +52,16 @@ jobs:
         Write-Host "Building application..."
         Write-Host "Current directory: $pwd"
         Write-Host "Files in current directory:"
-        Get-ChildItem
+        Get-ChildItem -Force
+        
+        # List Python path to verify module discovery
+        python -c "import sys; print('Python path:'); [print(p) for p in sys.path]"
+        
+        # Verify main.py exists
+        if (!(Test-Path "main.py")) {
+          Write-Host "ERROR: main.py file not found!"
+          exit 1
+        }
         
         # Verify spec file exists
         if (!(Test-Path "okx_trading_bot.spec")) {
@@ -67,30 +76,21 @@ jobs:
         pip list
         
         Write-Host "Running PyInstaller..."
-        # Run PyInstaller with output visible and captured
-        pyinstaller okx_trading_bot.spec --clean --noconfirm -v 2>&1 | Out-File -FilePath build_output.log -Encoding UTF8
+        # Run PyInstaller with more verbose output
+        pyinstaller okx_trading_bot.spec --clean --noconfirm -v 2>&1 | Tee-Object -FilePath build_output.log
         $buildExitCode = $LASTEXITCODE
+        
         Write-Host "PyInstaller exit code: $buildExitCode"
+        Write-Host "Checking for dist directory..."
         
-        # Show the build output for debugging
-        Write-Host "Build output:"
-        Get-Content build_output.log
+        # List all directories created
+        Get-ChildItem -Directory
         
-        # Check dist directory exists BEFORE checking exit code
         if (!(Test-Path "dist")) {
-          Write-Host "ERROR: Dist directory was not created by PyInstaller!"
+          Write-Host "ERROR: Dist directory was not created!"
           Write-Host "Build output:"
           Get-Content build_output.log
-          if (Test-Path "build") {
-            Write-Host "Build folder contents:"
-            Get-ChildItem -Path build -Recurse
-          }
           exit 1
-        }
-        
-        if ($buildExitCode -ne 0) {
-          Write-Host "Build completed with warnings/errors (exit code: $buildExitCode)"
-          Write-Host "But dist directory exists, continuing..."
         }
         
         Write-Host "Build completed successfully"
