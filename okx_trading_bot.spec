@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['main.py'],
-             pathex=['d:\\Projects\\okx_trading_bot'],
+             pathex=['.'],
              binaries=[],
              datas=[],
              hiddenimports=[

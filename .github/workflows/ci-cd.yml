@@ -41,7 +41,17 @@ jobs:
 
     - name: Build application
       run: |
-        pyinstaller okx_trading_bot.spec
+        Write-Host "Building application..."
+        Write-Host "Current directory: $pwd"
+        Write-Host "Files in current directory:"
+        Get-ChildItem
+        pip list
+        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Build failed with exit code: $LASTEXITCODE"
+          Get-ChildItem -Path build -Recurse -ErrorAction SilentlyContinue
+          exit 1
+        }
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
