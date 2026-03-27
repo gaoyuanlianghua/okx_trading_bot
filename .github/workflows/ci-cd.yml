@@ -37,19 +37,14 @@ jobs:
         Get-ChildItem
         
         # Run pytest with auto-discovery (finds all test files)
-        $testOutput = pytest -v --tb=short 2>&1
+        pytest -v --tb=short
         $testExitCode = $LASTEXITCODE
-        Write-Host $testOutput
-        Write-Host "Pytest exit code: $testExitCode"
         
-        # Check if tests passed by looking for "passed" in the output
-        if ($testOutput -match "passed") {
-          Write-Host "Tests passed, proceeding with build"
-          exit 0
-        } else {
-          Write-Host "Tests failed, exiting with code $testExitCode"
+        if ($testExitCode -ne 0) {
+          Write-Host "Tests failed with exit code: $testExitCode"
           exit $testExitCode
         }
+        Write-Host "Tests passed, proceeding with build"
 
     - name: Build application
       run: |
@@ -59,25 +54,18 @@ jobs:
         Get-ChildItem
         Write-Host "Installed packages:"
         pip list
+        
         Write-Host "Running PyInstaller..."
         pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
         $buildExitCode = $LASTEXITCODE
         Write-Host "PyInstaller exit code: $buildExitCode"
         
-        # Check if build directory was created
-        if (Test-Path "build") {
-          Write-Host "Build directory contents:"
-          Get-ChildItem -Path build -Recurse
-        } else {
-          Write-Host "WARNING: Build directory not created!"
-        }
-        
-        # Check if dist directory was created
-        if (Test-Path "dist") {
-          Write-Host "Dist directory contents:"
-          Get-ChildItem -Path dist -Recurse
-        } else {
-          Write-Host "ERROR: Dist directory not created!"
+        # Check for actual output before checking exit code
+        if (!(Test-Path "dist")) {
+          Write-Host "ERROR: Dist directory was not created by PyInstaller!"
+          if (Test-Path "build") {
+            Get-ChildItem -Path build -Recurse
+          }
           exit 1
         }
         
@@ -86,6 +74,7 @@ jobs:
           exit $buildExitCode
         }
         Write-Host "Build completed successfully"
+        Get-ChildItem -Path dist -Recurse
 
     - name: Verify artifact exists before upload
       run: |
