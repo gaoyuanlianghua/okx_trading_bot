@@ -64,17 +64,28 @@ jobs:
         $buildExitCode = $LASTEXITCODE
         Write-Host "PyInstaller exit code: $buildExitCode"
         
+        # Check if build directory was created
+        if (Test-Path "build") {
+          Write-Host "Build directory contents:"
+          Get-ChildItem -Path build -Recurse
+        } else {
+          Write-Host "WARNING: Build directory not created!"
+        }
+        
+        # Check if dist directory was created
+        if (Test-Path "dist") {
+          Write-Host "Dist directory contents:"
+          Get-ChildItem -Path dist -Recurse
+        } else {
+          Write-Host "ERROR: Dist directory not created!"
+          exit 1
+        }
+        
         if ($buildExitCode -ne 0) {
           Write-Host "Build failed with exit code: $buildExitCode"
-          Write-Host "Build directory contents:"
-          Get-ChildItem -Path build -Recurse -ErrorAction SilentlyContinue
-          Write-Host "Dist directory contents:"
-          Get-ChildItem -Path dist -Recurse -ErrorAction SilentlyContinue
           exit $buildExitCode
         }
         Write-Host "Build completed successfully"
-        Write-Host "Dist directory contents:"
-        Get-ChildItem -Path dist -Recurse
 
     - name: Verify artifact exists before upload
       run: |
