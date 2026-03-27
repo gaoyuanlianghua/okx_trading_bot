@@ -48,14 +48,17 @@ jobs:
         Write-Host "Installed packages:"
         pip list
         Write-Host "Running PyInstaller..."
-        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v 2>&1
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "Build failed with exit code: $LASTEXITCODE"
+        pyinstaller okx_trading_bot.spec --onefile --clean --noconfirm -v
+        $buildExitCode = $LASTEXITCODE
+        Write-Host "PyInstaller exit code: $buildExitCode"
+        
+        if ($buildExitCode -ne 0) {
+          Write-Host "Build failed with exit code: $buildExitCode"
           Write-Host "Build directory contents:"
           Get-ChildItem -Path build -Recurse -ErrorAction SilentlyContinue
           Write-Host "Dist directory contents:"
           Get-ChildItem -Path dist -Recurse -ErrorAction SilentlyContinue
-          exit 1
+          exit $buildExitCode
         }
         Write-Host "Build completed successfully"
         Write-Host "Dist directory contents:"
