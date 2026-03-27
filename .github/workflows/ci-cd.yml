@@ -76,6 +76,15 @@ jobs:
         Write-Host "Dist directory contents:"
         Get-ChildItem -Path dist -Recurse
 
+    - name: Verify artifact exists before upload
+      run: |
+        if (!(Test-Path "dist/okx_trading_bot.exe")) {
+          Write-Host "ERROR: okx_trading_bot.exe not found in dist directory!"
+          Get-ChildItem -Path dist -Recurse
+          exit 1
+        }
+        Write-Host "Artifact verified successfully"
+
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
