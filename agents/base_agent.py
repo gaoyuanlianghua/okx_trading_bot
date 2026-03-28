@@ -78,17 +78,22 @@ class BaseAgent(QObject):
             logger.warning(f"智能体已停止: {self.agent_id}")
             return
         
+        # 先更新状态，让线程的循环条件失效
+        self._status = "stopped"
+        
         # 停止所有线程
         for thread in self.threads:
             if thread and thread.isRunning():
                 thread.quit()
-                thread.wait()
-                logger.info(f"智能体线程已停止: {self.agent_id}")
+                # 添加超时机制，避免无限等待
+                if not thread.wait(5000):  # 5秒超时
+                    logger.warning(f"智能体线程停止超时: {self.agent_id}")
+                else:
+                    logger.info(f"智能体线程已停止: {self.agent_id}")
         
         # 清空线程列表
         self.threads.clear()
         
-        self._status = "stopped"
         logger.info(f"智能体停止: {self.agent_id}")
         
         # 发布智能体状态变化事件（使用中文状态）
