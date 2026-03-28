@@ -98,6 +98,10 @@ class MarketDataAgent(BaseAgent):
             dict: 市场数据
         """
         try:
+            # 首先检查是否有市场数据服务
+            if not self.market_data_service:
+                return None
+            
             # 检查是否在测试模式
             import os
             if os.environ.get('OKX_TEST_MODE') == 'true':
@@ -112,9 +116,6 @@ class MarketDataAgent(BaseAgent):
                     'change': 1000.0,
                     'change_pct': 0.02
                 }
-            
-            if not self.market_data_service:
-                return None
             
             # 获取实时行情数据
             ticker = self.market_data_service.get_real_time_ticker(symbol)
