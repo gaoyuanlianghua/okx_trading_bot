@@ -73,7 +73,8 @@ jobs:
         Get-ChildItem
         
         # Run pytest and capture output
-        pytest -v --tb=short 2>&1 | Tee-Object -Variable pytestOutput
+        $pytestOutput = pytest -v --tb=short 2>&1
+        Write-Host $pytestOutput
         
         # Check if "passed" appears in output (indicating success)
         if ($pytestOutput -match "passed") {
