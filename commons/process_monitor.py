@@ -88,7 +88,7 @@ class ProcessMonitor:
                 'memory_info': current_process.memory_info()._asdict(),
                 'threads': current_process.num_threads(),
                 'open_files': len(current_process.open_files()) if hasattr(current_process, 'open_files') else 0,
-                'connections': len(current_process.connections()) if hasattr(current_process, 'connections') else 0
+                'connections': len(current_process.net_connections()) if hasattr(current_process, 'net_connections') else len(current_process.connections()) if hasattr(current_process, 'connections') else 0
             }
             
             # 添加到历史记录
