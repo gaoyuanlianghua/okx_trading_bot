@@ -78,17 +78,20 @@ jobs:
         $env:OKX_TEST_MODE = "true"
         $env:DISABLE_WEBSOCKET = "true"
         
-        # Run pytest with timeout and parallel execution
-        $pytestOutput = pytest -v --tb=short --timeout=30 --tb=short 2>&1
-        Write-Host $pytestOutput
+        # Run pytest with timeout
+        pytest -v --tb=short --timeout=30 2>&1 | Tee-Object -FilePath test_output.log
+        $testExitCode = $LASTEXITCODE
         
-        # Check if "passed" appears in output (indicating success)
-        if ($pytestOutput -match "passed") {
-          Write-Host "Tests passed, proceeding with build"
-        } else {
-          Write-Host "Tests failed"
-          exit 1
+        Write-Host "Test exit code: $testExitCode"
+        Get-Content test_output.log
+        
+        # Exit with the actual pytest exit code
+        if ($testExitCode -ne 0) {
+          Write-Host "Tests failed with exit code: $testExitCode"
+          exit $testExitCode
         }
+        
+        Write-Host "Tests passed, proceeding with build"
 
     - name: Build application
       run: |
