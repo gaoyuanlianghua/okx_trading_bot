@@ -241,7 +241,9 @@ class OrderManager:
                 logger.debug(f"获取未成交订单成功，共 {len(result)} 个订单")
                 return result
             
-            logger.error(f"获取未成交订单失败: API返回为空")
+            # API返回为空是正常的（没有未成交订单）
+            logger.debug(f"获取未成交订单成功，无未成交订单")
+            self.pending_orders = {}
             return []
             
         except Exception as e:

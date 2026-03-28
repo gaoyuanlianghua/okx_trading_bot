@@ -429,11 +429,18 @@ class OKXAPIClient:
         """
         dns_logger = get_logger("DNS")
         try:
-            config_path = os.path.join(os.path.dirname(__file__), 'config/okx_config.json')
+            config_dir = os.path.join(os.path.dirname(__file__), 'config')
+            config_path = os.path.join(config_dir, 'okx_config.json')
             
-            # 读取现有配置
-            with open(config_path, 'r') as f:
-                config = json.load(f)
+            # 确保config目录存在
+            os.makedirs(config_dir, exist_ok=True)
+            
+            # 读取现有配置，如果不存在则创建新配置
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            except FileNotFoundError:
+                config = {}
             
             # 更新配置
             if 'api' not in config:
