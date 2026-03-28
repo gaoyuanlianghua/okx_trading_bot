@@ -1,6 +1,7 @@
 import os
 import sys
 from loguru import logger
+from collections import defaultdict
 
 class LoggerConfig:
     """
@@ -23,6 +24,10 @@ class LoggerConfig:
         # 确保日志目录存在
         os.makedirs(self.log_dir, exist_ok=True)
         
+        # 日志缓冲区，按区域分组
+        self.log_buffer = defaultdict(list)
+        self.buffer_size = 3  # 每3-5行显示一次
+        
         # 移除默认的日志配置
         logger.remove()
         
@@ -36,20 +41,57 @@ class LoggerConfig:
         """
         配置控制台日志
         """
-        # 控制台日志格式
-        console_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> <level>{level: <8}</level> <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <magenta>{extra[region]}</magenta> - <level>{message}</level>"
+        # 自定义日志处理器，实现按区域分组显示
+        def grouped_log_handler(message):
+            # 获取日志区域
+            region = message.record["extra"].get("region", "Default")
+            
+            # 将日志消息添加到对应区域的缓冲区
+            self.log_buffer[region].append(message)
+            
+            # 当缓冲区达到指定大小时，批量显示
+            if len(self.log_buffer[region]) >= self.buffer_size:
+                # 显示区域标题
+                print(f"\n{'='*60}")
+                print(f"区域: {region}")
+                print(f"{'='*60}")
+                
+                # 显示该区域的所有日志
+                for msg in self.log_buffer[region]:
+                    # 格式化日志消息
+                    time_str = msg.record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    level_str = msg.record["level"].name
+                    name_str = msg.record["name"]
+                    function_str = msg.record["function"]
+                    line_str = msg.record["line"]
+                    message_str = msg.record["message"]
+                    
+                    # 彩色输出
+                    level_color = {
+                        "DEBUG": "\033[94m",      # 蓝色
+                        "INFO": "\033[92m",       # 绿色
+                        "WARNING": "\033[93m",    # 黄色
+                        "ERROR": "\033[91m",      # 红色
+                        "CRITICAL": "\033[95m"    # 紫色
+                    }.get(level_str, "\033[0m")
+                    
+                    reset_color = "\033[0m"
+                    
+                    # 打印日志
+                    print(f"{level_color}{time_str} {level_str:<8} {name_str}:{function_str}:{line_str} | {region} - {message_str}{reset_color}")
+                
+                # 清空该区域的缓冲区
+                self.log_buffer[region].clear()
         
         # 只有当sys.stdout不为None时才添加控制台日志（避免PyInstaller窗口模式下的错误）
         if sys.stdout is not None:
             # 添加控制台日志
             logger.add(
-                sys.stdout,
-                format=console_format,
+                grouped_log_handler,
                 level=self.log_level,
                 enqueue=True,  # 启用异步写入，提高性能
                 backtrace=True,  # 显示完整的调用堆栈
-                diagnose=True,  # 显示诊断信息
-                colorize=True  # 启用彩色输出
+                diagnose=True  # 显示诊断信息
             )
     
     def _config_file_logger(self):
@@ -118,6 +160,44 @@ class LoggerConfig:
                 "sink": sys.stdout,
                 "level": level
             }])
+    
+    def flush_buffers(self):
+        """
+        刷新所有日志缓冲区，显示剩余的日志
+        """
+        for region, messages in self.log_buffer.items():
+            if messages:
+                # 显示区域标题
+                print(f"\n{'='*60}")
+                print(f"区域: {region} (剩余日志)")
+                print(f"{'='*60}")
+                
+                # 显示该区域的所有日志
+                for msg in messages:
+                    # 格式化日志消息
+                    time_str = msg.record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    level_str = msg.record["level"].name
+                    name_str = msg.record["name"]
+                    function_str = msg.record["function"]
+                    line_str = msg.record["line"]
+                    message_str = msg.record["message"]
+                    
+                    # 彩色输出
+                    level_color = {
+                        "DEBUG": "\033[94m",      # 蓝色
+                        "INFO": "\033[92m",       # 绿色
+                        "WARNING": "\033[93m",    # 黄色
+                        "ERROR": "\033[91m",      # 红色
+                        "CRITICAL": "\033[95m"    # 紫色
+                    }.get(level_str, "\033[0m")
+                    
+                    reset_color = "\033[0m"
+                    
+                    # 打印日志
+                    print(f"{level_color}{time_str} {level_str:<8} {name_str}:{function_str}:{line_str} | {region} - {message_str}{reset_color}")
+                
+                # 清空该区域的缓冲区
+                self.log_buffer[region].clear()
 
 # 创建全局日志配置实例
 global_logger_config = LoggerConfig()
