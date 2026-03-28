@@ -36,6 +36,12 @@ jobs:
       run: |
         python -c "
         import sys
+        import os
+        
+        # Force UTF-8 encoding on Windows
+        if sys.platform == 'win32':
+            os.environ['PYTHONIOENCODING'] = 'utf-8'
+        
         modules_to_check = [
             'agents.market_data_agent',
             'agents.order_agent',
@@ -49,9 +55,9 @@ jobs:
         for module in modules_to_check:
             try:
                 __import__(module)
-                print(f'✓ {module}')
+                print(f'[OK] {module}')
             except Exception as e:
-                print(f'✗ {module}: {e}')
+                print(f'[FAIL] {module}: {e}')
                 failed.append(module)
         
         if failed:
