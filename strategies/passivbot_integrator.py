@@ -4,8 +4,10 @@ import json
 import hjson
 import subprocess
 import time
-from loguru import logger
+from commons.logger_config import get_logger
 from strategies.base_strategy import BaseStrategy
+
+logger = get_logger(region="Strategy")
 
 # 添加passivbot到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), 'passivbot', 'src'))

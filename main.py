@@ -17,7 +17,9 @@ from PyQt5.QtWidgets import QApplication
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # 初始化日志配置
-from commons.logger_config import global_logger as logger
+from commons.logger_config import get_logger
+
+logger = get_logger(region="Main")
 logger.info("启动交易机器人...")
 
 # 初始化健康检查器
@@ -273,7 +275,7 @@ class TradingBot:
             global_alert_manager.start()
             
             # 启动进程监控
-            global_process_monitor.start_monitoring()
+            global_process_monitor.start()
             
             # 更新服务状态
             global_health_checker.update_check_status(
@@ -322,7 +324,7 @@ class TradingBot:
             self.stop_agents()
             
             # 停止进程监控
-            global_process_monitor.stop_monitoring()
+            global_process_monitor.stop()
         
         return 0
     

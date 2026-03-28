@@ -1,7 +1,9 @@
 import time
 import threading
 from typing import Dict, Any, List
-from loguru import logger
+from commons.logger_config import get_logger
+
+logger = get_logger(region="Health")
 
 class HealthChecker:
     """

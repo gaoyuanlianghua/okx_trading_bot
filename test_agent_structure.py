@@ -10,10 +10,15 @@ import os
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from loguru import logger
-
-# 初始化日志
-logger.add("logs/agent_structure_test.log", rotation="500 MB", compression="zip")
+# 尝试导入区域化日志记录器
+try:
+    from commons.logger_config import get_logger
+    logger = get_logger(region="Test")
+except ImportError:
+    # 如果无法导入，使用默认的loguru logger
+    from loguru import logger
+    # 初始化日志
+    logger.add("logs/agent_structure_test.log", rotation="500 MB", compression="zip")
 
 # 测试智能体结构
 def test_agent_structure():

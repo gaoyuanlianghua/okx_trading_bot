@@ -7,7 +7,16 @@
 import os
 import sys
 import subprocess
-from loguru import logger
+
+# 尝试导入区域化日志记录器
+try:
+    from commons.logger_config import get_logger
+    logger = get_logger(region="Dependencies")
+except ImportError:
+    # 如果无法导入，使用默认的loguru logger
+    from loguru import logger
+    logger.remove()
+    logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <level>{level}</level> {message}")
 
 def check_pip():
     """

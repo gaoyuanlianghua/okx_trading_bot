@@ -325,7 +325,9 @@ QTableWidget QHeaderView {
 """
 
 # 初始化日志配置
-from commons.logger_config import global_logger as logger
+from commons.logger_config import get_logger
+
+logger = get_logger(region="GUI")
 
 # Import our custom modules
 from okx_api_client import OKXAPIClient

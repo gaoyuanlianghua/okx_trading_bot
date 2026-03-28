@@ -5,14 +5,20 @@
 
 import sys
 import os
-from loguru import logger
-
-# 配置日志
-logger.remove()
-logger.add(sys.stdout, level="INFO")
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# 尝试导入区域化日志记录器
+try:
+    from commons.logger_config import get_logger
+    logger = get_logger(region="Test")
+except ImportError:
+    # 如果无法导入，使用默认的loguru logger
+    from loguru import logger
+    # 配置日志
+    logger.remove()
+    logger.add(sys.stdout, level="INFO")
 
 def test_dynamics_strategy():
     """测试动力学策略加载"""

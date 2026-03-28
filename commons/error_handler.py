@@ -3,10 +3,12 @@
 """
 
 import time
-from loguru import logger
+from commons.logger_config import get_logger
 import traceback
 import functools
 from enum import Enum
+
+logger = get_logger(region="Error")
 
 
 class ErrorLevel(Enum):

@@ -1,7 +1,9 @@
 import time
 import threading
 from typing import Dict, Any, List, Optional
-from loguru import logger
+from commons.logger_config import get_logger
+
+logger = get_logger(region="Alert")
 
 class AlertManager:
     """

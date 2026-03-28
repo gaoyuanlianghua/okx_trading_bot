@@ -1,4 +1,11 @@
-from loguru import logger
+# 尝试导入区域化日志记录器
+try:
+    from commons.logger_config import get_logger
+    logger = get_logger(region="Test")
+except ImportError:
+    # 如果无法导入，使用默认的loguru logger
+    from loguru import logger
+
 from okx_api_client import OKXAPIClient
 
 # 测试API密钥

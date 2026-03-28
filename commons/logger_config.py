@@ -99,10 +99,10 @@ class LoggerConfig:
         if name and region:
             return logger.bind(module=name, region=region)
         elif name:
-            return logger.bind(module=name)
+            return logger.bind(module=name, region="Default")
         elif region:
             return logger.bind(region=region)
-        return logger
+        return logger.bind(region="Default")
     
     def set_level(self, level):
         """
