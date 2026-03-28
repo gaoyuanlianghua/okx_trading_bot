@@ -74,8 +74,12 @@ jobs:
         Write-Host "Files in current directory:"
         Get-ChildItem
         
-        # Run pytest and capture output
-        $pytestOutput = pytest -v --tb=short 2>&1
+        # Set environment variables to disable real API calls
+        $env:OKX_TEST_MODE = "true"
+        $env:DISABLE_WEBSOCKET = "true"
+        
+        # Run pytest with timeout and parallel execution
+        $pytestOutput = pytest -v --tb=short --timeout=30 --tb=short 2>&1
         Write-Host $pytestOutput
         
         # Check if "passed" appears in output (indicating success)

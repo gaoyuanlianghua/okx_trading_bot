@@ -98,6 +98,21 @@ class MarketDataAgent(BaseAgent):
             dict: 市场数据
         """
         try:
+            # 检查是否在测试模式
+            import os
+            if os.environ.get('OKX_TEST_MODE') == 'true':
+                # 返回模拟数据，避免实际API调用
+                return {
+                    'symbol': symbol,
+                    'price': 50000.0,
+                    'open': 49000.0,
+                    'high': 51000.0,
+                    'low': 48000.0,
+                    'volume': 1000000.0,
+                    'change': 1000.0,
+                    'change_pct': 0.02
+                }
+            
             if not self.market_data_service:
                 return None
             

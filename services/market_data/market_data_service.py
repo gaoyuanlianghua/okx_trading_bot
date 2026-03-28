@@ -27,6 +27,21 @@ class MarketDataService:
             api_client (OKXAPIClient, optional): OKX API客户端实例
             enable_websocket (bool, optional): 是否启用WebSocket，默认为True
         """
+        # 检查是否在测试模式
+        self.test_mode = os.environ.get('OKX_TEST_MODE') == 'true'
+        self.disable_websocket = os.environ.get('DISABLE_WEBSOCKET') == 'true'
+        
+        if self.test_mode:
+            logger.info("市场数据服务运行在测试模式，使用模拟数据")
+            # 测试模式下不初始化实际的API客户端
+            self.api_client = None
+            self._enable_websocket = False
+            # WebSocket数据缓存
+            self.ws_data_cache = {}
+            self.ws_subscriptions = set()
+            self.ws_client = None
+            return
+        
         if api_client:
             self.api_client = api_client
         else:
@@ -65,10 +80,10 @@ class MarketDataService:
         self.ws_data_cache = {}
         self.ws_subscriptions = set()
         self.ws_client = None
-        self._enable_websocket = enable_websocket
+        self._enable_websocket = enable_websocket and not self.disable_websocket
         
         # 初始化WebSocket客户端（仅在启用时）
-        if enable_websocket:
+        if self._enable_websocket:
             self._init_websocket()
         
         self.data_dir = os.path.join(os.path.dirname(__file__), '../../data')
@@ -157,12 +172,28 @@ class MarketDataService:
             dict: 行情数据
         """
         try:
+            # 测试模式下返回模拟数据
+            if self.test_mode:
+                logger.debug(f"测试模式: 返回模拟实时行情: {inst_id}")
+                return {
+                    'last': '50000',
+                    'open24h': '49000',
+                    'high24h': '51000',
+                    'low24h': '48000',
+                    'vol24h': '1000000',
+                    'change24h': '1000',
+                    'change24h': '0.02'
+                }
+            
             # 优先从WebSocket缓存获取数据（仅在WebSocket启用时）
             if self.ws_client and inst_id in self.ws_data_cache:
                 logger.debug(f"从WebSocket缓存获取实时行情: {inst_id}，最新价格: {self.ws_data_cache[inst_id]['last']}")
                 return self.ws_data_cache[inst_id]
             
             # 否则使用REST API
+            if not self.api_client:
+                return None
+                
             ticker_data = self.api_client.get_ticker(inst_id)
             if ticker_data:
                 logger.debug(f"获取实时行情成功: {inst_id}，最新价格: {ticker_data[0]['last']}")
@@ -196,6 +227,17 @@ class MarketDataService:
             dict: 订单簿数据
         """
         try:
+            # 测试模式下返回模拟数据
+            if self.test_mode:
+                logger.debug(f"测试模式: 返回模拟订单簿数据: {inst_id}")
+                return {
+                    'asks': [[str(50000 + i * 10), str(0.1) for i in range(depth)]],
+                    'bids': [[str(50000 - i * 10), str(0.1) for i in range(depth)]]
+                }
+            
+            if not self.api_client:
+                return None
+                
             order_book_data = self.api_client.get_order_book(inst_id, depth)
             if order_book_data:
                 logger.debug(f"获取订单簿成功: {inst_id}，深度: {depth}")
@@ -221,6 +263,29 @@ class MarketDataService:
             list: K线数据列表
         """
         try:
+            # 测试模式下返回模拟数据
+            if self.test_mode:
+                logger.debug(f"测试模式: 返回模拟K线数据: {inst_id}")
+                import time
+                timestamp = int(time.time() * 1000)
+                candles = []
+                for i in range(limit):
+                    candle_time = timestamp - (limit - i) * 60000  # 1分钟间隔
+                    candles.append([
+                        str(candle_time),
+                        str(50000 - i * 10),
+                        str(50000 - i * 10 + 50),
+                        str(50000 - i * 10 - 50),
+                        str(50000 - i * 10),
+                        str(1000),
+                        str(50000000),
+                        str(50000000)
+                    ])
+                return self._normalize_candles(candles)
+            
+            if not self.api_client:
+                return []
+                
             candles_data = self.api_client.get_candlesticks(inst_id, bar, limit)
             if candles_data:
                 logger.debug(f"获取K线数据成功: {inst_id}，周期: {bar}，数量: {len(candles_data)}")
@@ -247,6 +312,24 @@ class MarketDataService:
             list: 成交数据列表
         """
         try:
+            # 测试模式下返回模拟数据
+            if self.test_mode:
+                logger.debug(f"测试模式: 返回模拟成交数据: {inst_id}")
+                import time
+                trades = []
+                for i in range(limit):
+                    trades.append({
+                        'instId': inst_id,
+                        'price': str(50000 + i * 2),
+                        'size': str(0.01),
+                        'side': 'buy' if i % 2 == 0 else 'sell',
+                        'ts': str(int(time.time() * 1000) - i * 1000)
+                    })
+                return trades
+            
+            if not self.api_client:
+                return []
+                
             trades_data = self.api_client.get_trades(inst_id, limit)
             if trades_data:
                 logger.debug(f"获取成交数据成功: {inst_id}，数量: {len(trades_data)}")
@@ -274,6 +357,31 @@ class MarketDataService:
             list: 历史K线数据
         """
         try:
+            # 测试模式下返回模拟数据
+            if self.test_mode:
+                logger.debug(f"测试模式: 返回模拟历史K线数据: {inst_id}")
+                import time
+                timestamp = int(time.time() * 1000)
+                candles = []
+                for i in range(100):  # 返回100条数据
+                    candle_time = timestamp - (100 - i) * 3600000  # 1小时间隔
+                    candles.append([
+                        str(candle_time),
+                        str(50000 - i * 50),
+                        str(50000 - i * 50 + 100),
+                        str(50000 - i * 50 - 100),
+                        str(50000 - i * 50),
+                        str(1000),
+                        str(50000000),
+                        str(50000000)
+                    ])
+                normalized_candles = self._normalize_candles(candles)
+                logger.info(f"测试模式: 模拟历史数据下载完成: {inst_id}，共 {len(normalized_candles)} 条记录")
+                return normalized_candles
+            
+            if not self.api_client:
+                return []
+                
             # 设置默认时间范围
             if not end_time:
                 end_time = datetime.now().strftime('%Y-%m-%d')
