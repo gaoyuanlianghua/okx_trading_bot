@@ -179,7 +179,8 @@ class DecisionCoordinationAgent(BaseAgent):
         """
         try:
             if not all_agents:
-                return 0.0
+                # 当没有智能体时，保持当前健康度，避免频繁触发紧急恢复
+                return self.system_state.get("system_health", 0.7)
             
             # 基础健康度：基于智能体状态
             healthy_ratio = len([a for a in all_agents if a.status == 'running']) / len(all_agents)
