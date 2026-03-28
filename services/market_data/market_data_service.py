@@ -231,8 +231,8 @@ class MarketDataService:
             if self.test_mode:
                 logger.debug(f"测试模式: 返回模拟订单簿数据: {inst_id}")
                 return {
-                    'asks': [[str(50000 + i * 10), str(0.1) for i in range(depth)]],
-                    'bids': [[str(50000 - i * 10), str(0.1) for i in range(depth)]]
+                    'asks': [[str(50000 + i * 10), str(0.1)] for i in range(depth)],
+                    'bids': [[str(50000 - i * 10), str(0.1)] for i in range(depth)]
                 }
             
             if not self.api_client:
