@@ -83,13 +83,25 @@ class BaseAgent(QObject):
         
         # 停止所有线程
         for thread in self.threads:
-            if thread and thread.isRunning():
-                thread.quit()
-                # 添加超时机制，避免无限等待
-                if not thread.wait(5000):  # 5秒超时
-                    logger.warning(f"智能体线程停止超时: {self.agent_id}")
-                else:
-                    logger.info(f"智能体线程已停止: {self.agent_id}")
+            if thread:
+                try:
+                    # 检查是否是 QThread
+                    if hasattr(thread, 'isRunning') and hasattr(thread, 'quit') and hasattr(thread, 'wait'):
+                        if thread.isRunning():
+                            thread.quit()
+                            # 添加超时机制，避免无限等待
+                            if not thread.wait(5000):  # 5秒超时
+                                logger.warning(f"智能体 QThread 停止超时: {self.agent_id}")
+                            else:
+                                logger.info(f"智能体 QThread 已停止: {self.agent_id}")
+                    # 检查是否是 threading.Thread
+                    elif hasattr(thread, 'is_alive'):
+                        if thread.is_alive():
+                            # 对于普通线程，我们只能等待其自行结束
+                            # 因为线程循环条件会检查 self.status == 'running'
+                            logger.info(f"等待智能体线程结束: {self.agent_id}")
+                except Exception as e:
+                    logger.error(f"停止线程时出错: {e}")
         
         # 清空线程列表
         self.threads.clear()
@@ -157,30 +169,62 @@ class BaseAgent(QObject):
         Args:
             target (callable): 目标函数
         """
-        thread = QThread()
-        
-        # 创建一个工作对象
-        class Worker(QObject):
-            def __init__(self, target):
-                super().__init__()
-                self.target = target
-            
-            def run(self):
+        try:
+            from PyQt5.QtCore import QThread, QObject
+            # 检查是否有 QApplication 实例
+            from PyQt5.QtWidgets import QApplication
+            if QApplication.instance() is not None:
+                # 使用 QThread（有 GUI 环境）
+                thread = QThread()
+                
+                # 创建一个工作对象
+                class Worker(QObject):
+                    def __init__(self, target):
+                        super().__init__()
+                        self.target = target
+                    
+                    def run(self):
+                        try:
+                            self.target()
+                        except Exception as e:
+                            logger.error(f"线程执行失败: {e}")
+                
+                worker = Worker(target)
+                worker.moveToThread(thread)
+                thread.started.connect(worker.run)
+                thread.finished.connect(worker.deleteLater)
+                thread.finished.connect(thread.deleteLater)
+                
+                # 添加线程到列表
+                self.threads.append(thread)
+                
+                thread.start()
+            else:
+                # 使用普通 threading.Thread（无 GUI 环境，如测试）
+                import threading
+                def thread_target():
+                    try:
+                        target()
+                    except Exception as e:
+                        logger.error(f"线程执行失败: {e}")
+                
+                thread = threading.Thread(target=thread_target, daemon=True)
+                # 添加线程到列表
+                self.threads.append(thread)
+                thread.start()
+        except ImportError:
+            # 如果没有 PyQt5，使用普通 threading.Thread
+            import threading
+            def thread_target():
                 try:
-                    self.target()
+                    target()
                 except Exception as e:
                     logger.error(f"线程执行失败: {e}")
-        
-        worker = Worker(target)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        
-        # 添加线程到列表
-        self.threads.append(thread)
-        
-        thread.start()
+            
+            thread = threading.Thread(target=thread_target, daemon=True)
+            # 添加线程到列表
+            self.threads.append(thread)
+            thread.start()
         logger.debug(f"智能体 {self.agent_id} 启动线程，当前线程数: {len(self.threads)}")
     
     def get_status(self):
