@@ -99,6 +99,9 @@ class DecisionCoordinationAgent(BaseAgent):
         try:
             # 获取所有智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             running_agents = [agent for agent in all_agents if agent.status == 'running']
             
             # 更新系统状态
@@ -121,6 +124,9 @@ class DecisionCoordinationAgent(BaseAgent):
         try:
             # 获取所有智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             
             # 检查智能体运行状态
             error_agents = []
@@ -966,6 +972,9 @@ class DecisionCoordinationAgent(BaseAgent):
             
             # 3. 重启所有异常智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             error_agents = [agent for agent in all_agents if agent.status == 'error']
             
             for agent in error_agents:
@@ -990,6 +999,9 @@ class DecisionCoordinationAgent(BaseAgent):
             
             # 获取所有智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             error_agents = [agent for agent in all_agents if agent.status == 'error']
             
             # 按优先级恢复智能体
@@ -1018,6 +1030,9 @@ class DecisionCoordinationAgent(BaseAgent):
             
             # 获取所有智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             
             # 只恢复错误状态的智能体
             for agent in all_agents:
@@ -1079,6 +1094,9 @@ class DecisionCoordinationAgent(BaseAgent):
             
             # 4. 重启所有智能体
             all_agents = self.agent_registry.get_all_agents()
+            # 确保 all_agents 是可遍历的
+            if not hasattr(all_agents, '__iter__'):
+                all_agents = []
             for agent in all_agents:
                 if agent.status != 'running':
                     self._recover_agent(agent)

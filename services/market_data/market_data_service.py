@@ -108,6 +108,18 @@ class MarketDataService:
             
             # 启动WebSocket连接
             self._start_websocket()
+            
+            # 启动WebSocket连接管理
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._run_websocket())
+            else:
+                # 创建新的事件循环
+                def run_websocket():
+                    asyncio.run(self._run_websocket())
+                import threading
+                threading.Thread(target=run_websocket, daemon=True).start()
         except Exception as e:
             logger.error(f"初始化WebSocket客户端失败: {e}")
     
@@ -120,16 +132,16 @@ class MarketDataService:
     async def _run_websocket(self):
         """运行WebSocket连接"""
         try:
-            # 启动公共频道连接
-            public_task = asyncio.create_task(self.ws_client._public_handler())
+            logger.info("启动WebSocket连接管理")
             
             # 等待连接建立
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
             
             # 订阅已有的交易对
             for symbol in self.ws_subscriptions:
                 await self._subscribe_websocket(symbol)
                 
+            logger.info("WebSocket连接管理启动完成")
         except Exception as e:
             logger.error(f"WebSocket运行失败: {e}")
     
@@ -139,9 +151,21 @@ class MarketDataService:
         Args:
             inst_id (str): 交易对
         """
-        if self.ws_client.public_ws:
-            await self.ws_client._subscribe(self.ws_client.public_ws, 'tickers', inst_id, is_public=True)
-            logger.info(f"已订阅WebSocket行情频道: {inst_id}")
+        # 等待WebSocket连接建立
+        max_retries = 5
+        for retry in range(max_retries):
+            if self.ws_client and self.ws_client.public_ws:
+                try:
+                    await self.ws_client._subscribe(self.ws_client.public_ws, 'tickers', inst_id, is_public=True)
+                    logger.info(f"已订阅WebSocket行情频道: {inst_id}")
+                    return
+                except Exception as e:
+                    logger.error(f"订阅WebSocket频道失败: {e}")
+                    await asyncio.sleep(1)
+            else:
+                logger.debug(f"WebSocket连接未建立，等待中... (尝试 {retry+1}/{max_retries})")
+                await asyncio.sleep(1)
+        logger.warning(f"无法订阅WebSocket频道: {inst_id}，将使用REST API")
     
     def _handle_websocket_message(self, message):
         """处理WebSocket消息
