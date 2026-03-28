@@ -6,7 +6,7 @@ block_cipher = None
 a = Analysis(['main.py'],
              pathex=['.', 'agents', 'services', 'strategies', 'commons'],  # Add module paths
              binaries=[],
-             datas=[],
+             datas=[('strategies', 'strategies')],
              hiddenimports=[
                  'PyQt5.QtWidgets',
                  'PyQt5.QtCore',
