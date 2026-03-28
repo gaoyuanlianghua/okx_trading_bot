@@ -93,9 +93,9 @@ class OKXAPIClient:
         self.ws_ping_interval = api_config.get('ws_ping_interval', 30.0)
         
         # 设置API密钥
-        self.api_key = api_key or os.getenv('OKX_API_KEY') or api_config.get('api_key') or '-1'
-        self.api_secret = api_secret or os.getenv('OKX_API_SECRET') or api_config.get('api_secret') or '-1'
-        self.passphrase = passphrase or os.getenv('OKX_PASSPHRASE') or api_config.get('passphrase') or '-1'
+        self.api_key = api_key or os.getenv('OKX_API_KEY') or api_config.get('api_key')
+        self.api_secret = api_secret or os.getenv('OKX_API_SECRET') or api_config.get('api_secret')
+        self.passphrase = passphrase or os.getenv('OKX_PASSPHRASE') or api_config.get('passphrase')
         self.is_test = is_test
         self.timeout = timeout or int(os.getenv('OKX_API_TIMEOUT', '30')) or api_config.get('timeout', 30)
         
@@ -787,6 +787,11 @@ class OKXAPIClient:
         if method == "GET":
             url += query_params
             request_path += query_params
+        
+        # 检查API密钥是否存在
+        if need_sign and (not self.api_key or not self.api_secret or not self.passphrase):
+            api_logger.error("API密钥未设置，无法发送需要签名的请求")
+            return None
         
         # 获取时间戳和签名
         timestamp = self._get_timestamp()
