@@ -5,6 +5,13 @@ import importlib.util
 import os
 import time
 
+# 导入策略基类
+try:
+    from strategies.base_strategy import BaseStrategy
+except ImportError as e:
+    logger.error(f"导入BaseStrategy失败: {e}")
+    BaseStrategy = None
+
 class StrategyExecutionAgent(BaseAgent):
     """策略执行智能体，负责管理和执行各种交易策略"""
     
@@ -94,7 +101,9 @@ class StrategyExecutionAgent(BaseAgent):
                             
                             # 查找继承自BaseStrategy的类
                             try:
-                                from strategies.base_strategy import BaseStrategy
+                                if BaseStrategy is None:
+                                    logger.error("BaseStrategy未成功导入，无法加载策略")
+                                    continue
                                 for attr_name in dir(module):
                                     attr = getattr(module, attr_name)
                                     if isinstance(attr, type) and issubclass(attr, BaseStrategy) and attr != BaseStrategy:
