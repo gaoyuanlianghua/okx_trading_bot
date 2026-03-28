@@ -49,7 +49,9 @@ class LoggerConfig:
                 enqueue=True,  # 启用异步写入，提高性能
                 backtrace=True,  # 显示完整的调用堆栈
                 diagnose=True,  # 显示诊断信息
-                colorize=True  # 启用彩色输出
+                colorize=True,  # 启用彩色输出
+                encoding='utf-8',
+                errors='replace'
             )
     
     def _config_file_logger(self):
@@ -70,6 +72,8 @@ class LoggerConfig:
             enqueue=True,  # 启用异步写入，提高性能
             backtrace=True,  # 显示完整的调用堆栈
             diagnose=True,  # 显示诊断信息
+            encoding='utf-8',
+            errors='replace'
         )
         
         # 错误日志文件，仅记录ERROR和CRITICAL级别
@@ -83,6 +87,8 @@ class LoggerConfig:
             enqueue=True,  # 启用异步写入，提高性能
             backtrace=True,  # 显示完整的调用堆栈
             diagnose=True,  # 显示诊断信息
+            encoding='utf-8',
+            errors='replace'
         )
     
     def get_logger(self, name=None, region=None):
