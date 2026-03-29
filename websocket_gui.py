@@ -584,7 +584,15 @@ class WebSocketGUI(QMainWindow):
         import importlib.util
         
         # 首先加载文件系统中的策略
-        strategies_dir = 'strategies'
+        # 使用绝对路径，避免工作目录问题
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        strategies_dir = os.path.join(current_dir, 'strategies')
+        
+        # 检查目录是否存在
+        if not os.path.exists(strategies_dir):
+            logger.warning(f"策略目录不存在: {strategies_dir}")
+            return
+            
         strategy_files = [f for f in os.listdir(strategies_dir) if f.endswith('.py') and f != 'base_strategy.py']
         
         # 检查哪些策略已经在self.strategies中
