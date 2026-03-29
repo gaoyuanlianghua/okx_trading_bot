@@ -113,9 +113,9 @@ jobs:
         # List Python path to verify module discovery
         python -c "import sys; print('Python path:'); [print(p) for p in sys.path]"
         
-        # Verify main.py exists
-        if (!(Test-Path "main.py")) {
-          Write-Host "ERROR: main.py file not found!"
+        # Verify main_new.py exists
+        if (!(Test-Path "main_new.py")) {
+          Write-Host "ERROR: main_new.py file not found!"
           exit 1
         }
         
