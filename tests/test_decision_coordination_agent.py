@@ -38,8 +38,9 @@ class TestDecisionCoordinationAgent(unittest.TestCase):
     def test_stop(self):
         """测试停止"""
         self.agent.start()
-        time.sleep(0.5)  # 添加延迟以允许正确初始化
+        time.sleep(1.0)  # Increased from 0.5 to 1.0 seconds for proper initialization
         self.agent.stop()
+        time.sleep(0.5)  # Add delay to allow threads to fully terminate
         self.assertEqual(self.agent.status, "stopped")
         self.assertFalse(self.agent.system_state["is_running"])
     

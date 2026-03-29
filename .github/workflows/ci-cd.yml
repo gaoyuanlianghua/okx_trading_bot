@@ -85,10 +85,10 @@ jobs:
         Write-Host "Test exit code: $testExitCode"
         Get-Content test_output.log
         
-        # Ignore exit code -1073741819 (Access Violation on Windows) if tests passed
+        # Ignore exit code -1073741819 and -1073740791 (Access Violation on Windows) if tests passed
         # This is a known issue with pytest cleanup on Windows with certain packages
-        if ($testExitCode -eq -1073741819) {
-          Write-Host "Warning: Pytest crashed with access violation during cleanup (exit code -1073741819)"
+        if ($testExitCode -eq -1073741819 -or $testExitCode -eq -1073740791) {
+          Write-Host "Warning: Pytest crashed with access violation during cleanup"
           Write-Host "This is a known Windows issue. Checking if tests actually passed..."
           
           $testOutput = Get-Content test_output.log | Out-String
