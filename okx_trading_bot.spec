@@ -4,7 +4,7 @@
 block_cipher = None
 
 
-a = Analysis(['main_new.py'],
+a = Analysis(['websocket_gui.py'],
              pathex=['D:\\Projects\\okx_trading_bot'],
              binaries=[],
              datas=[],
