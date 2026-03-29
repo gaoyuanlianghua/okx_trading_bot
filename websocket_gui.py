@@ -17,6 +17,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QColor
 
 from core import OKXWebSocketClient, EventBus, Event, EventType
+from core.monitoring import strategy_monitor
 
 # 设置日志
 logging.basicConfig(
@@ -145,6 +146,11 @@ class WebSocketGUI(QMainWindow):
         self.strategy_tab = QWidget()
         self.tab_widget.addTab(self.strategy_tab, '策略管理')
         self.init_strategy_tab()
+        
+        # 监控标签页
+        self.monitor_tab = QWidget()
+        self.tab_widget.addTab(self.monitor_tab, '监控')
+        self.init_monitor_tab()
         
         # 状态栏
         self.statusBar = QStatusBar()
@@ -571,6 +577,189 @@ class WebSocketGUI(QMainWindow):
         import time
         time.sleep(2)  # 模拟回测过程
         self.statusBar.showMessage(f'策略 {strategy_name} 回测完成')
+    
+    def init_monitor_tab(self):
+        """
+        初始化监控标签页
+        """
+        layout = QVBoxLayout(self.monitor_tab)
+        
+        # 监控标签页
+        monitor_tab_widget = QTabWidget()
+        layout.addWidget(monitor_tab_widget)
+        
+        # 策略监控标签
+        strategy_monitor_tab = QWidget()
+        monitor_tab_widget.addTab(strategy_monitor_tab, '策略监控')
+        self.init_strategy_monitor_tab(strategy_monitor_tab)
+        
+        # API监控标签
+        api_monitor_tab = QWidget()
+        monitor_tab_widget.addTab(api_monitor_tab, 'API监控')
+        self.init_api_monitor_tab(api_monitor_tab)
+        
+        # 日志标签
+        log_tab = QWidget()
+        monitor_tab_widget.addTab(log_tab, '日志')
+        self.init_log_tab(log_tab)
+        
+        # 启动监控定时器
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self.update_monitor_data)
+        self.monitor_timer.start(2000)  # 每2秒更新一次
+    
+    def init_strategy_monitor_tab(self, parent):
+        """
+        初始化策略监控标签
+        """
+        layout = QVBoxLayout(parent)
+        
+        # 策略状态表格
+        self.strategy_monitor_table = QTableWidget()
+        self.strategy_monitor_table.setColumnCount(8)
+        self.strategy_monitor_table.setHorizontalHeaderLabels(['策略名称', '状态', '总交易数', '总盈亏', '胜率', '平均盈亏', '运行时间', '平均执行时间'])
+        self.strategy_monitor_table.setSortingEnabled(True)
+        
+        layout.addWidget(self.strategy_monitor_table)
+    
+    def init_api_monitor_tab(self, parent):
+        """
+        初始化API监控标签
+        """
+        layout = QVBoxLayout(parent)
+        
+        # API状态信息
+        self.api_status_info = QLabel('API状态将在此显示')
+        layout.addWidget(self.api_status_info)
+        
+        # API调用统计表格
+        self.api_call_table = QTableWidget()
+        self.api_call_table.setColumnCount(3)
+        self.api_call_table.setHorizontalHeaderLabels(['API类型', '调用次数', '平均响应时间'])
+        self.api_call_table.setSortingEnabled(True)
+        
+        layout.addWidget(self.api_call_table)
+    
+    def init_log_tab(self, parent):
+        """
+        初始化日志标签
+        """
+        layout = QVBoxLayout(parent)
+        
+        # 日志文本区域
+        from PyQt5.QtWidgets import QTextEdit
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("font-family: Consolas; font-size: 10px;")
+        
+        layout.addWidget(self.log_text)
+    
+    def update_monitor_data(self):
+        """
+        更新监控数据
+        """
+        self.update_strategy_monitor_data()
+        self.update_api_monitor_data()
+        self.update_log_data()
+    
+    def update_strategy_monitor_data(self):
+        """
+        更新策略监控数据
+        """
+        # 清空表格
+        self.strategy_monitor_table.setRowCount(0)
+        
+        # 获取所有策略状态
+        strategies_status = strategy_monitor.get_all_strategies_status()
+        
+        for strategy_name, status_data in strategies_status.items():
+            row_position = self.strategy_monitor_table.rowCount()
+            self.strategy_monitor_table.insertRow(row_position)
+            
+            # 策略名称
+            self.strategy_monitor_table.setItem(row_position, 0, QTableWidgetItem(strategy_name))
+            
+            # 状态
+            status = status_data.get('status', '未知')
+            status_item = QTableWidgetItem(status)
+            if status == 'running':
+                status_item.setForeground(QColor('green'))
+            elif status == 'error':
+                status_item.setForeground(QColor('red'))
+            self.strategy_monitor_table.setItem(row_position, 1, status_item)
+            
+            # 性能指标
+            metrics = status_data.get('metrics', {})
+            self.strategy_monitor_table.setItem(row_position, 2, QTableWidgetItem(str(metrics.get('total_trades', 0))))
+            self.strategy_monitor_table.setItem(row_position, 3, QTableWidgetItem(f"{metrics.get('total_profit', 0):.2f}"))
+            self.strategy_monitor_table.setItem(row_position, 4, QTableWidgetItem(f"{metrics.get('win_rate', 0):.2%}"))
+            self.strategy_monitor_table.setItem(row_position, 5, QTableWidgetItem(f"{metrics.get('avg_profit_per_trade', 0):.2f}"))
+            
+            # 运行时间
+            uptime = metrics.get('strategy_uptime', 0)
+            uptime_str = f"{uptime:.0f}s"
+            if uptime > 3600:
+                hours = int(uptime // 3600)
+                minutes = int((uptime % 3600) // 60)
+                uptime_str = f"{hours}h {minutes}m"
+            elif uptime > 60:
+                minutes = int(uptime // 60)
+                seconds = int(uptime % 60)
+                uptime_str = f"{minutes}m {seconds}s"
+            self.strategy_monitor_table.setItem(row_position, 6, QTableWidgetItem(uptime_str))
+            
+            # 平均执行时间
+            avg_exec_time = metrics.get('average_execution_time', 0)
+            self.strategy_monitor_table.setItem(row_position, 7, QTableWidgetItem(f"{avg_exec_time:.3f}s"))
+    
+    def update_api_monitor_data(self):
+        """
+        更新API监控数据
+        """
+        # 这里可以添加API调用统计数据
+        # 暂时显示模拟数据
+        api_status = "API连接正常"
+        self.api_status_info.setText(api_status)
+        
+        # 清空表格
+        self.api_call_table.setRowCount(0)
+        
+        # 添加模拟数据
+        api_types = [
+            {'type': 'REST API', 'count': 125, 'avg_time': 0.25},
+            {'type': 'WebSocket', 'count': 342, 'avg_time': 0.05},
+            {'type': '订单操作', 'count': 23, 'avg_time': 0.32},
+            {'type': '市场数据', 'count': 218, 'avg_time': 0.18}
+        ]
+        
+        for api_type in api_types:
+            row_position = self.api_call_table.rowCount()
+            self.api_call_table.insertRow(row_position)
+            self.api_call_table.setItem(row_position, 0, QTableWidgetItem(api_type['type']))
+            self.api_call_table.setItem(row_position, 1, QTableWidgetItem(str(api_type['count'])))
+            self.api_call_table.setItem(row_position, 2, QTableWidgetItem(f"{api_type['avg_time']:.2f}s"))
+    
+    def update_log_data(self):
+        """
+        更新日志数据
+        """
+        # 这里可以添加实际的日志数据
+        # 暂时显示模拟数据
+        import time
+        current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+        log_entry = f"[{current_time}] INFO - 系统运行正常\n"
+        
+        # 限制日志显示行数
+        current_log = self.log_text.toPlainText()
+        log_lines = current_log.split('\n')
+        if len(log_lines) > 1000:
+            log_lines = log_lines[-1000:]
+            current_log = '\n'.join(log_lines)
+        
+        new_log = current_log + log_entry
+        self.log_text.setPlainText(new_log)
+        # 滚动到底部
+        self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
     
     def update_strategy_list(self):
         """

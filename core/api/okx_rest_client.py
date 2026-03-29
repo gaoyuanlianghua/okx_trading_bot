@@ -96,6 +96,9 @@ class OKXRESTClient:
         Returns:
             Optional[Dict]: 响应数据
         """
+        import time
+        start_time = time.time()
+        
         await self._check_rate_limit()
         
         # 构建URL
@@ -114,6 +117,11 @@ class OKXRESTClient:
                 request_path += '?' + urlencode(params)
             headers.update(self.auth.get_headers(method, request_path, body_json))
         
+        # 记录请求信息
+        logger.debug(f"API请求: {method.upper()} {url}")
+        if body:
+            logger.debug(f"请求体: {body_json}")
+        
         try:
             session = await self._get_session()
             
@@ -126,6 +134,11 @@ class OKXRESTClient:
                 
                 # 解析响应
                 text = await response.text()
+                response_time = time.time() - start_time
+                
+                # 记录响应信息
+                logger.debug(f"API响应: {response.status} {url} (耗时: {response_time:.3f}s)")
+                logger.debug(f"响应体: {text[:500]}{'...' if len(text) > 500 else ''}")
                 
                 if response.status != 200:
                     logger.error(f"HTTP错误 {response.status}: {text}")
@@ -420,6 +433,57 @@ class OKXRESTClient:
         
         result = await self.request('GET', '/trade/orders-history', params=params)
         return result or []
+    
+    async def batch_place_orders(self, orders: List[Dict]) -> List[Dict]:
+        """
+        批量下单
+        
+        Args:
+            orders: 订单列表，每个订单包含instId, tdMode, side, ordType, sz等字段
+            
+        Returns:
+            List[Dict]: 订单结果列表
+        """
+        result = await self.request('POST', '/trade/batch-order', body={'orders': orders})
+        return result or []
+    
+    async def batch_cancel_orders(self, orders: List[Dict]) -> List[Dict]:
+        """
+        批量撤单
+        
+        Args:
+            orders: 订单列表，每个订单包含instId和ordId或clOrdId
+            
+        Returns:
+            List[Dict]: 撤单结果列表
+        """
+        result = await self.request('POST', '/trade/batch-cancel-orders', body={'orders': orders})
+        return result or []
+    
+    async def batch_amend_orders(self, orders: List[Dict]) -> List[Dict]:
+        """
+        批量改单
+        
+        Args:
+            orders: 订单列表，每个订单包含instId, ordId或clOrdId，以及要修改的字段
+            
+        Returns:
+            List[Dict]: 改单结果列表
+        """
+        result = await self.request('POST', '/trade/batch-amend-orders', body={'orders': orders})
+        return result or []
+    
+    async def get_account_rate_limit(self) -> Optional[Dict]:
+        """
+        获取账户限速信息
+        
+        Returns:
+            Optional[Dict]: 账户限速信息
+        """
+        result = await self.request('GET', '/account/rate-limit')
+        if result and len(result) > 0:
+            return result[0]
+        return None
     
     async def close(self):
         """关闭客户端"""

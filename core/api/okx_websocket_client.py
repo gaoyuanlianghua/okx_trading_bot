@@ -308,22 +308,31 @@ class OKXWebSocketClient:
             message: 消息内容
             channel: 频道类型 (public/private)
         """
+        import time
+        start_time = time.time()
+        
         try:
             data = json.loads(message)
             
             # 处理事件消息
             if 'event' in data:
+                logger.debug(f"收到事件消息 [{channel}]: {data.get('event')}")
                 await self._handle_event(data, channel)
                 return
             
             # 处理数据推送
             if 'arg' in data and 'data' in data:
+                arg = data.get('arg', {})
+                channel_name = arg.get('channel', '')
+                inst_id = arg.get('instId', '')
+                logger.debug(f"收到数据推送 [{channel}]: {channel_name} {inst_id}")
                 await self._handle_data_push(data, channel)
                 return
             
             # 处理pong响应
             if data == 'pong':
                 self._last_pong = time.time()
+                logger.debug(f"收到pong响应 [{channel}]")
                 return
             
             logger.debug(f"收到消息 [{channel}]: {message[:200]}")
@@ -331,10 +340,15 @@ class OKXWebSocketClient:
         except json.JSONDecodeError:
             # 处理ping消息
             if message == 'ping':
+                logger.debug(f"收到ping消息 [{channel}]")
                 return
             logger.warning(f"无法解析消息: {message}")
         except Exception as e:
             logger.error(f"处理消息错误: {e}")
+        finally:
+            process_time = time.time() - start_time
+            if process_time > 0.1:
+                logger.warning(f"消息处理耗时过长: {process_time:.3f}s")
     
     async def _handle_event(self, data: Dict, channel: str):
         """处理事件消息"""

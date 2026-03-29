@@ -314,7 +314,7 @@ class PassivbotIntegrator(BaseStrategy):
                 return False
         return False
     
-    def execute(self, market_data):
+    def _execute_strategy(self, market_data):
         """执行策略，生成交易信号
         
         Args:

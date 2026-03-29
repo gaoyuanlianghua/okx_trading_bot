@@ -765,7 +765,7 @@ class DynamicsStrategy(BaseStrategy):
         
         logger.debug(f"交易统计更新: {self.trade_stats}")
     
-    def execute(self, market_data):
+    def _execute_strategy(self, market_data):
         """执行策略，生成交易信号
         
         Args:
