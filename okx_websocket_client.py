@@ -135,7 +135,7 @@ class OKXWebsocketClient:
         self.base_reconnect_delay = 2  # 基础重连延迟，秒
         self.reconnect_delay = self.base_reconnect_delay  # 当前重连延迟
         self.max_reconnect_delay = 60  # 最大重连延迟，秒
-        self.max_reconnect_attempts = 20  # 最大重连次数
+        self.max_reconnect_attempts = 50  # 增加最大重连次数
         self.reconnect_attempts = 0
         self.exponential_backoff = True  # 启用指数退避
         self.backoff_factor = 1.5  # 退避因子
@@ -160,8 +160,13 @@ class OKXWebsocketClient:
         self.ssl_check_hostname = True  # 是否检查主机名
         self.ssl_verify_mode = ssl.CERT_REQUIRED  # 证书验证模式
         self.ssl_min_version = ssl.TLSVersion.TLSv1_2  # 最低TLS版本
-        self.ssl_max_version = ssl.TLSVersion.TLSv1_2  # 最高TLS版本 - 强制使用TLS 1.2
-        logger.info(f"WebSocket SSL配置: TLS 1.2，证书验证模式: {self.ssl_verify_mode}")
+        # 允许使用TLS 1.3，提高连接兼容性
+        if hasattr(ssl, 'TLSVersion') and hasattr(ssl.TLSVersion, 'TLSv1_3'):
+            self.ssl_max_version = ssl.TLSVersion.TLSv1_3
+            logger.info(f"WebSocket SSL配置: TLS 1.2-1.3，证书验证模式: {self.ssl_verify_mode}")
+        else:
+            self.ssl_max_version = ssl.TLSVersion.TLSv1_2
+            logger.info(f"WebSocket SSL配置: TLS 1.2，证书验证模式: {self.ssl_verify_mode}")
         
         # IP 健康状态跟踪
         self.ip_health = {}
@@ -253,8 +258,8 @@ class OKXWebsocketClient:
         ssl_context.minimum_version = self.ssl_min_version
         ssl_context.maximum_version = self.ssl_max_version
         
-        # 使用常见的加密套件（避免冷门套件被标记）
-        ssl_context.set_ciphers("ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256")
+        # 使用更广泛的加密套件，提高兼容性
+        ssl_context.set_ciphers("ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256")
         
         # 关闭会话复用（减少特征），兼容不同Python版本
         if hasattr(ssl, 'OP_NO_SESSION_RESUMPTION_ON_RECONNECT'):
@@ -555,6 +560,12 @@ class OKXWebsocketClient:
         
         while self.reconnect_attempts < self.max_reconnect_attempts and not self._should_stop:
             try:
+                # 定期清理内存
+                import gc
+                if self.reconnect_attempts % 5 == 0:
+                    gc.collect()
+                    ws_logger.debug("执行内存垃圾回收")
+                
                 # 从URL中提取IP地址
                 import re
                 ip_match = re.search(r'wss://([^:]+):', self.public_url)
@@ -916,6 +927,12 @@ class OKXWebsocketClient:
         
         while self.reconnect_attempts < self.max_reconnect_attempts and not self._should_stop:
             try:
+                # 定期清理内存
+                import gc
+                if self.reconnect_attempts % 5 == 0:
+                    gc.collect()
+                    ws_logger.debug("执行内存垃圾回收")
+                
                 # 从URL中提取IP地址
                 import re
                 ip_match = re.search(r'wss://([^:]+):', self.private_url)
