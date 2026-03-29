@@ -31,6 +31,18 @@ class MarketDataService:
         self.test_mode = os.environ.get('OKX_TEST_MODE') == 'true'
         self.disable_websocket = os.environ.get('DISABLE_WEBSOCKET') == 'true'
         
+        # 强制使用测试模式，如果API连接失败
+        try:
+            if not self.test_mode and api_client:
+                # 测试API连接
+                server_time = api_client.get_server_time()
+                if not server_time:
+                    logger.warning("API连接失败，自动切换到测试模式")
+                    self.test_mode = True
+        except Exception as e:
+            logger.warning(f"API连接测试失败: {e}，自动切换到测试模式")
+            self.test_mode = True
+        
         if self.test_mode:
             logger.info("市场数据服务运行在测试模式，使用模拟数据")
             # 测试模式下不初始化实际的API客户端

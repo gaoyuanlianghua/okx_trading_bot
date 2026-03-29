@@ -110,6 +110,11 @@ class OKXAPIClient:
         self.host_name = self.parsed_url.netloc
         self.base_path = self.parsed_url.path
         
+        # 设置API IP
+        self.api_ip = api_config.get('api_ip')
+        if self.api_ip:
+            logger.info(f"已设置API IP: {self.api_ip}")
+        
         # API版本，当前OKX API版本为v5
         self.api_version = "v5"
         
@@ -145,11 +150,10 @@ class OKXAPIClient:
         # 自定义SSL上下文，伪装TLS指纹
         import ssl
         ssl_context = ssl.create_default_context()
-        # 强制使用TLS 1.2（避免TLS 1.3的特征被识别）
+        # 允许TLS 1.2和TLS 1.3
         ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-        ssl_context.maximum_version = ssl.TLSVersion.TLSv1_2
-        # 使用常见的加密套件（避免冷门套件被标记）
-        ssl_context.set_ciphers("ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256")
+        # 使用更广泛的加密套件
+        ssl_context.set_ciphers("ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256")
         # 关闭会话复用（减少特征），兼容不同Python版本
         if hasattr(ssl, 'OP_NO_SESSION_RESUMPTION_ON_RECONNECT'):
             ssl_context.options |= ssl.OP_NO_SESSION_RESUMPTION_ON_RECONNECT
@@ -158,6 +162,8 @@ class OKXAPIClient:
         ssl_context.options |= ssl.OP_NO_SSLv3
         ssl_context.options |= ssl.OP_NO_TLSv1
         ssl_context.options |= ssl.OP_NO_TLSv1_1
+        # 允许SNI
+        ssl_context.check_hostname = True
         
         # 创建带有智能重试策略的HTTP适配器
         retry_strategy = Retry(
@@ -461,13 +467,9 @@ class OKXAPIClient:
         network_logger.info("测试网络连接...")
         
         try:
-            # 测试DNS解析
-            network_logger.info(f"正在解析主机名: {self.host_name}")
-            ip = custom_dns_resolve(self.host_name)
-            
-            # 如果DNS解析失败，使用配置文件中的API IP地址
+            # 优先使用配置的API IP地址
+            ip = self.api_ip
             if not ip or ip.startswith('169.254.'):
-                network_logger.warning(f"DNS解析失败或返回无效IP: {ip}")
                 # 从配置文件中获取API IP地址
                 api_ip = self.config_manager.get("api", {}).get("api_ip")
                 if api_ip and not api_ip.startswith('169.254.'):
@@ -483,13 +485,11 @@ class OKXAPIClient:
                             break
                 
                 if not ip or ip.startswith('169.254.'):
-                    network_logger.error(f"无法解析主机名: {self.host_name}，且配置文件中没有有效API IP地址")
+                    network_logger.error(f"配置文件中没有有效API IP地址")
                     network_logger.error("可能的原因:")
-                    network_logger.error("1. 系统DNS配置问题")
-                    network_logger.error("2. 网络环境对DNS查询的拦截")
-                    network_logger.error("3. 域名不存在或已过期")
-                    network_logger.error("4. 配置文件中没有有效API IP地址")
-                    network_logger.error("建议: 检查网络连接或禁用自定义DNS解析")
+                    network_logger.error("1. 配置文件中没有设置API IP地址")
+                    network_logger.error("2. 配置的API IP地址无效")
+                    network_logger.error("建议: 检查配置文件中的API IP设置")
                     return False
             
             network_logger.info(f"使用IP地址: {ip}")
@@ -777,7 +777,17 @@ class OKXAPIClient:
         
         # 构建请求URL
         request_path = f"{self.base_path}/api/{self.api_version}/{endpoint}"
-        url = f"{self.parsed_url.scheme}://{self.host_name}{request_path}"
+        
+        # 强制使用配置文件中的API IP地址
+        use_api_ip = True
+        if use_api_ip and hasattr(self, 'api_ip') and self.api_ip:
+            # 使用配置的API IP
+            ip = self.api_ip
+            api_logger.info(f"使用配置的API IP: {ip}")
+            url = f"{self.parsed_url.scheme}://{ip}{request_path}"
+        else:
+            # 使用原始主机名
+            url = f"{self.parsed_url.scheme}://{self.host_name}{request_path}"
         
         # 构建请求体
         body = json.dumps(params) if (method == "POST" and params) else ""
