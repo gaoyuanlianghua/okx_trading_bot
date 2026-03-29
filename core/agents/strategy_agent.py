@@ -15,6 +15,7 @@ from core.events.event_bus import Event, EventType
 from core.events.agent_communication import Message, MessageType, MessageTemplates
 from strategies.base_strategy import BaseStrategy
 from strategies.dynamics_strategy import DynamicsStrategy
+from strategies.passivbot_integrator import PassivbotIntegrator
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,19 @@ class StrategyAgent(BaseAgent):
             self._strategies['DynamicsStrategy'] = dynamics_strategy
             
             logger.info(f"加载策略成功: DynamicsStrategy")
+            
+            # 创建Passivbot策略
+            passivbot_config = {
+                'broker': 'okx',
+                'symbol': 'BTC-USDT-SWAP',
+                'timeframe': '1h',
+                'strategy': 'default'
+            }
+            
+            passivbot_strategy = PassivbotIntegrator(config=passivbot_config)
+            self._strategies['PassivbotStrategy'] = passivbot_strategy
+            
+            logger.info(f"加载策略成功: PassivbotStrategy")
             
         except Exception as e:
             logger.error(f"加载默认策略失败: {e}")

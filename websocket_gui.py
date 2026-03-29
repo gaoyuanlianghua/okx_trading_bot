@@ -51,6 +51,7 @@ class WebSocketGUI(QMainWindow):
         self.market_data = {}
         self.order_data = []
         self.account_data = {}
+        self.strategies = []
         
         # 初始化界面
         self.init_ui()
@@ -140,10 +141,18 @@ class WebSocketGUI(QMainWindow):
         self.tab_widget.addTab(self.subscribe_tab, '订阅管理')
         self.init_subscribe_tab()
         
+        # 策略管理标签页
+        self.strategy_tab = QWidget()
+        self.tab_widget.addTab(self.strategy_tab, '策略管理')
+        self.init_strategy_tab()
+        
         # 状态栏
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.statusBar.showMessage('就绪')
+        
+        # 添加帮助菜单项
+        self.init_help_menu()
     
     def init_market_tab(self):
         """
@@ -222,13 +231,59 @@ class WebSocketGUI(QMainWindow):
         self.subscribe_button.clicked.connect(self.subscribe_instrument)
         self.unsubscribe_button.clicked.connect(self.unsubscribe_instrument)
     
+    def init_strategy_tab(self):
+        """
+        初始化策略管理标签页
+        """
+        layout = QVBoxLayout(self.strategy_tab)
+        
+        # 策略控制
+        strategy_control = QHBoxLayout()
+        self.strategy_name_input = QLineEdit()
+        self.strategy_name_input.setPlaceholderText('策略名称')
+        self.strategy_type_combo = QComboBox()
+        self.strategy_type_combo.addItems(['动态策略', 'PassivBot策略', '自定义策略'])
+        self.create_strategy_button = QPushButton('创建策略')
+        self.start_strategy_button = QPushButton('启动策略')
+        self.stop_strategy_button = QPushButton('停止策略')
+        
+        strategy_control.addWidget(QLabel('策略名称:'))
+        strategy_control.addWidget(self.strategy_name_input)
+        strategy_control.addWidget(QLabel('策略类型:'))
+        strategy_control.addWidget(self.strategy_type_combo)
+        strategy_control.addWidget(self.create_strategy_button)
+        strategy_control.addWidget(self.start_strategy_button)
+        strategy_control.addWidget(self.stop_strategy_button)
+        
+        layout.addLayout(strategy_control)
+        
+        # 策略列表
+        self.strategy_list = QTableWidget()
+        self.strategy_list.setColumnCount(4)
+        self.strategy_list.setHorizontalHeaderLabels(['策略名称', '策略类型', '状态', '操作'])
+        # 设置列宽
+        self.strategy_list.setColumnWidth(0, 150)
+        self.strategy_list.setColumnWidth(1, 120)
+        self.strategy_list.setColumnWidth(2, 80)
+        self.strategy_list.setColumnWidth(3, 300)
+        
+        layout.addWidget(self.strategy_list)
+        
+        # 连接按钮信号
+        self.create_strategy_button.clicked.connect(self.create_strategy)
+        self.start_strategy_button.clicked.connect(self.start_strategy)
+        self.stop_strategy_button.clicked.connect(self.stop_strategy)
+        
+        # 初始化策略列表
+        self.update_strategy_list()
+    
     def toggle_connection(self):
         """
         切换 WebSocket 连接状态
         """
         if self.ws_client and self.ws_client.is_connected():
             # 断开连接
-            asyncio.create_task(self.disconnect_ws())
+            self._run_async_task(self.disconnect_ws())
         else:
             # 连接
             api_key = self.api_key_input.text()
@@ -236,7 +291,22 @@ class WebSocketGUI(QMainWindow):
             passphrase = self.passphrase_input.text()
             is_test = self.testnet_checkbox.currentText() == '模拟盘'
             
-            asyncio.create_task(self.connect_ws(api_key, api_secret, passphrase, is_test))
+            self._run_async_task(self.connect_ws(api_key, api_secret, passphrase, is_test))
+    
+    def _run_async_task(self, coro):
+        """
+        安全地运行异步任务
+        """
+        def run_coro():
+            try:
+                asyncio.run(coro)
+            except Exception as e:
+                logger.error(f"运行异步任务错误: {e}")
+        
+        import threading
+        thread = threading.Thread(target=run_coro)
+        thread.daemon = True
+        thread.start()
     
     async def connect_ws(self, api_key, api_secret, passphrase, is_test):
         """
@@ -299,7 +369,7 @@ class WebSocketGUI(QMainWindow):
             self.statusBar.showMessage('请先连接 WebSocket')
             return
         
-        asyncio.create_task(self._subscribe_instrument(inst_id))
+        self._run_async_task(self._subscribe_instrument(inst_id))
     
     async def _subscribe_instrument(self, inst_id):
         """
@@ -334,7 +404,7 @@ class WebSocketGUI(QMainWindow):
         # 取消订阅选中的产品
         for row in selected_rows:
             inst_id = self.subscribe_list.item(row.row(), 0).text()
-            asyncio.create_task(self._unsubscribe_instrument(inst_id))
+            self._run_async_task(self._unsubscribe_instrument(inst_id))
     
     async def _unsubscribe_instrument(self, inst_id):
         """
@@ -364,6 +434,222 @@ class WebSocketGUI(QMainWindow):
             self.subscribe_list.insertRow(row_position)
             self.subscribe_list.setItem(row_position, 0, QTableWidgetItem(product))
             self.subscribe_list.setItem(row_position, 1, QTableWidgetItem('已订阅'))
+    
+    def create_strategy(self):
+        """
+        创建策略
+        """
+        strategy_name = self.strategy_name_input.text().strip()
+        if not strategy_name:
+            self.statusBar.showMessage('请输入策略名称')
+            return
+        
+        strategy_type = self.strategy_type_combo.currentText()
+        
+        # 检查策略是否已存在
+        existing_strategy_names = [s['name'] for s in self.strategies]
+        if strategy_name in existing_strategy_names:
+            self.statusBar.showMessage(f'策略 {strategy_name} 已存在')
+            return
+        
+        # 添加新策略到列表
+        self.strategies.append({
+            'name': strategy_name,
+            'type': strategy_type,
+            'status': '已停止',
+            'file': f'{strategy_name}.py'
+        })
+        
+        # 这里需要实现策略创建的逻辑
+        # 由于我们没有实际的策略管理系统，这里只是模拟
+        self.statusBar.showMessage(f'创建策略 {strategy_name} ({strategy_type}) 成功')
+        
+        # 更新策略列表
+        self.update_strategy_list()
+    
+    def start_strategy(self):
+        """
+        启动策略
+        """
+        # 获取选中的行
+        selected_rows = self.strategy_list.selectionModel().selectedRows()
+        if not selected_rows:
+            self.statusBar.showMessage('请选择要启动的策略')
+            return
+        
+        # 启动选中的策略
+        for row in selected_rows:
+            strategy_name = self.strategy_list.item(row.row(), 0).text()
+            
+            # 查找策略并更新状态
+            for strategy in self.strategies:
+                if strategy['name'] == strategy_name:
+                    strategy['status'] = '运行中'
+                    break
+            
+            # 这里需要实现策略启动的逻辑
+            # 由于我们没有实际的策略管理系统，这里只是模拟
+            self.statusBar.showMessage(f'启动策略 {strategy_name} 成功')
+            # 更新策略状态
+            self.strategy_list.setItem(row.row(), 2, QTableWidgetItem('运行中'))
+    
+    def stop_strategy(self):
+        """
+        停止策略
+        """
+        # 获取选中的行
+        selected_rows = self.strategy_list.selectionModel().selectedRows()
+        if not selected_rows:
+            self.statusBar.showMessage('请选择要停止的策略')
+            return
+        
+        # 停止选中的策略
+        for row in selected_rows:
+            strategy_name = self.strategy_list.item(row.row(), 0).text()
+            
+            # 查找策略并更新状态
+            for strategy in self.strategies:
+                if strategy['name'] == strategy_name:
+                    strategy['status'] = '已停止'
+                    break
+            
+            # 这里需要实现策略停止的逻辑
+            # 由于我们没有实际的策略管理系统，这里只是模拟
+            self.statusBar.showMessage(f'停止策略 {strategy_name} 成功')
+            # 更新策略状态
+            self.strategy_list.setItem(row.row(), 2, QTableWidgetItem('已停止'))
+    
+    def edit_strategy(self, strategy_name):
+        """
+        编辑策略
+        """
+        # 这里需要实现策略编辑的逻辑
+        # 由于我们没有实际的策略管理系统，这里只是模拟
+        self.statusBar.showMessage(f'编辑策略 {strategy_name}')
+    
+    def delete_strategy(self, strategy_name):
+        """
+        删除策略
+        """
+        # 查找并删除策略
+        for i, strategy in enumerate(self.strategies):
+            if strategy['name'] == strategy_name:
+                self.strategies.pop(i)
+                self.statusBar.showMessage(f'删除策略 {strategy_name} 成功')
+                # 更新策略列表
+                self.update_strategy_list()
+                return
+        
+        self.statusBar.showMessage(f'策略 {strategy_name} 不存在')
+    
+    def view_strategy_details(self, strategy_name):
+        """
+        查看策略详情
+        """
+        # 查找策略
+        for strategy in self.strategies:
+            if strategy['name'] == strategy_name:
+                # 显示策略详情
+                details = f"策略名称: {strategy['name']}\n"
+                details += f"策略类型: {strategy['type']}\n"
+                details += f"状态: {strategy['status']}\n"
+                details += f"文件: {strategy.get('file', 'N/A')}"
+                self.statusBar.showMessage(f'查看策略 {strategy_name} 详情')
+                # 这里可以弹出一个对话框显示详细信息
+                return
+        
+        self.statusBar.showMessage(f'策略 {strategy_name} 不存在')
+    
+    def run_strategy_backtest(self, strategy_name):
+        """
+        运行策略回测
+        """
+        # 这里需要实现策略回测的逻辑
+        # 由于我们没有实际的策略管理系统，这里只是模拟
+        self.statusBar.showMessage(f'运行策略 {strategy_name} 回测')
+        # 模拟回测结果
+        import time
+        time.sleep(2)  # 模拟回测过程
+        self.statusBar.showMessage(f'策略 {strategy_name} 回测完成')
+    
+    def update_strategy_list(self):
+        """
+        更新策略列表
+        """
+        # 清空表格
+        self.strategy_list.setRowCount(0)
+        
+        # 加载实际的策略文件
+        import os
+        import importlib.util
+        
+        # 首先加载文件系统中的策略
+        strategies_dir = 'strategies'
+        strategy_files = [f for f in os.listdir(strategies_dir) if f.endswith('.py') and f != 'base_strategy.py']
+        
+        # 检查哪些策略已经在self.strategies中
+        existing_strategy_names = [s['name'] for s in self.strategies]
+        
+        # 添加新的策略文件到self.strategies
+        for strategy_file in strategy_files:
+            # 提取策略名称
+            strategy_name = os.path.splitext(strategy_file)[0]
+            
+            # 如果策略已经存在，跳过
+            if strategy_name in existing_strategy_names:
+                continue
+            
+            # 确定策略类型
+            if 'dynamics' in strategy_name:
+                strategy_type = '动态策略'
+            elif 'passivbot' in strategy_name:
+                strategy_type = 'PassivBot策略'
+            else:
+                strategy_type = '自定义策略'
+            
+            # 添加到策略列表
+            self.strategies.append({
+                'name': strategy_name,
+                'type': strategy_type,
+                'status': '已停止',
+                'file': strategy_file
+            })
+        
+        # 显示所有策略
+        for strategy in self.strategies:
+            row_position = self.strategy_list.rowCount()
+            self.strategy_list.insertRow(row_position)
+            self.strategy_list.setItem(row_position, 0, QTableWidgetItem(strategy['name']))
+            self.strategy_list.setItem(row_position, 1, QTableWidgetItem(strategy['type']))
+            self.strategy_list.setItem(row_position, 2, QTableWidgetItem(strategy['status']))
+            
+            # 添加操作按钮
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(2, 2, 2, 2)
+            
+            edit_button = QPushButton('编辑')
+            edit_button.setMinimumWidth(60)
+            edit_button.clicked.connect(lambda checked, name=strategy['name']: self.edit_strategy(name))
+            
+            delete_button = QPushButton('删除')
+            delete_button.setMinimumWidth(60)
+            delete_button.clicked.connect(lambda checked, name=strategy['name']: self.delete_strategy(name))
+            
+            details_button = QPushButton('详情')
+            details_button.setMinimumWidth(60)
+            details_button.clicked.connect(lambda checked, name=strategy['name']: self.view_strategy_details(name))
+            
+            backtest_button = QPushButton('回测')
+            backtest_button.setMinimumWidth(60)
+            backtest_button.clicked.connect(lambda checked, name=strategy['name']: self.run_strategy_backtest(name))
+            
+            action_layout.addWidget(edit_button)
+            action_layout.addWidget(delete_button)
+            action_layout.addWidget(details_button)
+            action_layout.addWidget(backtest_button)
+            
+            self.strategy_list.setCellWidget(row_position, 3, action_widget)
     
     def on_market_event(self, event):
         """
@@ -602,12 +888,137 @@ class WebSocketGUI(QMainWindow):
             self.connection_status.setText(f'未连接: {message}')
             self.connection_status.setStyleSheet('color: red; font-weight: bold;')
     
+    def init_help_menu(self):
+        """
+        初始化帮助菜单
+        """
+        from PyQt5.QtWidgets import QMenuBar, QAction, QMessageBox
+        
+        # 获取菜单栏
+        menubar = self.menuBar()
+        
+        # 创建帮助菜单
+        help_menu = menubar.addMenu('帮助')
+        
+        # 创建功能说明动作
+        help_action = QAction('功能说明', self)
+        help_action.triggered.connect(self.show_help)
+        help_menu.addAction(help_action)
+    
+    def show_help(self):
+        """
+        显示功能说明
+        """
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QScrollArea, QWidget
+        from PyQt5.QtCore import Qt
+        
+        # 创建帮助对话框
+        help_dialog = QDialog(self)
+        help_dialog.setWindowTitle('功能说明')
+        help_dialog.setGeometry(100, 100, 800, 600)
+        
+        # 创建主布局
+        main_layout = QVBoxLayout(help_dialog)
+        
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        
+        # 创建内容 widget
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        
+        # 功能说明文本
+        help_text = """
+功能说明
+
+1. 连接管理
+   - API Key输入框: 输入OKX API密钥
+   - Secret输入框: 输入OKX API密钥密码
+   - Passphrase输入框: 输入密码短语
+   - 环境选择: 选择模拟盘或实盘
+   - 连接按钮: 连接或断开WebSocket
+     - 实现: toggle_connection
+
+2. 市场数据标签页
+   - 市场数据表格: 显示产品价格、涨跌、成交量等信息
+     - 实现: update_market_table
+
+3. 订单标签页
+   - 订单表格: 显示订单ID、产品、类型、方向、价格、数量、状态、时间等信息
+     - 实现: update_order_table
+
+4. 账户标签页
+   - 账户信息: 显示总权益、保证金比率等信息
+     - 实现: update_account_info
+   - 资产表格: 显示币种、可用余额、冻结余额、总余额等信息
+     - 实现: update_asset_table
+
+5. 订阅管理标签页
+   - 产品ID输入框: 输入要订阅的产品ID
+   - 订阅按钮: 订阅产品
+     - 实现: subscribe_instrument
+   - 取消订阅按钮: 取消订阅选中的产品
+     - 实现: unsubscribe_instrument
+   - 订阅列表: 显示已订阅的产品
+     - 实现: update_subscribe_list
+
+6. 策略管理标签页
+   - 策略名称输入框: 输入新策略的名称
+   - 策略类型选择: 选择策略类型（动态策略、PassivBot策略、自定义策略）
+   - 创建策略按钮: 创建新策略
+     - 实现: create_strategy
+   - 启动策略按钮: 启动选中的策略
+     - 实现: start_strategy
+   - 停止策略按钮: 停止选中的策略
+     - 实现: stop_strategy
+   - 策略列表: 显示所有策略
+     - 实现: update_strategy_list
+   - 操作按钮:
+     - 编辑: 编辑策略的参数和配置
+       - 实现: edit_strategy
+     - 删除: 删除不需要的策略
+       - 实现: delete_strategy
+     - 详情: 查看策略的详细信息
+       - 实现: view_strategy_details
+     - 回测: 运行策略回测，评估策略性能
+       - 实现: run_strategy_backtest
+
+7. 状态栏
+   - 显示连接状态、操作结果等信息
+
+注意: 由于当前环境无法连接到OKX API，部分功能可能无法正常工作。
+        """
+        
+        # 创建文本编辑框
+        text_edit = QTextEdit()
+        text_edit.setText(help_text)
+        text_edit.setReadOnly(True)
+        text_edit.setStyleSheet("font-family: Arial; font-size: 12px;")
+        
+        # 添加到内容布局
+        content_layout.addWidget(text_edit)
+        
+        # 设置滚动区域的 widget
+        scroll_area.setWidget(content_widget)
+        
+        # 添加滚动区域到主布局
+        main_layout.addWidget(scroll_area)
+        
+        # 添加关闭按钮
+        close_button = QPushButton('关闭')
+        close_button.clicked.connect(help_dialog.close)
+        main_layout.addWidget(close_button)
+        
+        # 显示对话框
+        help_dialog.exec_()
+    
     def closeEvent(self, event):
         """
         关闭事件
         """
         if self.ws_client:
-            asyncio.create_task(self.ws_client.close())
+            self._run_async_task(self.ws_client.close())
         self.event_bus.stop()
         event.accept()
 

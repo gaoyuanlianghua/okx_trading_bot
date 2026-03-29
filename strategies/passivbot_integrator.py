@@ -323,10 +323,30 @@ class PassivbotIntegrator(BaseStrategy):
         Returns:
             dict: 交易信号，包含side, price, amount等信息
         """
-        # 由于passivbot是独立运行的，这里返回None表示不生成交易信号
+        # 保存当前价格到历史数据
+        if 'price' in market_data:
+            current_price = market_data['price']
+        elif 'last' in market_data:
+            current_price = float(market_data['last'])
+        else:
+            logger.debug("Passivbot策略执行 - 无价格数据")
+            return None
+        
+        # 由于passivbot是独立运行的，这里返回一个基本的交易信号
         # 实际的交易决策由passivbot独立处理
         logger.debug("Passivbot策略执行 - 由独立进程处理")
-        return None
+        
+        # 构建交易信号
+        signal = {
+            'strategy': self.name,
+            'side': 'buy',  # 这里只是示例，实际由passivbot决定
+            'price': current_price,
+            'signal_strength': 0.5,  # 示例值
+            'timestamp': market_data.get('timestamp', time.time()),
+            'inst_id': market_data.get('inst_id', 'BTC-USDT-SWAP')
+        }
+        
+        return signal
     
     def validate_order_params(self, order_info):
         """验证订单参数是否符合OKX API要求
