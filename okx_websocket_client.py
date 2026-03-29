@@ -620,6 +620,16 @@ class OKXWebsocketClient:
                     ws_logger.info(f"WebSocket连接参数: Host={self.original_host}, SNI={self.original_host}")
                     ws_logger.info(f"当前使用的WebSocket IP: {current_ip}")
                     ws_logger.info(f"SSL验证模式: {ssl_context.verify_mode}, 检查主机名: {ssl_context.check_hostname}")
+                    ws_logger.info(f"TLS版本范围: {ssl_context.minimum_version} - {ssl_context.maximum_version}")
+                    ws_logger.info(f"加密套件: {ssl_context.get_ciphers()[0]['name']}等")
+                    
+                    # 测试TCP连接
+                    import socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(5)
+                    sock.connect((current_ip, 8443))
+                    sock.close()
+                    ws_logger.info(f"TCP连接测试成功: {current_ip}:8443")
                     
                     ws = await websockets.connect(self.public_url, **connect_kwargs)
                     ws_logger.info(f"公共Websocket直接连接成功")
@@ -987,6 +997,16 @@ class OKXWebsocketClient:
                     ws_logger.info(f"WebSocket连接参数: Host={self.original_host}, SNI={self.original_host}")
                     ws_logger.info(f"当前使用的WebSocket IP: {current_ip}")
                     ws_logger.info(f"SSL验证模式: {ssl_context.verify_mode}, 检查主机名: {ssl_context.check_hostname}")
+                    ws_logger.info(f"TLS版本范围: {ssl_context.minimum_version} - {ssl_context.maximum_version}")
+                    ws_logger.info(f"加密套件: {ssl_context.get_ciphers()[0]['name']}等")
+                    
+                    # 测试TCP连接
+                    import socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(5)
+                    sock.connect((current_ip, 8443))
+                    sock.close()
+                    ws_logger.info(f"TCP连接测试成功: {current_ip}:8443")
                     
                     ws = await websockets.connect(self.private_url, **connect_kwargs)
                     ws_logger.info(f"私有Websocket直接连接成功")
