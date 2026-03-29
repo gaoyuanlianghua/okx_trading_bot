@@ -606,7 +606,10 @@ class OKXWebsocketClient:
                 try:
                     # 直接连接WebSocket
                     ws_logger.info(f"直接连接到公共Websocket: {self.public_url}")
-                    ws_logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws_logger.info(f"WebSocket连接参数: Host={self.original_host}, SNI={self.original_host}")
+                    ws_logger.info(f"当前使用的WebSocket IP: {current_ip}")
+                    ws_logger.info(f"SSL验证模式: {ssl_context.verify_mode}, 检查主机名: {ssl_context.check_hostname}")
+                    
                     ws = await websockets.connect(self.public_url, **connect_kwargs)
                     ws_logger.info(f"公共Websocket直接连接成功")
                     
@@ -964,7 +967,10 @@ class OKXWebsocketClient:
                 try:
                     # 直接连接WebSocket
                     ws_logger.info(f"直接连接到私有Websocket: {self.private_url}")
-                    ws_logger.debug(f"WebSocket连接参数: {connect_kwargs}")
+                    ws_logger.info(f"WebSocket连接参数: Host={self.original_host}, SNI={self.original_host}")
+                    ws_logger.info(f"当前使用的WebSocket IP: {current_ip}")
+                    ws_logger.info(f"SSL验证模式: {ssl_context.verify_mode}, 检查主机名: {ssl_context.check_hostname}")
+                    
                     ws = await websockets.connect(self.private_url, **connect_kwargs)
                     ws_logger.info(f"私有Websocket直接连接成功")
                     
