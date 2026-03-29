@@ -9,6 +9,9 @@ import os
 import sys
 from typing import Dict, Any
 
+# 创建日志目录
+os.makedirs('logs', exist_ok=True)
+
 # 设置日志
 logging.basicConfig(
     level=logging.INFO,
