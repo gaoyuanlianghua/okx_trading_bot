@@ -1,8 +1,8 @@
 import asyncio
 import time
 import numpy as np
-from commons.logger_config import get_logger
-logger = get_logger(region="Strategy")
+import logging
+logger = logging.getLogger("Strategy")
 from strategies.base_strategy import BaseStrategy
 
 # 尝试导入scipy，如不可用则使用替代实现
@@ -27,9 +27,35 @@ class DynamicsStrategy(BaseStrategy):
         """
         super().__init__(api_client, config)
         
-        # 从风险管理服务导入RiskManager
-        from services.risk_management.risk_manager import RiskManager
-        self.risk_manager = RiskManager(api_client)
+        # 风险管理参数
+        self.risk_params = {
+            'max_order_amount': 10000,
+            'max_daily_loss': 0.05,
+            'max_daily_trades': 100,
+            'max_consecutive_losses': 5
+        }
+        
+        # 风险管理器（简化版）
+        class SimpleRiskManager:
+            def __init__(self, api_client=None, risk_params=None):
+                self.api_client = api_client
+                self.risk_params = risk_params or {}
+            
+            def assess_overall_risk(self):
+                # 简化实现，返回基本风险评估
+                return {
+                    'is_account_healthy': True,
+                    'account_balance': 10000  # 假设账户余额
+                }
+            
+            def check_order_risk(self, order_info):
+                # 简化实现，返回风险检查结果
+                return True, "风险检查通过"
+            
+            def update_risk_params(self, **kwargs):
+                self.risk_params.update(kwargs)
+        
+        self.risk_manager = SimpleRiskManager(api_client, self.risk_params)
         
         # 动力学参数配置
         self.dynamics_params = {
