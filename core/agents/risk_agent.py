@@ -44,6 +44,17 @@ class RiskAgent(BaseAgent):
         self._daily_pnl = 0
         self._risk_level = 'low'  # low/medium/high/critical
         
+        # 账户信息
+        self._account_info = {
+            'total_balance': 0.0,
+            'available_balance': 0.0,
+            'margin': 0.0,
+            'unrealized_pnl': 0.0
+        }
+        
+        # 资产分布
+        self._asset_distribution = {}
+        
         # 警报状态
         self._alerts = []
         
@@ -80,6 +91,25 @@ class RiskAgent(BaseAgent):
             balance = await self.rest_client.get_account_balance()
             if balance:
                 self._account_balance = float(balance.get('totalEq', 0))
+                
+                # 提取账户信息
+                self._account_info = {
+                    'total_balance': float(balance.get('totalEq', 0)),
+                    'available_balance': float(balance.get('availBal', 0)),
+                    'margin': float(balance.get('margin', 0)),
+                    'unrealized_pnl': float(balance.get('upl', 0))
+                }
+                
+                # 构建资产分布
+                self._asset_distribution = {}
+                if 'details' in balance:
+                    for detail in balance['details']:
+                        ccy = detail.get('ccy')
+                        if ccy:
+                            self._asset_distribution[ccy] = {
+                                'balance': float(detail.get('bal', 0)),
+                                'available': float(detail.get('availBal', 0))
+                            }
             
             # 获取持仓
             positions = await self.rest_client.get_positions()
@@ -193,6 +223,14 @@ class RiskAgent(BaseAgent):
         """设置风险参数"""
         self._risk_params.update(params)
     
+    def get_account_info(self) -> Dict[str, float]:
+        """获取账户信息"""
+        return self._account_info.copy()
+    
+    def get_asset_distribution(self) -> Dict[str, Dict]:
+        """获取资产分布"""
+        return self._asset_distribution.copy()
+    
     def get_status(self) -> Dict[str, Any]:
         """获取状态"""
         base_status = super().get_status()
@@ -200,6 +238,8 @@ class RiskAgent(BaseAgent):
             'risk_level': self._risk_level,
             'account_balance': self._account_balance,
             'position_count': len(self._positions),
-            'alert_count': len(self._alerts)
+            'alert_count': len(self._alerts),
+            'account_info': self._account_info,
+            'asset_distribution': self._asset_distribution
         })
         return base_status

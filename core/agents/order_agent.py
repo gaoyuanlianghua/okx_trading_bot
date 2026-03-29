@@ -33,6 +33,13 @@ class OrderAgent(BaseAgent):
         self._orders_cache: Dict[str, Dict] = {}
         self._pending_orders: Dict[str, Dict] = {}
         
+        # 交易记录
+        self._trade_history: List[Dict] = []
+        
+        # 收益跟踪
+        self._total_pnl = 0.0
+        self._total_fees = 0.0
+        
         # 统计
         self._order_count = 0
         self._filled_count = 0
@@ -118,9 +125,48 @@ class OrderAgent(BaseAgent):
             if state == 'filled':
                 self._filled_count += 1
                 self._pending_orders.pop(order_id, None)
+                
+                # 记录交易
+                trade = self._create_trade_record(order_data)
+                if trade:
+                    self._trade_history.append(trade)
+                    # 计算收益
+                    self._calculate_pnl(trade)
             elif state == 'canceled':
                 self._cancelled_count += 1
                 self._pending_orders.pop(order_id, None)
+    
+    def _create_trade_record(self, order_data: Dict) -> Dict:
+        """创建交易记录"""
+        try:
+            trade = {
+                'trade_id': order_data.get('ordId'),
+                'inst_id': order_data.get('instId'),
+                'side': order_data.get('side'),
+                'ord_type': order_data.get('ordType'),
+                'price': float(order_data.get('avgPx', 0)),
+                'size': float(order_data.get('sz', 0)),
+                'filled_size': float(order_data.get('accFillSz', 0)),
+                'fee': float(order_data.get('fee', 0)),
+                'state': order_data.get('state'),
+                'timestamp': order_data.get('cTime'),
+                'fill_time': order_data.get('fillTime')
+            }
+            return trade
+        except Exception as e:
+            logger.error(f"创建交易记录失败: {e}")
+            return {}
+    
+    def _calculate_pnl(self, trade: Dict):
+        """计算交易收益"""
+        try:
+            # 简化的PnL计算
+            # 实际应用中需要根据当前价格和持仓情况计算
+            # 这里仅记录交易信息，实际PnL计算需要更复杂的逻辑
+            self._total_fees += trade.get('fee', 0)
+            
+        except Exception as e:
+            logger.error(f"计算收益失败: {e}")
     
     # ========== 公共接口 ==========
     
@@ -222,6 +268,17 @@ class OrderAgent(BaseAgent):
         """获取未成交订单"""
         return list(self._pending_orders.values())
     
+    def get_trade_history(self, limit: int = 100) -> List[Dict]:
+        """获取交易历史"""
+        return self._trade_history[-limit:]
+    
+    def get_pnl(self) -> Dict[str, float]:
+        """获取收益信息"""
+        return {
+            'total_pnl': self._total_pnl,
+            'total_fees': self._total_fees
+        }
+    
     def get_status(self) -> Dict[str, Any]:
         """获取状态"""
         base_status = super().get_status()
@@ -229,6 +286,9 @@ class OrderAgent(BaseAgent):
             'order_count': self._order_count,
             'filled_count': self._filled_count,
             'cancelled_count': self._cancelled_count,
-            'pending_count': len(self._pending_orders)
+            'pending_count': len(self._pending_orders),
+            'trade_count': len(self._trade_history),
+            'total_pnl': self._total_pnl,
+            'total_fees': self._total_fees
         })
         return base_status

@@ -230,8 +230,15 @@ class TradingBot:
         return {
             'running': self._running,
             'coordinator': self.coordinator.get_status() if self.coordinator else None,
-            'agents': self.coordinator.get_all_agents_status() if self.coordinator else []
+            'agents': self.coordinator.get_all_agents_status() if self.coordinator else [],
+            'trading_summary': self.get_trading_summary() if self.coordinator else None
         }
+    
+    def get_trading_summary(self) -> Dict[str, Any]:
+        """获取交易摘要"""
+        if self.coordinator and hasattr(self.coordinator, 'get_trading_summary'):
+            return self.coordinator.get_trading_summary()
+        return {}
 
 
 async def main():

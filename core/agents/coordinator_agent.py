@@ -194,6 +194,40 @@ class CoordinatorAgent(BaseAgent):
         """获取所有智能体状态"""
         return [agent.get_status() for agent in self._agents.values()]
     
+    def get_trading_summary(self) -> Dict[str, Any]:
+        """
+        获取交易摘要信息
+        
+        Returns:
+            Dict: 包含交易历史、收益和账户信息的摘要
+        """
+        summary = {
+            'total_trades': 0,
+            'total_pnl': 0.0,
+            'total_fees': 0.0,
+            'account_info': None,
+            'asset_distribution': {},
+            'trade_history': []
+        }
+        
+        # 收集各智能体的信息
+        for agent_id, agent in self._agents.items():
+            # 订单智能体 - 交易历史和收益
+            if hasattr(agent, 'get_trade_history') and hasattr(agent, 'get_pnl'):
+                summary['trade_history'] = agent.get_trade_history()
+                summary['total_trades'] = len(summary['trade_history'])
+                
+                pnl_info = agent.get_pnl()
+                summary['total_pnl'] = pnl_info.get('total_pnl', 0.0)
+                summary['total_fees'] = pnl_info.get('total_fees', 0.0)
+            
+            # 风险管理智能体 - 账户信息
+            if hasattr(agent, 'get_account_info') and hasattr(agent, 'get_asset_distribution'):
+                summary['account_info'] = agent.get_account_info()
+                summary['asset_distribution'] = agent.get_asset_distribution()
+        
+        return summary
+    
     async def broadcast_command(self, command: str, params: Dict = None):
         """
         广播命令给所有智能体
