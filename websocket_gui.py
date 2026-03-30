@@ -2379,16 +2379,16 @@ from strategies.base_strategy import BaseStrategy
 
 
 class {strategy_name}(BaseStrategy):
-    """移动平均线和RSI结合的交易策略"""
+    '''移动平均线和RSI结合的交易策略'''
 
     def __init__(self, api_client=None, config=None):
-        """
+        '''
         初始化移动平均线和RSI策略
 
         Args:
             api_client (OKXAPIClient, optional): OKX API客户端实例
             config (dict, optional): 策略配置
-        """
+        '''
         super().__init__(api_client, config)
 
         # 策略参数
@@ -2414,13 +2414,13 @@ class {strategy_name}(BaseStrategy):
         logger.info("移动平均线和RSI策略初始化完成")
 
     def calculate_ma(self, prices, period):
-        """计算移动平均线"""
+        '''计算移动平均线'''
         if len(prices) < period:
             return None
         return np.mean(prices[-period:])
 
     def calculate_rsi(self, prices, period):
-        """计算RSI指标"""
+        '''计算RSI指标'''
         if len(prices) < period + 1:
             return None
         
@@ -2439,7 +2439,7 @@ class {strategy_name}(BaseStrategy):
         return rsi
 
     def calculate_trend(self):
-        """计算趋势"""
+        '''计算趋势'''
         if len(self.ma_short_history) < 2 or len(self.ma_long_history) < 2:
             return 0
         
@@ -2460,14 +2460,14 @@ class {strategy_name}(BaseStrategy):
         return trend
 
     def _execute_strategy(self, market_data):
-        """执行策略，生成交易信号
+        '''执行策略，生成交易信号
 
         Args:
             market_data (dict): 市场数据
 
         Returns:
             dict: 交易信号，包含side, price, amount等信息
-        """
+        '''
         # 保存当前价格到历史数据
         if "price" in market_data:
             self.price_history.append(market_data["price"])
@@ -2551,16 +2551,16 @@ from strategies.base_strategy import BaseStrategy
 
 
 class {strategy_name}(BaseStrategy):
-    """MACD和布林带结合的交易策略"""
+    '''MACD和布林带结合的交易策略'''
 
     def __init__(self, api_client=None, config=None):
-        """
+        '''
         初始化MACD和布林带策略
 
         Args:
             api_client (OKXAPIClient, optional): OKX API客户端实例
             config (dict, optional): 策略配置
-        """
+        '''
         super().__init__(api_client, config)
 
         # 策略参数
@@ -2589,7 +2589,7 @@ class {strategy_name}(BaseStrategy):
         logger.info("MACD和布林带策略初始化完成")
 
     def calculate_ema(self, prices, period):
-        """计算指数移动平均线"""
+        '''计算指数移动平均线'''
         if len(prices) < period:
             return None
         
@@ -2607,7 +2607,7 @@ class {strategy_name}(BaseStrategy):
         return ema[-1]
 
     def calculate_macd(self, prices):
-        """计算MACD指标"""
+        '''计算MACD指标'''
         if len(prices) < max(self.strategy_params["macd_slow"], self.strategy_params["macd_signal"]):
             return None, None, None
         
@@ -2633,7 +2633,7 @@ class {strategy_name}(BaseStrategy):
         return macd_line, signal_line, histogram
 
     def calculate_bollinger_bands(self, prices):
-        """计算布林带"""
+        '''计算布林带'''
         if len(prices) < self.strategy_params["bollinger_period"]:
             return None, None, None
         
@@ -2648,14 +2648,14 @@ class {strategy_name}(BaseStrategy):
         return upper_band, middle_band, lower_band
 
     def _execute_strategy(self, market_data):
-        """执行策略，生成交易信号
+        '''执行策略，生成交易信号
 
         Args:
             market_data (dict): 市场数据
 
         Returns:
             dict: 交易信号，包含side, price, amount等信息
-        """
+        '''
         # 保存当前价格到历史数据
         if "price" in market_data:
             self.price_history.append(market_data["price"])
