@@ -14,12 +14,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from .base_agent import BaseAgent, AgentConfig
 from core.events.event_bus import Event, EventType
 from core.events.agent_communication import Message, MessageType, MessageTemplates
-from strategies.base_strategy import BaseStrategy
-from strategies.dynamics_strategy import DynamicsStrategy
-from strategies.passivbot_integrator import PassivbotIntegrator
-from strategies.combined_strategy import CombinedStrategy
-from strategies.machine_learning_strategy import MachineLearningStrategy
-from strategies.arbitrage_strategy import ArbitrageStrategy
 
 from core.utils.logger import get_logger
 
@@ -96,6 +90,15 @@ class StrategyAgent(BaseAgent):
     async def _load_default_strategies(self):
         """加载默认策略"""
         try:
+            # 导入策略类
+            from strategies.base_strategy import BaseStrategy
+            from strategies.dynamics_strategy import DynamicsStrategy
+            from strategies.passivbot_integrator import PassivbotIntegrator
+            from strategies.combined_strategy import CombinedStrategy
+            from strategies.machine_learning_strategy import MachineLearningStrategy
+            from strategies.arbitrage_strategy import ArbitrageStrategy
+            from strategies.cross_market_arbitrage_strategy import CrossMarketArbitrageStrategy
+            
             # 创建动力学策略
             dynamics_config = {
                 "dynamics": {
@@ -199,7 +202,6 @@ class StrategyAgent(BaseAgent):
             logger.info(f"加载策略成功: CombinedStrategy")
 
             # 创建跨市场套利策略
-            from strategies.cross_market_arbitrage_strategy import CrossMarketArbitrageStrategy
             cross_market_config = {
                 "arbitrage_threshold": 0.5,
                 "max_trade_amount": 10000,
