@@ -78,9 +78,19 @@ class OKXRESTClient(BaseExchange):
     async def _get_session(self) -> aiohttp.ClientSession:
         """获取或创建HTTP会话"""
         if self.session is None or self.session.closed:
+            # 配置安全的HTTP会话
+            connector = aiohttp.TCPConnector(
+                ssl=True,  # 启用SSL验证
+                verify_ssl=True,  # 验证SSL证书
+                limit=100,  # 限制并发连接数
+                limit_per_host=20,  # 每个主机的连接限制
+            )
+            
             self.session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self.timeout),
                 headers={"User-Agent": "OKX-Trading-Bot/1.0"},
+                connector=connector,
+                cookie_jar=aiohttp.DummyCookieJar(),  # 不存储cookies
             )
         return self.session
 
@@ -159,6 +169,43 @@ class OKXRESTClient(BaseExchange):
 
         self._request_count += 1
 
+    def _validate_request_params(self, method: str, endpoint: str, params: Dict, body: Dict):
+        """验证请求参数"""
+        # 验证HTTP方法
+        valid_methods = ["GET", "POST", "DELETE"]
+        if method.upper() not in valid_methods:
+            raise ValueError(f"无效的HTTP方法: {method}")
+        
+        # 验证端点
+        if not endpoint.startswith("/"):
+            raise ValueError(f"端点必须以/开头: {endpoint}")
+        
+        # 验证参数类型
+        if params is not None and not isinstance(params, dict):
+            raise ValueError("params必须是字典类型")
+        
+        if body is not None and not isinstance(body, dict):
+            raise ValueError("body必须是字典类型")
+        
+        # 验证敏感参数
+        if body and any(key in body for key in ["api_key", "secret", "passphrase"]):
+            logger.warning("请求体中包含敏感信息")
+
+    def _validate_response_data(self, data: Dict) -> bool:
+        """验证响应数据"""
+        if not isinstance(data, dict):
+            return False
+        
+        # 检查响应格式
+        if "code" not in data or "data" not in data:
+            return False
+        
+        # 检查错误码
+        if data.get("code") != "0":
+            return False
+        
+        return True
+
     async def request(
         self,
         method: str,
@@ -198,6 +245,13 @@ class OKXRESTClient(BaseExchange):
             stack = traceback.extract_stack()
             if len(stack) > 2:
                 caller = stack[-3][2]
+
+        try:
+            # 验证请求参数
+            self._validate_request_params(method, endpoint, params, body)
+        except ValueError as e:
+            logger.error(f"请求参数验证失败: {e}")
+            return None
 
         # 检查缓存（只对GET请求使用缓存）
         if use_cache and method.upper() == "GET" and not auth_required:
@@ -249,7 +303,9 @@ class OKXRESTClient(BaseExchange):
         # 记录请求信息
         logger.debug(f"API请求: {method.upper()} {url} (调用者: {caller})")
         if body:
-            logger.debug(f"请求体: {body_json}")
+            # 屏蔽敏感信息
+            safe_body = {k: v for k, v in body.items() if k not in ["api_key", "secret", "passphrase"]}
+            logger.debug(f"请求体: {json.dumps(safe_body)}")
 
         # 重试逻辑
         for retry in range(max_retries + 1):

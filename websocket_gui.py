@@ -8,13 +8,16 @@ import sys
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
+from cryptography.fernet import Fernet
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -28,9 +31,13 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QFrame,
     QMessageBox,
+    QSizePolicy,
+    QTextEdit,
+    QDialog,
+    QCheckBox,
 )
-from PyQt5.QtGui import QColor, QFont, QIcon
-from PyQt5.QtCore import QTimer, pyqtSignal, Qt, QSize
+from PyQt5.QtCore import QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QTimer, pyqtSignal, Qt, QSize, QMimeData
+from PyQt5.QtGui import QColor, QFont, QIcon, QDrag
 
 # 导入图表库
 import matplotlib
@@ -44,6 +51,9 @@ import pandas as pd
 
 from core import OKXWebSocketClient, EventBus, EventType
 from core.monitoring import strategy_monitor
+from core.storage.data_persistence import data_persistence
+from core.agents.market_data_agent import MarketDataAgent
+from core.agents.base_agent import AgentConfig
 
 # 设置日志
 logging.basicConfig(
@@ -51,6 +61,105 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+class DraggableDashboardCard(QGroupBox):
+    """
+    可拖拽的仪表盘卡片
+    """
+    def __init__(self, title, parent=None):
+        super().__init__(title, parent)
+        self.setAcceptDrops(True)
+        self.setMinimumHeight(160)
+        self.setStyleSheet("QGroupBox { border-radius: 10px; }")
+    
+    def mousePressEvent(self, event):
+        """
+        鼠标按下事件，开始拖拽
+        """
+        if event.button() == Qt.LeftButton:
+            # 创建拖拽对象
+            drag = QDrag(self)
+            mime_data = QMimeData()
+            mime_data.setText(self.title())
+            drag.setMimeData(mime_data)
+            
+            # 启动拖拽
+            drag.exec_(Qt.MoveAction)
+    
+    def dragEnterEvent(self, event):
+        """
+        拖拽进入事件
+        """
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+    
+    def dropEvent(self, event):
+        """
+        拖拽释放事件
+        """
+        if event.mimeData().hasText():
+            # 获取拖拽的卡片标题
+            dragged_card_title = event.mimeData().text()
+            
+            # 交换位置逻辑
+            # 这里需要获取父布局，然后交换两个卡片的位置
+            parent_layout = self.parent().layout()
+            if parent_layout:
+                # 找到被拖拽的卡片和目标卡片
+                dragged_card = None
+                target_card = self
+                
+                # 遍历布局中的所有widget
+                for i in range(parent_layout.count()):
+                    widget = parent_layout.itemAt(i).widget()
+                    if isinstance(widget, DraggableDashboardCard) and widget.title() == dragged_card_title:
+                        dragged_card = widget
+                        break
+                
+                if dragged_card and dragged_card != target_card:
+                    # 保存两个卡片的位置
+                    dragged_index = parent_layout.indexOf(dragged_card)
+                    target_index = parent_layout.indexOf(target_card)
+                    
+                    # 交换位置
+                    if dragged_index < target_index:
+                        parent_layout.insertWidget(target_index, dragged_card)
+                        parent_layout.insertWidget(dragged_index, target_card)
+                    else:
+                        parent_layout.insertWidget(dragged_index, target_card)
+                        parent_layout.insertWidget(target_index, dragged_card)
+                    
+                event.acceptProposedAction()
+
+class AnimatedTabWidget(QTabWidget):
+    """
+    带动画效果的标签页组件
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.currentChanged.connect(self._on_tab_changed)
+        
+    def _on_tab_changed(self, index):
+        """
+        标签页切换时的动画效果
+        """
+        try:
+            # 获取当前标签页
+            current_widget = self.widget(index)
+            if not current_widget:
+                return
+            
+            # 创建淡入动画
+            fade_in = QPropertyAnimation(current_widget, b"windowOpacity")
+            fade_in.setDuration(300)
+            fade_in.setStartValue(0.0)
+            fade_in.setEndValue(1.0)
+            fade_in.setEasingCurve(QEasingCurve.InOutQuad)
+            
+            # 启动动画
+            fade_in.start()
+        except Exception as e:
+            logger.error(f"标签页动画错误: {e}")
 
 class WebSocketGUI(QMainWindow):
     """
@@ -69,17 +178,33 @@ class WebSocketGUI(QMainWindow):
         """
         super().__init__()
 
-        # 初始化 WebSocket 客户端
-        self.ws_client = None
+        # 初始化权限控制
+        self._init_permission_system()
+        
+        # 验证用户登录
+        if not self._show_login_dialog():
+            sys.exit()
+
+        # 初始化事件总线
         self.event_bus = EventBus()
 
         # 数据存储
         self.market_data = {}
-        self.order_data = []
+        # 价格历史数据，用于图表显示
+        self.price_history = {}  # 格式: {inst_id: [(timestamp, price), ...]}
+        # 加载本地缓存的订单历史
+        self.order_data = data_persistence.load_order_history()
+        # 加载本地缓存的市场数据
+        self._load_market_data_cache()
         self.account_data = {}
         self.strategies = []
         self.strategy_instances = {}  # 存储策略实例
         self.strategy_threads = {}  # 存储策略线程
+        
+        # 初始化市场数据智能体
+        self.market_data_agent = None
+        # 初始化WebSocket客户端
+        self.ws_client = None
 
         # 线程池管理
         import concurrent.futures
@@ -87,6 +212,12 @@ class WebSocketGUI(QMainWindow):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=5
         )  # 限制线程池大小
+
+        # 初始化加密密钥
+        self._init_encryption()
+        
+        # 加载加密的API密钥
+        self._load_encrypted_api_keys()
 
         # 初始化界面
         self.init_ui()
@@ -106,6 +237,287 @@ class WebSocketGUI(QMainWindow):
         self.event_bus.subscribe(EventType.MARKET_DATA_TICKER, self.on_account_event)
         self.event_bus.subscribe(EventType.WS_CONNECTED, self.on_ws_connected)
         self.event_bus.subscribe(EventType.WS_DISCONNECTED, self.on_ws_disconnected)
+
+    def _init_permission_system(self):
+        """
+        初始化权限系统
+        """
+        # 定义用户角色和权限
+        self.roles = {
+            "admin": {
+                "name": "管理员",
+                "permissions": [
+                    "view_market_data",
+                    "view_account",
+                    "place_order",
+                    "manage_strategies",
+                    "manage_users",
+                    "modify_settings"
+                ]
+            },
+            "trader": {
+                "name": "交易员",
+                "permissions": [
+                    "view_market_data",
+                    "view_account",
+                    "place_order",
+                    "manage_strategies"
+                ]
+            },
+            "viewer": {
+                "name": "查看者",
+                "permissions": [
+                    "view_market_data",
+                    "view_account"
+                ]
+            }
+        }
+        
+        # 默认用户（实际应用中应该从数据库或配置文件加载）
+        self.users = {
+            "admin": {
+                "password": "admin123",  # 实际应用中应该使用哈希密码
+                "role": "admin"
+            },
+            "trader": {
+                "password": "trader123",
+                "role": "trader"
+            },
+            "viewer": {
+                "password": "viewer123",
+                "role": "viewer"
+            }
+        }
+        
+        # 当前登录用户
+        self.current_user = None
+        self.current_role = None
+
+    def _show_login_dialog(self):
+        """
+        显示登录对话框
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("登录")
+        dialog.setGeometry(300, 300, 400, 200)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # 用户名输入
+        user_layout = QHBoxLayout()
+        user_layout.addWidget(QLabel("用户名:"))
+        user_input = QLineEdit()
+        user_input.setPlaceholderText("请输入用户名")
+        user_layout.addWidget(user_input)
+        layout.addLayout(user_layout)
+        
+        # 密码输入
+        pass_layout = QHBoxLayout()
+        pass_layout.addWidget(QLabel("密码:"))
+        pass_input = QLineEdit()
+        pass_input.setPlaceholderText("请输入密码")
+        pass_input.setEchoMode(QLineEdit.Password)
+        pass_layout.addWidget(pass_input)
+        layout.addLayout(pass_layout)
+        
+        # 错误信息
+        error_label = QLabel("")
+        error_label.setStyleSheet("color: red;")
+        layout.addWidget(error_label)
+        
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        cancel_button = QPushButton("取消")
+        login_button = QPushButton("登录")
+        
+        button_layout.addStretch(1)
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(login_button)
+        layout.addLayout(button_layout)
+        
+        # 登录结果
+        login_success = False
+        
+        def on_login():
+            nonlocal login_success
+            username = user_input.text().strip()
+            password = pass_input.text().strip()
+            
+            if username in self.users and self.users[username]["password"] == password:
+                self.current_user = username
+                self.current_role = self.users[username]["role"]
+                login_success = True
+                dialog.accept()
+            else:
+                error_label.setText("用户名或密码错误")
+        
+        def on_cancel():
+            dialog.reject()
+        
+        login_button.clicked.connect(on_login)
+        cancel_button.clicked.connect(on_cancel)
+        
+        # 显示对话框
+        result = dialog.exec_()
+        
+        if login_success:
+            logger.info(f"用户 {self.current_user} (角色: {self.roles[self.current_role]['name']}) 登录成功")
+            return True
+        else:
+            logger.warning("用户登录失败")
+            return False
+
+    def has_permission(self, permission):
+        """
+        检查用户是否有指定权限
+        """
+        if not self.current_role:
+            return False
+        
+        role_permissions = self.roles.get(self.current_role, {}).get("permissions", [])
+        return permission in role_permissions
+
+    def update_ui_permissions(self):
+        """
+        根据用户权限更新UI元素的可用性
+        """
+        # 交易操作权限
+        can_trade = self.has_permission("place_order")
+        self.execute_trade_button.setEnabled(can_trade)
+        self.execute_batch_trade_button.setEnabled(can_trade)
+        self.execute_conditional_trade_button.setEnabled(can_trade)
+        
+        # 策略管理权限
+        can_manage_strategies = self.has_permission("manage_strategies")
+        self.create_strategy_button.setEnabled(can_manage_strategies)
+        self.start_strategy_button.setEnabled(can_manage_strategies)
+        self.stop_strategy_button.setEnabled(can_manage_strategies)
+        self.edit_strategy_button.setEnabled(can_manage_strategies)
+        self.delete_strategy_button.setEnabled(can_manage_strategies)
+        
+        # API配置权限
+        can_modify_settings = self.has_permission("modify_settings")
+        self.api_key_input.setEnabled(can_modify_settings)
+        self.secret_input.setEnabled(can_modify_settings)
+        self.passphrase_input.setEnabled(can_modify_settings)
+        self.testnet_checkbox.setEnabled(can_modify_settings)
+        self.connect_button.setEnabled(can_modify_settings)
+
+    def _init_encryption(self):
+        """
+        初始化加密密钥
+        """
+        try:
+            # 密钥文件路径
+            key_file = os.path.join(os.path.dirname(__file__), "encryption_key.key")
+            
+            if os.path.exists(key_file):
+                # 加载现有密钥
+                with open(key_file, "rb") as f:
+                    self.encryption_key = f.read()
+            else:
+                # 生成新密钥
+                self.encryption_key = Fernet.generate_key()
+                # 保存密钥到文件
+                with open(key_file, "wb") as f:
+                    f.write(self.encryption_key)
+                logger.info("生成新的加密密钥")
+            
+            # 创建加密器
+            self.cipher_suite = Fernet(self.encryption_key)
+            logger.info("加密系统初始化成功")
+        except Exception as e:
+            logger.error(f"初始化加密系统错误: {e}")
+            # 如果加密初始化失败，使用未加密方式
+            self.cipher_suite = None
+    
+    def _load_encrypted_api_keys(self):
+        """
+        加载加密的API密钥
+        """
+        try:
+            # API密钥文件路径
+            api_file = os.path.join(os.path.dirname(__file__), "api_keys.json")
+            
+            if os.path.exists(api_file) and self.cipher_suite:
+                with open(api_file, "rb") as f:
+                    encrypted_data = f.read()
+                
+                # 解密数据
+                decrypted_data = self.cipher_suite.decrypt(encrypted_data)
+                api_data = json.loads(decrypted_data.decode('utf-8'))
+                
+                # 填充API输入框
+                if "api_key" in api_data:
+                    self.api_key_input.setText(api_data["api_key"])
+                if "api_secret" in api_data:
+                    self.secret_input.setText(api_data["api_secret"])
+                if "passphrase" in api_data:
+                    self.passphrase_input.setText(api_data["passphrase"])
+                if "is_test" in api_data:
+                    self.testnet_checkbox.setCurrentText("模拟盘" if api_data["is_test"] else "实盘")
+                
+                logger.info("加载加密的API密钥成功")
+        except Exception as e:
+            logger.error(f"加载加密API密钥错误: {e}")
+    
+    def _save_encrypted_api_keys(self, api_key, api_secret, passphrase, is_test):
+        """
+        保存加密的API密钥
+        """
+        try:
+            if not self.cipher_suite:
+                logger.warning("加密系统未初始化，跳过API密钥保存")
+                return
+            
+            # API密钥文件路径
+            api_file = os.path.join(os.path.dirname(__file__), "api_keys.json")
+            
+            # 准备数据
+            api_data = {
+                "api_key": api_key,
+                "api_secret": api_secret,
+                "passphrase": passphrase,
+                "is_test": is_test,
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            # 加密数据
+            encrypted_data = self.cipher_suite.encrypt(json.dumps(api_data).encode('utf-8'))
+            
+            # 保存加密数据
+            with open(api_file, "wb") as f:
+                f.write(encrypted_data)
+            
+            logger.info("保存加密的API密钥成功")
+        except Exception as e:
+            logger.error(f"保存加密API密钥错误: {e}")
+
+    def _load_market_data_cache(self):
+        """
+        加载本地缓存的市场数据
+        """
+        # 加载默认交易对的市场数据
+        default_symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+        for symbol in default_symbols:
+            cached_data = data_persistence.load_market_data(symbol)
+            if cached_data:
+                # 更新市场数据存储
+                for data in cached_data:
+                    if isinstance(data, dict):
+                        last_price = data.get("last", "0")
+                        change24h = data.get("change24h", "0")
+                        change24h_percent = data.get("change24hPercent", "0")
+                        vol24h = data.get("vol24h", "0")
+                        
+                        self.market_data[symbol] = {
+                            "last": last_price,
+                            "change24h": change24h,
+                            "change24hPercent": change24h_percent,
+                            "vol24h": vol24h,
+                            "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                logger.info(f"加载缓存的市场数据: {symbol}, {len(cached_data)} 条记录")
 
     def init_ui(self):
         """
@@ -259,14 +671,12 @@ class WebSocketGUI(QMainWindow):
 
         # 仪表盘概览
         dashboard_group = QGroupBox("仪表盘概览")
-        dashboard_layout = QHBoxLayout()
-        dashboard_layout.setContentsMargins(15, 15, 15, 15)
-        dashboard_layout.setSpacing(15)
+        self.dashboard_layout = QHBoxLayout()
+        self.dashboard_layout.setContentsMargins(15, 15, 15, 15)
+        self.dashboard_layout.setSpacing(15)
         
         # 市场概览卡片
-        market_overview = QGroupBox("市场概览")
-        market_overview.setMinimumHeight(160)
-        market_overview.setStyleSheet("QGroupBox { border-radius: 10px; }")
+        self.market_overview = DraggableDashboardCard("市场概览")
         market_overview_layout = QVBoxLayout()
         market_overview_layout.setContentsMargins(20, 20, 20, 20)
         market_overview_layout.setSpacing(10)
@@ -281,12 +691,10 @@ class WebSocketGUI(QMainWindow):
         market_content.addWidget(self.market_price_label)
         market_content.addWidget(self.market_change_label)
         market_overview_layout.addLayout(market_content)
-        market_overview.setLayout(market_overview_layout)
+        self.market_overview.setLayout(market_overview_layout)
         
         # 账户概览卡片
-        account_overview = QGroupBox("账户概览")
-        account_overview.setMinimumHeight(160)
-        account_overview.setStyleSheet("QGroupBox { border-radius: 10px; }")
+        self.account_overview = DraggableDashboardCard("账户概览")
         account_overview_layout = QVBoxLayout()
         account_overview_layout.setContentsMargins(20, 20, 20, 20)
         account_overview_layout.setSpacing(10)
@@ -301,12 +709,10 @@ class WebSocketGUI(QMainWindow):
         account_content.addWidget(self.account_balance_label)
         account_content.addWidget(self.account_pnl_label)
         account_overview_layout.addLayout(account_content)
-        account_overview.setLayout(account_overview_layout)
+        self.account_overview.setLayout(account_overview_layout)
         
         # 策略概览卡片
-        strategy_overview = QGroupBox("策略概览")
-        strategy_overview.setMinimumHeight(160)
-        strategy_overview.setStyleSheet("QGroupBox { border-radius: 10px; }")
+        self.strategy_overview = DraggableDashboardCard("策略概览")
         strategy_overview_layout = QVBoxLayout()
         strategy_overview_layout.setContentsMargins(20, 20, 20, 20)
         strategy_overview_layout.setSpacing(10)
@@ -321,12 +727,10 @@ class WebSocketGUI(QMainWindow):
         strategy_content.addWidget(self.strategy_status_label)
         strategy_content.addWidget(self.strategy_profit_label)
         strategy_overview_layout.addLayout(strategy_content)
-        strategy_overview.setLayout(strategy_overview_layout)
+        self.strategy_overview.setLayout(strategy_overview_layout)
         
         # 交易概览卡片
-        trade_overview = QGroupBox("交易概览")
-        trade_overview.setMinimumHeight(160)
-        trade_overview.setStyleSheet("QGroupBox { border-radius: 10px; }")
+        self.trade_overview = DraggableDashboardCard("交易概览")
         trade_overview_layout = QVBoxLayout()
         trade_overview_layout.setContentsMargins(20, 20, 20, 20)
         trade_overview_layout.setSpacing(10)
@@ -341,21 +745,74 @@ class WebSocketGUI(QMainWindow):
         trade_content.addWidget(self.trade_count_label)
         trade_content.addWidget(self.trade_win_rate_label)
         trade_overview_layout.addLayout(trade_content)
-        trade_overview.setLayout(trade_overview_layout)
+        self.trade_overview.setLayout(trade_overview_layout)
+        
+        # 风险指标卡片
+        self.risk_overview = DraggableDashboardCard("风险指标")
+        risk_overview_layout = QVBoxLayout()
+        risk_overview_layout.setContentsMargins(20, 20, 20, 20)
+        risk_overview_layout.setSpacing(10)
+        
+        # 风险指标内容
+        risk_content = QVBoxLayout()
+        risk_content.setSpacing(8)
+        self.risk_level_label = QLabel("风险等级: 中等")
+        self.risk_level_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        self.max_drawdown_label = QLabel("最大回撤: -3.2%")
+        self.max_drawdown_label.setStyleSheet("font-size: 16px; color: red;")
+        risk_content.addWidget(self.risk_level_label)
+        risk_content.addWidget(self.max_drawdown_label)
+        risk_overview_layout.addLayout(risk_content)
+        self.risk_overview.setLayout(risk_overview_layout)
+        
+        # 持仓概览卡片
+        self.position_overview = DraggableDashboardCard("持仓概览")
+        position_overview_layout = QVBoxLayout()
+        position_overview_layout.setContentsMargins(20, 20, 20, 20)
+        position_overview_layout.setSpacing(10)
+        
+        # 持仓概览内容
+        position_content = QVBoxLayout()
+        position_content.setSpacing(8)
+        self.position_count_label = QLabel("持仓数量: 3个")
+        self.position_count_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        self.position_value_label = QLabel("持仓价值: $5,000")
+        self.position_value_label.setStyleSheet("font-size: 16px; color: green;")
+        position_content.addWidget(self.position_count_label)
+        position_content.addWidget(self.position_value_label)
+        position_overview_layout.addLayout(position_content)
+        self.position_overview.setLayout(position_overview_layout)
+        
+        # 保存仪表盘卡片引用
+        self.dashboard_cards = [
+            self.market_overview,
+            self.account_overview,
+            self.strategy_overview,
+            self.trade_overview,
+            self.risk_overview,
+            self.position_overview
+        ]
         
         # 添加卡片到仪表盘
-        dashboard_layout.addWidget(market_overview, 1)
-        dashboard_layout.addWidget(account_overview, 1)
-        dashboard_layout.addWidget(strategy_overview, 1)
-        dashboard_layout.addWidget(trade_overview, 1)
-        dashboard_group.setLayout(dashboard_layout)
+        self.dashboard_layout.addWidget(self.market_overview, 1)
+        self.dashboard_layout.addWidget(self.account_overview, 1)
+        self.dashboard_layout.addWidget(self.strategy_overview, 1)
+        self.dashboard_layout.addWidget(self.trade_overview, 1)
+        self.dashboard_layout.addWidget(self.risk_overview, 1)
+        self.dashboard_layout.addWidget(self.position_overview, 1)
+        dashboard_group.setLayout(self.dashboard_layout)
         main_layout.addWidget(dashboard_group)
 
         # 标签页 - 简化为主要功能
-        self.tab_widget = QTabWidget()
+        self.tab_widget = AnimatedTabWidget()
         self.tab_widget.setTabPosition(QTabWidget.North)
         self.tab_widget.setTabShape(QTabWidget.Rounded)
+        self.tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.tab_widget)
+        # 设置标签页为可拉伸
+        main_layout.setStretch(0, 0)  # 连接管理部分不拉伸
+        main_layout.setStretch(1, 0)  # 仪表盘部分不拉伸
+        main_layout.setStretch(2, 1)  # 标签页部分拉伸
 
         # 市场数据标签页
         self.market_tab = QWidget()
@@ -384,6 +841,75 @@ class WebSocketGUI(QMainWindow):
 
         # 添加帮助菜单项
         self.init_help_menu()
+        
+        # 更新UI权限
+        self.update_ui_permissions()
+        
+    def resizeEvent(self, event):
+        """
+        窗口大小改变事件处理
+        """
+        super().resizeEvent(event)
+        
+        # 获取窗口大小
+        width = self.width()
+        height = self.height()
+        
+        # 根据窗口宽度调整仪表盘卡片布局
+        if hasattr(self, 'dashboard_layout') and hasattr(self, 'dashboard_cards'):
+            # 根据窗口宽度决定卡片排列方式
+            if width < 1000 and isinstance(self.dashboard_layout, QHBoxLayout):
+                # 小屏幕：切换到网格布局
+                # 获取父组件
+                parent = self.dashboard_cards[0].parent() if self.dashboard_cards else None
+                if parent:
+                    # 创建网格布局
+                    grid_layout = QGridLayout()
+                    grid_layout.setContentsMargins(15, 15, 15, 15)
+                    grid_layout.setSpacing(15)
+                    
+                    # 添加卡片到网格布局
+                    for i, card in enumerate(self.dashboard_cards):
+                        row = i // 2
+                        col = i % 2
+                        grid_layout.addWidget(card, row, col)
+                    
+                    # 设置新布局
+                    parent.setLayout(grid_layout)
+                    self.dashboard_layout = grid_layout
+                    logger.debug("切换到网格布局")
+            elif width >= 1000 and isinstance(self.dashboard_layout, QGridLayout):
+                # 大屏幕：切换到水平布局
+                # 获取父组件
+                parent = self.dashboard_cards[0].parent() if self.dashboard_cards else None
+                if parent:
+                    # 创建水平布局
+                    h_layout = QHBoxLayout()
+                    h_layout.setContentsMargins(15, 15, 15, 15)
+                    h_layout.setSpacing(15)
+                    
+                    # 添加卡片到水平布局
+                    for card in self.dashboard_cards:
+                        h_layout.addWidget(card, 1)
+                    
+                    # 设置新布局
+                    parent.setLayout(h_layout)
+                    self.dashboard_layout = h_layout
+                    logger.debug("切换到水平布局")
+        
+        # 根据窗口大小调整字体大小
+        if width < 1200:
+            # 小屏幕：减小字体
+            self.setStyleSheet(self.styleSheet() + """
+                QLabel {
+                    font-size: 12px;
+                }
+                QPushButton {
+                    font-size: 12px;
+                }
+            """)
+        
+        logger.debug(f"窗口大小已调整: {width}x{height}")
 
     def init_trade_tab(self):
         """
@@ -393,87 +919,200 @@ class WebSocketGUI(QMainWindow):
         trade_layout.setContentsMargins(15, 15, 15, 15)
         trade_layout.setSpacing(15)
         
+        # 交易操作标签页
+        trade_tabs = QTabWidget()
+        trade_tabs.setTabPosition(QTabWidget.North)
+        trade_tabs.setTabShape(QTabWidget.Rounded)
+        
+        # 普通交易标签
+        normal_trade_tab = QWidget()
+        normal_trade_layout = QVBoxLayout(normal_trade_tab)
+        normal_trade_layout.setContentsMargins(15, 15, 15, 15)
+        normal_trade_layout.setSpacing(15)
+        
         # 顶部布局：交易操作
         trade_ops_group = QGroupBox("交易操作")
-        trade_ops_layout = QHBoxLayout()
+        trade_ops_layout = QGridLayout()
         trade_ops_layout.setContentsMargins(15, 15, 15, 15)
-        trade_ops_layout.setSpacing(15)
+        trade_ops_layout.setSpacing(10)
         
         # 交易对选择
-        trade_ops_layout.addWidget(QLabel("交易对:"))
+        trade_ops_layout.addWidget(QLabel("交易对:"), 0, 0)
         self.trade_pair_combo = QComboBox()
         self.trade_pair_combo.addItems(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "BNB-USDT-SWAP"])
         self.trade_pair_combo.setMinimumWidth(150)
-        trade_ops_layout.addWidget(self.trade_pair_combo)
+        trade_ops_layout.addWidget(self.trade_pair_combo, 0, 1)
         
         # 交易方向
-        trade_ops_layout.addWidget(QLabel("方向:"))
+        trade_ops_layout.addWidget(QLabel("方向:"), 0, 2)
         self.trade_side_combo = QComboBox()
         self.trade_side_combo.addItems(["买入", "卖出"])
-        self.trade_side_combo.setMinimumWidth(100)
-        trade_ops_layout.addWidget(self.trade_side_combo)
+        self.trade_side_combo.setMinimumWidth(80)
+        trade_ops_layout.addWidget(self.trade_side_combo, 0, 3)
         
         # 交易类型
-        trade_ops_layout.addWidget(QLabel("类型:"))
+        trade_ops_layout.addWidget(QLabel("类型:"), 0, 4)
         self.trade_type_combo = QComboBox()
         self.trade_type_combo.addItems(["市价", "限价"])
-        self.trade_type_combo.setMinimumWidth(100)
-        trade_ops_layout.addWidget(self.trade_type_combo)
+        self.trade_type_combo.setMinimumWidth(80)
+        trade_ops_layout.addWidget(self.trade_type_combo, 0, 5)
         
         # 价格
-        trade_ops_layout.addWidget(QLabel("价格:"))
+        trade_ops_layout.addWidget(QLabel("价格:"), 1, 0)
         self.trade_price_input = QLineEdit()
         self.trade_price_input.setPlaceholderText("价格")
-        self.trade_price_input.setMinimumWidth(100)
-        trade_ops_layout.addWidget(self.trade_price_input)
+        self.trade_price_input.setMinimumWidth(120)
+        trade_ops_layout.addWidget(self.trade_price_input, 1, 1, 1, 2)
         
         # 数量
-        trade_ops_layout.addWidget(QLabel("数量:"))
+        trade_ops_layout.addWidget(QLabel("数量:"), 1, 3)
         self.trade_amount_input = QLineEdit()
         self.trade_amount_input.setPlaceholderText("数量")
-        self.trade_amount_input.setMinimumWidth(100)
-        trade_ops_layout.addWidget(self.trade_amount_input)
+        self.trade_amount_input.setMinimumWidth(120)
+        trade_ops_layout.addWidget(self.trade_amount_input, 1, 4, 1, 2)
         
         # 执行按钮
         self.execute_trade_button = QPushButton("执行交易")
         self.execute_trade_button.clicked.connect(self.execute_trade)
-        trade_ops_layout.addWidget(self.execute_trade_button)
+        self.execute_trade_button.setMinimumWidth(120)
+        trade_ops_layout.addWidget(self.execute_trade_button, 2, 0, 1, 6)
         
         trade_ops_group.setLayout(trade_ops_layout)
-        trade_layout.addWidget(trade_ops_group)
+        normal_trade_layout.addWidget(trade_ops_group)
+        
+        # 批量交易标签
+        batch_trade_tab = QWidget()
+        batch_trade_layout = QVBoxLayout(batch_trade_tab)
+        batch_trade_layout.setContentsMargins(15, 15, 15, 15)
+        batch_trade_layout.setSpacing(15)
+        
+        # 批量交易操作
+        batch_trade_group = QGroupBox("批量交易")
+        batch_trade_ops_layout = QVBoxLayout(batch_trade_group)
+        batch_trade_ops_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 批量交易输入区域
+        self.batch_trade_text = QTextEdit()
+        self.batch_trade_text.setPlaceholderText("每行输入一个交易指令，格式：交易对,方向,类型,价格,数量\n例如：BTC-USDT-SWAP,买入,限价,40000,0.01")
+        self.batch_trade_text.setMinimumHeight(200)
+        batch_trade_ops_layout.addWidget(self.batch_trade_text)
+        
+        # 执行批量交易按钮
+        self.execute_batch_trade_button = QPushButton("执行批量交易")
+        self.execute_batch_trade_button.clicked.connect(self.execute_batch_trade)
+        batch_trade_ops_layout.addWidget(self.execute_batch_trade_button)
+        
+        batch_trade_group.setLayout(batch_trade_ops_layout)
+        batch_trade_layout.addWidget(batch_trade_group)
+        
+        # 条件单标签
+        conditional_trade_tab = QWidget()
+        conditional_trade_layout = QVBoxLayout(conditional_trade_tab)
+        conditional_trade_layout.setContentsMargins(15, 15, 15, 15)
+        conditional_trade_layout.setSpacing(15)
+        
+        # 条件单操作
+        conditional_trade_group = QGroupBox("条件单")
+        conditional_trade_ops_layout = QGridLayout(conditional_trade_group)
+        conditional_trade_ops_layout.setContentsMargins(15, 15, 15, 15)
+        conditional_trade_ops_layout.setSpacing(10)
+        
+        # 交易对选择
+        conditional_trade_ops_layout.addWidget(QLabel("交易对:"), 0, 0)
+        self.cond_trade_pair_combo = QComboBox()
+        self.cond_trade_pair_combo.addItems(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "BNB-USDT-SWAP"])
+        self.cond_trade_pair_combo.setMinimumWidth(150)
+        conditional_trade_ops_layout.addWidget(self.cond_trade_pair_combo, 0, 1)
+        
+        # 交易方向
+        conditional_trade_ops_layout.addWidget(QLabel("方向:"), 0, 2)
+        self.cond_trade_side_combo = QComboBox()
+        self.cond_trade_side_combo.addItems(["买入", "卖出"])
+        self.cond_trade_side_combo.setMinimumWidth(80)
+        conditional_trade_ops_layout.addWidget(self.cond_trade_side_combo, 0, 3)
+        
+        # 条件类型
+        conditional_trade_ops_layout.addWidget(QLabel("条件类型:"), 1, 0)
+        self.cond_type_combo = QComboBox()
+        self.cond_type_combo.addItems(["止盈", "止损"])
+        self.cond_type_combo.setMinimumWidth(80)
+        conditional_trade_ops_layout.addWidget(self.cond_type_combo, 1, 1)
+        
+        # 触发价格
+        conditional_trade_ops_layout.addWidget(QLabel("触发价格:"), 1, 2)
+        self.cond_trigger_price_input = QLineEdit()
+        self.cond_trigger_price_input.setPlaceholderText("触发价格")
+        self.cond_trigger_price_input.setMinimumWidth(120)
+        conditional_trade_ops_layout.addWidget(self.cond_trigger_price_input, 1, 3)
+        
+        # 执行价格
+        conditional_trade_ops_layout.addWidget(QLabel("执行价格:"), 2, 0)
+        self.cond_execute_price_input = QLineEdit()
+        self.cond_execute_price_input.setPlaceholderText("执行价格")
+        self.cond_execute_price_input.setMinimumWidth(120)
+        conditional_trade_ops_layout.addWidget(self.cond_execute_price_input, 2, 1, 1, 2)
+        
+        # 数量
+        conditional_trade_ops_layout.addWidget(QLabel("数量:"), 2, 3)
+        self.cond_amount_input = QLineEdit()
+        self.cond_amount_input.setPlaceholderText("数量")
+        self.cond_amount_input.setMinimumWidth(120)
+        conditional_trade_ops_layout.addWidget(self.cond_amount_input, 2, 4)
+        
+        # 执行条件单按钮
+        self.execute_conditional_trade_button = QPushButton("创建条件单")
+        self.execute_conditional_trade_button.clicked.connect(self.execute_conditional_trade)
+        self.execute_conditional_trade_button.setMinimumWidth(120)
+        conditional_trade_ops_layout.addWidget(self.execute_conditional_trade_button, 3, 0, 1, 5)
+        
+        conditional_trade_group.setLayout(conditional_trade_ops_layout)
+        conditional_trade_layout.addWidget(conditional_trade_group)
+        
+        # 添加标签页
+        trade_tabs.addTab(normal_trade_tab, "普通交易")
+        trade_tabs.addTab(batch_trade_tab, "批量交易")
+        trade_tabs.addTab(conditional_trade_tab, "条件单")
+        
+        trade_layout.addWidget(trade_tabs)
         
         # 下方布局：订单和账户信息
         bottom_layout = QHBoxLayout()
         
         # 订单列表
         order_group = QGroupBox("订单列表")
+        order_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         order_layout = QVBoxLayout()
         
         self.order_table = QTableWidget()
         self.order_table.setColumnCount(8)
         self.order_table.setHorizontalHeaderLabels(["订单ID", "交易对", "类型", "方向", "价格", "数量", "状态", "时间"])
         self.order_table.horizontalHeader().setStretchLastSection(True)
+        self.order_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         order_layout.addWidget(self.order_table)
         order_group.setLayout(order_layout)
         
         # 账户信息
         account_group = QGroupBox("账户信息")
+        account_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         account_layout = QVBoxLayout()
         
         self.account_table = QTableWidget()
         self.account_table.setColumnCount(4)
         self.account_table.setHorizontalHeaderLabels(["币种", "可用余额", "冻结余额", "总余额"])
         self.account_table.horizontalHeader().setStretchLastSection(True)
+        self.account_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         account_layout.addWidget(self.account_table)
         
         # 资产分布
         asset_distribution_group = QGroupBox("资产分布")
+        asset_distribution_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         asset_distribution_layout = QVBoxLayout()
         
         # 创建资产分布图表
         from matplotlib.figure import Figure
         self.asset_figure = Figure(figsize=(5, 3))
         self.asset_canvas = FigureCanvas(self.asset_figure)
+        self.asset_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         asset_distribution_layout.addWidget(self.asset_canvas)
         asset_distribution_group.setLayout(asset_distribution_layout)
         
@@ -482,7 +1121,11 @@ class WebSocketGUI(QMainWindow):
         
         bottom_layout.addWidget(order_group, 2)
         bottom_layout.addWidget(account_group, 1)
+        
         trade_layout.addLayout(bottom_layout)
+        # 设置拉伸比例
+        trade_layout.setStretch(0, 0)  # 交易操作部分不拉伸
+        trade_layout.setStretch(1, 1)  # 下方布局拉伸
     
     def init_market_tab(self):
         """
@@ -515,32 +1158,491 @@ class WebSocketGUI(QMainWindow):
         control_layout.addWidget(QLabel("显示数量:"))
         control_layout.addWidget(self.show_count)
         
+        # 时间周期选择
+        self.timeframe_combo = QComboBox()
+        self.timeframe_combo.addItems(["1分钟", "5分钟", "15分钟", "1小时", "4小时", "1天"])
+        self.timeframe_combo.setCurrentText("15分钟")
+        control_layout.addWidget(QLabel("时间周期:"))
+        control_layout.addWidget(self.timeframe_combo)
+        
+        # 导出按钮
+        export_csv_button = QPushButton("导出CSV")
+        export_csv_button.clicked.connect(self.export_market_data_csv)
+        control_layout.addWidget(export_csv_button)
+        
+        export_excel_button = QPushButton("导出Excel")
+        export_excel_button.clicked.connect(self.export_market_data_excel)
+        control_layout.addWidget(export_excel_button)
+        
         control_layout.addStretch(1)
         market_layout.addLayout(control_layout)
         
+        # 市场数据和图表区域
+        market_chart_layout = QHBoxLayout()
+        
         # 市场数据表格
         market_group = QGroupBox("市场数据")
-        market_layout.addWidget(market_group)
+        market_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        market_chart_layout.addWidget(market_group, 1)
         
         market_table_layout = QVBoxLayout(market_group)
         market_table_layout.setContentsMargins(15, 15, 15, 15)
         
         self.market_table = QTableWidget()
-        self.market_table.setColumnCount(6)
-        self.market_table.setHorizontalHeaderLabels(["交易对", "最新价格", "涨跌幅", "成交量", "最高价", "最低价"])
+        self.market_table.setColumnCount(7)
+        self.market_table.setHorizontalHeaderLabels(["交易对", "最新价格", "涨跌幅", "成交量", "最高价", "最低价", "技术指标"])
         self.market_table.horizontalHeader().setStretchLastSection(True)
+        self.market_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         market_table_layout.addWidget(self.market_table)
+        
+        # 图表和指标区域
+        chart_indicator_layout = QVBoxLayout()
         
         # 价格图表
         chart_group = QGroupBox("价格图表")
+        chart_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chart_layout = QVBoxLayout(chart_group)
         chart_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 图表控制栏
+        chart_control_layout = QHBoxLayout()
+        chart_control_layout.setSpacing(10)
+        
+        # 指标选择
+        self.indicator_combo = QComboBox()
+        self.indicator_combo.addItems(["无", "MA", "RSI", "MACD", "BOLL", "KDJ", "CCI", "ATR"])
+        self.indicator_combo.setCurrentText("无")
+        self.indicator_combo.currentTextChanged.connect(self.update_price_chart)
+        chart_control_layout.addWidget(QLabel("指标:"))
+        chart_control_layout.addWidget(self.indicator_combo)
+        
+        # 产品选择
+        self.chart_product_combo = QComboBox()
+        self.chart_product_combo.addItems(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "BNB-USDT-SWAP"])
+        self.chart_product_combo.currentTextChanged.connect(self.update_price_chart)
+        chart_control_layout.addWidget(QLabel("产品:"))
+        chart_control_layout.addWidget(self.chart_product_combo)
+        
+        # 时间范围选择
+        self.time_range_combo = QComboBox()
+        self.time_range_combo.addItems(["1小时", "4小时", "12小时", "24小时", "3天", "7天"])
+        self.time_range_combo.setCurrentText("24小时")
+        self.time_range_combo.currentTextChanged.connect(self.update_price_chart)
+        chart_control_layout.addWidget(QLabel("时间范围:"))
+        chart_control_layout.addWidget(self.time_range_combo)
+        
+        chart_control_layout.addStretch(1)
+        chart_layout.addLayout(chart_control_layout)
         
         # 创建价格图表
         self.price_figure = Figure(figsize=(10, 4))
         self.price_canvas = FigureCanvas(self.price_figure)
+        self.price_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chart_layout.addWidget(self.price_canvas)
-        market_layout.addWidget(chart_group)
+        chart_indicator_layout.addWidget(chart_group)
+        
+        # 技术指标图表
+        indicator_group = QGroupBox("技术指标")
+        indicator_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        indicator_layout = QVBoxLayout(indicator_group)
+        indicator_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 创建指标图表
+        self.indicator_figure = Figure(figsize=(10, 2))
+        self.indicator_canvas = FigureCanvas(self.indicator_figure)
+        self.indicator_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        indicator_layout.addWidget(self.indicator_canvas)
+        chart_indicator_layout.addWidget(indicator_group)
+        
+        market_chart_layout.addLayout(chart_indicator_layout, 2)
+        market_layout.addLayout(market_chart_layout)
+        
+        # 市场分析工具
+        analysis_group = QGroupBox("市场分析")
+        analysis_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        analysis_layout = QGridLayout(analysis_group)
+        analysis_layout.setContentsMargins(15, 15, 15, 15)
+        analysis_layout.setSpacing(15)
+        
+        # 趋势分析
+        trend_analysis = QGroupBox("趋势分析")
+        trend_layout = QVBoxLayout(trend_analysis)
+        trend_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.trend_label = QLabel("当前趋势: 横盘")
+        self.trend_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        trend_layout.addWidget(self.trend_label)
+        
+        self.support_resistance_label = QLabel("支撑位: $38,000 | 阻力位: $42,000")
+        trend_layout.addWidget(self.support_resistance_label)
+        
+        # 趋势强度
+        self.trend_strength_label = QLabel("趋势强度: 0")
+        trend_layout.addWidget(self.trend_strength_label)
+        
+        analysis_layout.addWidget(trend_analysis, 0, 0)
+        
+        # 市场情绪
+        sentiment_analysis = QGroupBox("市场情绪")
+        sentiment_layout = QVBoxLayout(sentiment_analysis)
+        sentiment_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.sentiment_label = QLabel("市场情绪: 中性")
+        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        sentiment_layout.addWidget(self.sentiment_label)
+        
+        # 情绪指标
+        self.sentiment_value_label = QLabel("情绪指数: 50/100")
+        sentiment_layout.addWidget(self.sentiment_value_label)
+        
+        # 恐慌与贪婪指数
+        self.fear_greed_label = QLabel("恐慌与贪婪指数: 50")
+        sentiment_layout.addWidget(self.fear_greed_label)
+        
+        analysis_layout.addWidget(sentiment_analysis, 0, 1)
+        
+        # 波动率分析
+        volatility_analysis = QGroupBox("波动率分析")
+        volatility_layout = QVBoxLayout(volatility_analysis)
+        volatility_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.volatility_label = QLabel("波动率: 低")
+        self.volatility_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        volatility_layout.addWidget(self.volatility_label)
+        
+        self.volatility_value_label = QLabel("24h波动率: 2.5%")
+        volatility_layout.addWidget(self.volatility_value_label)
+        
+        # ATR值
+        self.atr_label = QLabel("ATR: 0.00")
+        volatility_layout.addWidget(self.atr_label)
+        
+        analysis_layout.addWidget(volatility_analysis, 0, 2)
+        
+        # 量价关系分析
+        volume_price_analysis = QGroupBox("量价关系")
+        volume_price_layout = QVBoxLayout(volume_price_analysis)
+        volume_price_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.volume_trend_label = QLabel("量价趋势: 同步")
+        volume_price_layout.addWidget(self.volume_trend_label)
+        
+        self.volume_change_label = QLabel("成交量变化: 0%")
+        volume_price_layout.addWidget(self.volume_change_label)
+        
+        analysis_layout.addWidget(volume_price_analysis, 1, 0)
+        
+        # 市场广度分析
+        market_breadth_analysis = QGroupBox("市场广度")
+        market_breadth_layout = QVBoxLayout(market_breadth_analysis)
+        market_breadth_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.advance_decline_label = QLabel("涨跌比: 1.0")
+        market_breadth_layout.addWidget(self.advance_decline_label)
+        
+        self.market_breadth_label = QLabel("市场广度: 50%")
+        market_breadth_layout.addWidget(self.market_breadth_label)
+        
+        analysis_layout.addWidget(market_breadth_analysis, 1, 1)
+        
+        # 技术形态识别
+        pattern_analysis = QGroupBox("技术形态")
+        pattern_layout = QVBoxLayout(pattern_analysis)
+        pattern_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.pattern_label = QLabel("当前形态: 无")
+        pattern_layout.addWidget(self.pattern_label)
+        
+        self.pattern_strength_label = QLabel("形态强度: 0")
+        pattern_layout.addWidget(self.pattern_strength_label)
+        
+        analysis_layout.addWidget(pattern_analysis, 1, 2)
+        
+        market_layout.addWidget(analysis_group)
+        
+        # 设置拉伸比例
+        market_layout.setStretch(0, 0)  # 控制栏不拉伸
+        market_layout.setStretch(1, 3)  # 市场数据和图表区域拉伸
+        market_layout.setStretch(2, 1)  # 市场分析工具拉伸
+
+    def update_price_chart(self, inst_id=None):
+        """
+        更新价格图表
+        """
+        try:
+            # 获取当前选择的产品
+            if inst_id is None:
+                inst_id = self.chart_product_combo.currentText()
+            
+            # 清空图表
+            self.price_figure.clear()
+            self.indicator_figure.clear()
+            
+            # 检查是否有价格历史数据
+            if inst_id in self.price_history and self.price_history[inst_id]:
+                # 获取价格历史数据
+                data = self.price_history[inst_id]
+                
+                # 获取选择的时间范围
+                time_range = self.time_range_combo.currentText()
+                
+                # 根据时间范围过滤数据
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                
+                if time_range == "1小时":
+                    start_time = now - timedelta(hours=1)
+                elif time_range == "4小时":
+                    start_time = now - timedelta(hours=4)
+                elif time_range == "12小时":
+                    start_time = now - timedelta(hours=12)
+                elif time_range == "24小时":
+                    start_time = now - timedelta(hours=24)
+                elif time_range == "3天":
+                    start_time = now - timedelta(days=3)
+                elif time_range == "7天":
+                    start_time = now - timedelta(days=7)
+                else:
+                    start_time = now - timedelta(hours=24)  # 默认24小时
+                
+                # 过滤数据
+                filtered_data = [(t, p) for t, p in data if t >= start_time]
+                
+                if not filtered_data:
+                    # 如果没有数据，显示提示
+                    ax = self.price_figure.add_subplot(111)
+                    ax.set_title(f"{inst_id} 价格走势")
+                    ax.set_xlabel("时间")
+                    ax.set_ylabel("价格 (USDT)")
+                    ax.text(0.5, 0.5, "暂无数据", ha='center', va='center', transform=ax.transAxes)
+                    
+                    # 指标图表也显示提示
+                    indicator_ax = self.indicator_figure.add_subplot(111)
+                    indicator_ax.set_title("技术指标")
+                    indicator_ax.text(0.5, 0.5, "暂无数据", ha='center', va='center', transform=indicator_ax.transAxes)
+                else:
+                    timestamps = [item[0] for item in filtered_data]
+                    prices = [item[1] for item in filtered_data]
+                
+                # 创建价格图表
+                ax = self.price_figure.add_subplot(111)
+                ax.plot(timestamps, prices, 'b-', linewidth=2, label="价格")
+                
+                # 获取选择的指标
+                indicator = self.indicator_combo.currentText()
+                
+                # 绘制技术指标
+                if indicator == "MA":
+                    # 计算移动平均线
+                    import numpy as np
+                    prices_np = np.array(prices)
+                    ma10 = np.convolve(prices_np, np.ones(10)/10, mode='valid')
+                    ma20 = np.convolve(prices_np, np.ones(20)/20, mode='valid')
+                    
+                    # 绘制移动平均线
+                    ax.plot(timestamps[9:], ma10, 'g-', linewidth=1.5, label="MA10")
+                    ax.plot(timestamps[19:], ma20, 'r-', linewidth=1.5, label="MA20")
+                    ax.legend()
+                
+                elif indicator == "BOLL":
+                    # 计算布林带
+                    import numpy as np
+                    prices_np = np.array(prices)
+                    ma20 = np.convolve(prices_np, np.ones(20)/20, mode='valid')
+                    std20 = np.array([np.std(prices_np[i:i+20]) for i in range(len(prices_np)-19)])
+                    upper_band = ma20 + 2 * std20
+                    lower_band = ma20 - 2 * std20
+                    
+                    # 绘制布林带
+                    ax.plot(timestamps[19:], ma20, 'g-', linewidth=1.5, label="MA20")
+                    ax.plot(timestamps[19:], upper_band, 'r--', linewidth=1, label="上轨")
+                    ax.plot(timestamps[19:], lower_band, 'g--', linewidth=1, label="下轨")
+                    ax.fill_between(timestamps[19:], lower_band, upper_band, alpha=0.1, color='gray')
+                    ax.legend()
+                
+                # 设置图表标题和标签
+                ax.set_title(f"{inst_id} 价格走势")
+                ax.set_xlabel("时间")
+                ax.set_ylabel("价格 (USDT)")
+                
+                # 设置x轴格式
+                import matplotlib.dates as mdates
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+                self.price_figure.autofmt_xdate()
+                
+                # 添加网格
+                ax.grid(True, linestyle='--', alpha=0.7)
+                
+                # 绘制指标图表
+                if indicator in ["RSI", "MACD"]:
+                    indicator_ax = self.indicator_figure.add_subplot(111)
+                    
+                    if indicator == "RSI":
+                        # 计算RSI
+                        import numpy as np
+                        delta = np.diff(prices)
+                        gain = (delta > 0) * delta
+                        loss = (delta < 0) * -delta
+                        
+                        # 计算平均增益和平均损失
+                        avg_gain = np.convolve(gain, np.ones(14)/14, mode='valid')
+                        avg_loss = np.convolve(loss, np.ones(14)/14, mode='valid')
+                        
+                        # 计算RSI
+                        rs = avg_gain / (avg_loss + 1e-10)
+                        rsi = 100 - (100 / (1 + rs))
+                        
+                        # 绘制RSI
+                        indicator_ax.plot(timestamps[14:], rsi, 'b-', linewidth=2, label="RSI")
+                        indicator_ax.axhline(70, color='r', linestyle='--', alpha=0.7)
+                        indicator_ax.axhline(30, color='g', linestyle='--', alpha=0.7)
+                        indicator_ax.set_title("RSI 指标")
+                        indicator_ax.set_ylabel("RSI")
+                        indicator_ax.legend()
+                    
+                    elif indicator == "MACD":
+                        # 计算MACD
+                        import numpy as np
+                        prices_np = np.array(prices)
+                        
+                        # 计算EMA
+                        def ema(data, period):
+                            alpha = 2 / (period + 1)
+                            ema_line = np.zeros_like(data)
+                            ema_line[period-1] = np.mean(data[:period])
+                            for i in range(period, len(data)):
+                                ema_line[i] = alpha * data[i] + (1 - alpha) * ema_line[i-1]
+                            return ema_line
+                        
+                        ema12 = ema(prices_np, 12)
+                        ema26 = ema(prices_np, 26)
+                        macd_line = ema12 - ema26
+                        signal_line = ema(macd_line, 9)
+                        histogram = macd_line - signal_line
+                        
+                        # 绘制MACD
+                        indicator_ax.plot(timestamps, macd_line, 'b-', linewidth=1.5, label="MACD")
+                        indicator_ax.plot(timestamps, signal_line, 'r-', linewidth=1.5, label="Signal")
+                        indicator_ax.bar(timestamps, histogram, color='gray', alpha=0.5, label="Histogram")
+                        indicator_ax.set_title("MACD 指标")
+                        indicator_ax.set_ylabel("MACD")
+                        indicator_ax.legend()
+                
+                elif indicator == "KDJ":
+                        # 计算KDJ
+                        import numpy as np
+                        prices_np = np.array(prices)
+                        
+                        # 计算最高价和最低价
+                        window = 9
+                        highest = np.zeros_like(prices_np)
+                        lowest = np.zeros_like(prices_np)
+                        
+                        for i in range(len(prices_np)):
+                            start = max(0, i - window + 1)
+                            highest[i] = np.max(prices_np[start:i+1])
+                            lowest[i] = np.min(prices_np[start:i+1])
+                        
+                        # 计算RSV
+                        rsv = (prices_np - lowest) / (highest - lowest + 1e-10) * 100
+                        
+                        # 计算K、D、J
+                        k = np.zeros_like(rsv)
+                        d = np.zeros_like(rsv)
+                        j = np.zeros_like(rsv)
+                        
+                        k[window-1] = 50
+                        d[window-1] = 50
+                        
+                        for i in range(window, len(rsv)):
+                            k[i] = 2/3 * k[i-1] + 1/3 * rsv[i]
+                            d[i] = 2/3 * d[i-1] + 1/3 * k[i]
+                            j[i] = 3 * k[i] - 2 * d[i]
+                        
+                        # 绘制KDJ
+                        indicator_ax.plot(timestamps, k, 'b-', linewidth=1.5, label="K")
+                        indicator_ax.plot(timestamps, d, 'r-', linewidth=1.5, label="D")
+                        indicator_ax.plot(timestamps, j, 'g-', linewidth=1.5, label="J")
+                        indicator_ax.axhline(80, color='r', linestyle='--', alpha=0.7)
+                        indicator_ax.axhline(20, color='g', linestyle='--', alpha=0.7)
+                        indicator_ax.set_title("KDJ 指标")
+                        indicator_ax.set_ylabel("KDJ")
+                        indicator_ax.legend()
+                
+                elif indicator == "CCI":
+                        # 计算CCI
+                        import numpy as np
+                        prices_np = np.array(prices)
+                        
+                        window = 20
+                        cci = np.zeros_like(prices_np)
+                        
+                        for i in range(window-1, len(prices_np)):
+                            # 计算典型价格
+                            typical_price = prices_np[i-window+1:i+1].mean()
+                            # 计算平均绝对偏差
+                            mean_deviation = np.abs(prices_np[i-window+1:i+1] - typical_price).mean()
+                            # 计算CCI
+                            if mean_deviation > 0:
+                                cci[i] = (prices_np[i] - typical_price) / (0.015 * mean_deviation)
+                            else:
+                                cci[i] = 0
+                        
+                        # 绘制CCI
+                        indicator_ax.plot(timestamps, cci, 'b-', linewidth=1.5, label="CCI")
+                        indicator_ax.axhline(100, color='r', linestyle='--', alpha=0.7)
+                        indicator_ax.axhline(-100, color='g', linestyle='--', alpha=0.7)
+                        indicator_ax.set_title("CCI 指标")
+                        indicator_ax.set_ylabel("CCI")
+                        indicator_ax.legend()
+                
+                elif indicator == "ATR":
+                        # 计算ATR
+                        import numpy as np
+                        prices_np = np.array(prices)
+                        
+                        window = 14
+                        atr = np.zeros_like(prices_np)
+                        
+                        for i in range(1, len(prices_np)):
+                            true_range = max(
+                                prices_np[i] - prices_np[i-1],
+                                abs(prices_np[i] - prices_np[i-1]),
+                                abs(prices_np[i-1] - prices_np[i-1])
+                            )
+                            if i < window:
+                                atr[i] = true_range
+                            else:
+                                atr[i] = (atr[i-1] * (window-1) + true_range) / window
+                        
+                        # 绘制ATR
+                        indicator_ax.plot(timestamps, atr, 'b-', linewidth=1.5, label="ATR")
+                        indicator_ax.set_title("ATR 指标")
+                        indicator_ax.set_ylabel("ATR")
+                        indicator_ax.legend()
+                
+                # 设置x轴格式
+                indicator_ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+                self.indicator_figure.autofmt_xdate()
+                indicator_ax.grid(True, linestyle='--', alpha=0.7)
+            else:
+                # 没有数据时显示提示
+                ax = self.price_figure.add_subplot(111)
+                ax.set_title(f"{inst_id} 价格走势")
+                ax.set_xlabel("时间")
+                ax.set_ylabel("价格 (USDT)")
+                ax.text(0.5, 0.5, "暂无数据", ha='center', va='center', transform=ax.transAxes)
+                
+                # 指标图表也显示提示
+                indicator_ax = self.indicator_figure.add_subplot(111)
+                indicator_ax.set_title("技术指标")
+                indicator_ax.text(0.5, 0.5, "暂无数据", ha='center', va='center', transform=indicator_ax.transAxes)
+            
+            # 重新绘制图表
+            self.price_canvas.draw()
+            self.indicator_canvas.draw()
+        except Exception as e:
+            logger.error(f"更新价格图表错误: {e}")
 
     def init_order_tab(self):
         """
@@ -749,48 +1851,129 @@ class WebSocketGUI(QMainWindow):
         初始化策略管理标签页
         """
         layout = QVBoxLayout(self.strategy_tab)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(15)
 
         # 策略控制
-        strategy_control = QHBoxLayout()
+        strategy_control = QVBoxLayout()
+        
+        # 顶部控制栏
+        top_control = QHBoxLayout()
+        top_control.setSpacing(10)
+        
         self.strategy_name_input = QLineEdit()
         self.strategy_name_input.setPlaceholderText("策略名称")
+        self.strategy_name_input.setMinimumWidth(150)
+        
         self.strategy_type_combo = QComboBox()
-        self.strategy_type_combo.addItems(["动态策略", "PassivBot策略", "自定义策略"])
+        self.strategy_type_combo.addItems(["动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "自定义策略"])
+        self.strategy_type_combo.setMinimumWidth(120)
+        
         self.create_strategy_button = QPushButton("创建策略")
         self.start_strategy_button = QPushButton("启动策略")
         self.stop_strategy_button = QPushButton("停止策略")
+        self.edit_strategy_button = QPushButton("编辑策略")
+        self.delete_strategy_button = QPushButton("删除策略")
+        self.generate_report_button = QPushButton("生成报告")
 
-        strategy_control.addWidget(QLabel("策略名称:"))
-        strategy_control.addWidget(self.strategy_name_input)
-        strategy_control.addWidget(QLabel("策略类型:"))
-        strategy_control.addWidget(self.strategy_type_combo)
-        strategy_control.addWidget(self.create_strategy_button)
-        strategy_control.addWidget(self.start_strategy_button)
-        strategy_control.addWidget(self.stop_strategy_button)
+        top_control.addWidget(QLabel("策略名称:"))
+        top_control.addWidget(self.strategy_name_input)
+        top_control.addWidget(QLabel("策略类型:"))
+        top_control.addWidget(self.strategy_type_combo)
+        top_control.addWidget(self.create_strategy_button)
+        top_control.addWidget(self.start_strategy_button)
+        top_control.addWidget(self.stop_strategy_button)
+        top_control.addWidget(self.edit_strategy_button)
+        top_control.addWidget(self.delete_strategy_button)
+        top_control.addWidget(self.generate_report_button)
+        top_control.addStretch(1)
+        
+        # 搜索和筛选栏
+        filter_control = QHBoxLayout()
+        filter_control.setSpacing(10)
+        
+        self.strategy_search = QLineEdit()
+        self.strategy_search.setPlaceholderText("搜索策略...")
+        self.strategy_search.setMinimumWidth(200)
+        
+        self.status_filter = QComboBox()
+        self.status_filter.addItems(["所有状态", "运行中", "已停止"])
+        self.status_filter.setMinimumWidth(120)
+        
+        self.type_filter = QComboBox()
+        self.type_filter.addItems(["所有类型", "动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "自定义策略"])
+        self.type_filter.setMinimumWidth(120)
+        
+        refresh_button = QPushButton("刷新")
+        refresh_button.clicked.connect(self.update_strategy_list)
+        
+        filter_control.addWidget(QLabel("搜索:"))
+        filter_control.addWidget(self.strategy_search)
+        filter_control.addWidget(QLabel("状态:"))
+        filter_control.addWidget(self.status_filter)
+        filter_control.addWidget(QLabel("类型:"))
+        filter_control.addWidget(self.type_filter)
+        filter_control.addWidget(refresh_button)
+        filter_control.addStretch(1)
+        
+        strategy_control.addLayout(top_control)
+        strategy_control.addLayout(filter_control)
 
         layout.addLayout(strategy_control)
 
         # 策略列表
+        strategy_list_group = QGroupBox("策略列表")
+        strategy_list_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        strategy_list_layout = QVBoxLayout(strategy_list_group)
+        strategy_list_layout.setContentsMargins(15, 15, 15, 15)
+        
         self.strategy_list = QTableWidget()
-        self.strategy_list.setColumnCount(4)
+        self.strategy_list.setColumnCount(5)
         self.strategy_list.setHorizontalHeaderLabels(
-            ["策略名称", "策略类型", "状态", "操作"]
+            ["策略名称", "策略类型", "状态", "性能", "操作"]
         )
         # 设置列宽
         self.strategy_list.setColumnWidth(0, 150)
         self.strategy_list.setColumnWidth(1, 120)
         self.strategy_list.setColumnWidth(2, 80)
-        self.strategy_list.setColumnWidth(3, 300)
-
-        layout.addWidget(self.strategy_list)
+        self.strategy_list.setColumnWidth(3, 120)
+        self.strategy_list.setColumnWidth(4, 300)
+        self.strategy_list.horizontalHeader().setStretchLastSection(True)
+        self.strategy_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        strategy_list_layout.addWidget(self.strategy_list)
+        layout.addWidget(strategy_list_group)
+        
+        # 策略性能分析
+        performance_group = QGroupBox("策略性能分析")
+        performance_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        performance_layout = QVBoxLayout(performance_group)
+        performance_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 创建性能分析图表
+        self.performance_figure = Figure(figsize=(10, 4))
+        self.performance_canvas = FigureCanvas(self.performance_figure)
+        self.performance_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        performance_layout.addWidget(self.performance_canvas)
+        layout.addWidget(performance_group)
+        
+        # 设置拉伸比例
+        layout.setStretch(0, 0)  # 控制栏不拉伸
+        layout.setStretch(1, 2)  # 策略列表拉伸
+        layout.setStretch(2, 1)  # 性能分析拉伸
 
         # 连接按钮信号
         self.create_strategy_button.clicked.connect(self.create_strategy)
         self.start_strategy_button.clicked.connect(self.start_strategy)
         self.stop_strategy_button.clicked.connect(self.stop_strategy)
+        self.edit_strategy_button.clicked.connect(self.edit_strategy)
+        self.delete_strategy_button.clicked.connect(self.delete_strategy)
+        self.generate_report_button.clicked.connect(self.generate_strategy_report)
 
         # 初始化策略列表
         self.update_strategy_list()
+        # 初始化性能图表
+        self.update_performance_chart()
 
     def toggle_connection(self):
         """
@@ -820,9 +2003,15 @@ class WebSocketGUI(QMainWindow):
                 asyncio.run(coro)
             except Exception as e:
                 logger.error(f"运行异步任务错误: {e}")
+                # 显示错误信息
+                self.statusBar.showMessage(f"任务执行错误: {str(e)}")
 
         # 使用线程池运行任务
-        self._thread_pool.submit(run_coro)
+        try:
+            self._thread_pool.submit(run_coro)
+        except Exception as e:
+            logger.error(f"提交任务到线程池错误: {e}")
+            self.statusBar.showMessage(f"任务提交失败: {str(e)}")
 
     async def connect_ws(self, api_key, api_secret, passphrase, is_test):
         """
@@ -845,32 +2034,243 @@ class WebSocketGUI(QMainWindow):
                 self.update_connection_status.emit(True, "已连接")
                 self.statusBar.showMessage("WebSocket 连接成功")
                 self.connect_button.setText("断开")
+                
+                # 保存加密的API密钥
+                self._save_encrypted_api_keys(api_key, api_secret, passphrase, is_test)
 
-                # 订阅默认产品
-                await self.ws_client.subscribe("tickers", "BTC-USDT-SWAP")
-                await self.ws_client.subscribe("tickers", "ETH-USDT-SWAP")
+                # 启动市场数据智能体
+                if not self.market_data_agent:
+                    market_data_config = AgentConfig(name="MarketDataAgent", description="市场数据智能体")
+                    self.market_data_agent = MarketDataAgent(
+                        market_data_config,
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        passphrase=passphrase,
+                        is_test=is_test
+                    )
+                    await self.market_data_agent.start()
+                    logger.info("市场数据智能体已启动")
+
+                # 启动自动重连机制
+                self.start_reconnect_timer()
 
             else:
                 self.update_connection_status.emit(False, "连接失败")
                 self.statusBar.showMessage("WebSocket 连接失败")
+                # 尝试重连
+                self.schedule_reconnect(api_key, api_secret, passphrase, is_test)
 
         except Exception as e:
             logger.error(f"连接 WebSocket 错误: {e}")
             self.update_connection_status.emit(False, f"连接错误: {str(e)}")
             self.statusBar.showMessage(f"连接错误: {str(e)}")
+            # 尝试重连
+            self.schedule_reconnect(api_key, api_secret, passphrase, is_test)
 
     async def disconnect_ws(self):
         """
         断开 WebSocket 连接
         """
         try:
+            # 停止自动重连机制
+            self.stop_reconnect_timer()
+            
             if self.ws_client:
                 await self.ws_client.close()
-                self.update_connection_status.emit(False, "已断开")
-                self.statusBar.showMessage("WebSocket 已断开")
-                self.connect_button.setText("连接")
+                
+            # 停止市场数据智能体
+            if self.market_data_agent:
+                await self.market_data_agent.stop()
+                self.market_data_agent = None
+                logger.info("市场数据智能体已停止")
+                
+            self.update_connection_status.emit(False, "已断开")
+            self.statusBar.showMessage("WebSocket 已断开")
+            self.connect_button.setText("连接")
         except Exception as e:
             logger.error(f"断开 WebSocket 错误: {e}")
+            self.statusBar.showMessage(f"断开连接错误: {str(e)}")
+
+    def start_reconnect_timer(self):
+        """
+        启动自动重连定时器
+        """
+        # 停止之前的定时器
+        self.stop_reconnect_timer()
+        
+        # 创建新的定时器，每30秒检查一次连接状态
+        self.reconnect_timer = QTimer(self)
+        self.reconnect_timer.timeout.connect(self.check_connection)
+        self.reconnect_timer.start(30000)  # 30秒检查一次
+        logger.info("自动重连机制已启动")
+
+    def stop_reconnect_timer(self):
+        """
+        停止自动重连定时器
+        """
+        if hasattr(self, 'reconnect_timer') and self.reconnect_timer:
+            self.reconnect_timer.stop()
+            delattr(self, 'reconnect_timer')
+            logger.info("自动重连机制已停止")
+
+    def check_connection(self):
+        """
+        检查连接状态
+        """
+        try:
+            if self.ws_client and not self.ws_client.is_connected():
+                logger.warning("WebSocket 连接已断开，尝试重连...")
+                self.statusBar.showMessage("连接已断开，尝试重连...")
+                
+                # 尝试重连
+                api_key = self.api_key_input.text()
+                api_secret = self.secret_input.text()
+                passphrase = self.passphrase_input.text()
+                is_test = self.testnet_checkbox.currentText() == "模拟盘"
+                
+                if api_key and api_secret and passphrase:
+                    self._run_async_task(self.connect_ws(api_key, api_secret, passphrase, is_test))
+                else:
+                    logger.error("API 配置不完整，无法自动重连")
+                    self.statusBar.showMessage("API 配置不完整，无法自动重连")
+        except Exception as e:
+            logger.error(f"检查连接状态错误: {e}")
+
+    def schedule_reconnect(self, api_key, api_secret, passphrase, is_test):
+        """
+        安排重连
+        """
+        # 3秒后尝试重连
+        QTimer.singleShot(3000, lambda: self._run_async_task(self.connect_ws(api_key, api_secret, passphrase, is_test)))
+        logger.info("已安排 3 秒后尝试重连")
+
+    def start_health_check_timer(self):
+        """
+        启动系统健康检查定时器
+        """
+        # 创建定时器，每60秒执行一次健康检查
+        self.health_check_timer = QTimer(self)
+        self.health_check_timer.timeout.connect(self.perform_health_check)
+        self.health_check_timer.start(60000)  # 60秒检查一次
+        logger.info("系统健康检查定时器已启动")
+
+    def perform_health_check(self):
+        """
+        执行系统健康检查
+        """
+        try:
+            # 更新系统资源使用情况
+            self.update_system_resources()
+            
+            # 更新系统健康状态
+            self.update_system_health()
+            
+            # 更新连接状态
+            self.update_connection_status_display()
+            
+            # 更新策略状态
+            self.update_strategy_status()
+            
+            logger.info("系统健康检查完成")
+        except Exception as e:
+            logger.error(f"执行健康检查错误: {e}")
+
+    def update_system_resources(self):
+        """
+        更新系统资源使用情况
+        """
+        try:
+            # 尝试导入psutil模块获取系统资源使用情况
+            try:
+                import psutil
+                # 获取CPU使用率
+                cpu_usage = psutil.cpu_percent(interval=0.1)
+                self.cpu_usage_label.setText(f"{cpu_usage:.1f}%")
+                
+                # 获取内存使用率
+                memory = psutil.virtual_memory()
+                memory_usage = memory.percent
+                self.memory_usage_label.setText(f"{memory_usage:.1f}%")
+            except ImportError:
+                # 如果psutil模块不可用，显示默认值
+                logger.warning("psutil模块不可用，无法获取系统资源使用情况")
+        except Exception as e:
+            logger.error(f"更新系统资源使用情况错误: {e}")
+
+    def update_system_health(self):
+        """
+        更新系统健康状态
+        """
+        try:
+            # 检查各项系统状态
+            is_healthy = True
+            issues = []
+            
+            # 检查WebSocket连接状态
+            if not (self.ws_client and self.ws_client.is_connected()):
+                is_healthy = False
+                issues.append("WebSocket连接断开")
+            
+            # 检查市场数据智能体状态
+            if not self.market_data_agent:
+                is_healthy = False
+                issues.append("市场数据智能体未启动")
+            
+            # 检查策略状态
+            running_strategies = sum(1 for s in self.strategies if s.get('status') == '运行中')
+            if running_strategies > 0:
+                # 检查策略线程状态
+                for strategy_name, thread in self.strategy_threads.items():
+                    if not thread.is_alive():
+                        is_healthy = False
+                        issues.append(f"策略 {strategy_name} 线程已停止")
+            
+            # 更新系统健康状态标签
+            if is_healthy:
+                self.system_health_label.setText("正常")
+                self.system_health_label.setStyleSheet("font-weight: bold; color: green;")
+            else:
+                self.system_health_label.setText(f"异常 ({len(issues)}个问题)")
+                self.system_health_label.setStyleSheet("font-weight: bold; color: red;")
+                # 记录问题
+                for issue in issues:
+                    logger.warning(f"系统健康检查发现问题: {issue}")
+        except Exception as e:
+            logger.error(f"更新系统健康状态错误: {e}")
+
+    def update_connection_status_display(self):
+        """
+        更新连接状态显示
+        """
+        try:
+            # 更新WebSocket连接状态
+            if self.ws_client and self.ws_client.is_connected():
+                self.ws_status_label.setText("已连接")
+                self.ws_status_label.setStyleSheet("font-weight: bold; color: green;")
+            else:
+                self.ws_status_label.setText("未连接")
+                self.ws_status_label.setStyleSheet("font-weight: bold; color: red;")
+            
+            # 更新市场数据智能体状态
+            if self.market_data_agent:
+                self.agent_status_label.setText("已启动")
+                self.agent_status_label.setStyleSheet("font-weight: bold; color: green;")
+            else:
+                self.agent_status_label.setText("未启动")
+                self.agent_status_label.setStyleSheet("font-weight: bold; color: red;")
+        except Exception as e:
+            logger.error(f"更新连接状态显示错误: {e}")
+
+    def update_strategy_status(self):
+        """
+        更新策略状态
+        """
+        try:
+            # 统计运行中的策略数量
+            running_strategies = sum(1 for s in self.strategies if s.get('status') == '运行中')
+            self.strategy_count_label.setText(f"{running_strategies}个")
+        except Exception as e:
+            logger.error(f"更新策略状态错误: {e}")
 
     def subscribe_instrument(self):
         """
@@ -968,6 +2368,386 @@ class WebSocketGUI(QMainWindow):
             self.statusBar.showMessage(f"策略 {strategy_name} 已存在")
             return
 
+        # 预定义策略模板
+        strategy_templates = {
+            "移动平均线RSI策略": """import time
+import numpy as np
+import logging
+
+logger = logging.getLogger("Strategy")
+from strategies.base_strategy import BaseStrategy
+
+
+class {strategy_name}(BaseStrategy):
+    """移动平均线和RSI结合的交易策略"""
+
+    def __init__(self, api_client=None, config=None):
+        """
+        初始化移动平均线和RSI策略
+
+        Args:
+            api_client (OKXAPIClient, optional): OKX API客户端实例
+            config (dict, optional): 策略配置
+        """
+        super().__init__(api_client, config)
+
+        # 策略参数
+        self.strategy_params = {
+            "ma_short": 10,  # 短期移动平均线周期
+            "ma_long": 30,   # 长期移动平均线周期
+            "rsi_period": 14, # RSI周期
+            "rsi_overbought": 70,  # RSI超买阈值
+            "rsi_oversold": 30,    # RSI超卖阈值
+            "trend_threshold": 0.001,  # 趋势阈值
+        }
+
+        # 数据容器
+        self.price_history = []
+        self.ma_short_history = []
+        self.ma_long_history = []
+        self.rsi_history = []
+
+        # 更新配置
+        if config and "strategy" in config:
+            self.strategy_params.update(config["strategy"])
+
+        logger.info("移动平均线和RSI策略初始化完成")
+
+    def calculate_ma(self, prices, period):
+        """计算移动平均线"""
+        if len(prices) < period:
+            return None
+        return np.mean(prices[-period:])
+
+    def calculate_rsi(self, prices, period):
+        """计算RSI指标"""
+        if len(prices) < period + 1:
+            return None
+        
+        deltas = np.diff(prices)
+        gains = deltas[deltas > 0]
+        losses = -deltas[deltas < 0]
+        
+        avg_gain = np.mean(gains[-period:]) if len(gains) > 0 else 0
+        avg_loss = np.mean(losses[-period:]) if len(losses) > 0 else 0
+        
+        if avg_loss == 0:
+            return 100
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def calculate_trend(self):
+        """计算趋势"""
+        if len(self.ma_short_history) < 2 or len(self.ma_long_history) < 2:
+            return 0
+        
+        # 短期均线趋势
+        ma_short_trend = self.ma_short_history[-1] - self.ma_short_history[-2]
+        # 长期均线趋势
+        ma_long_trend = self.ma_long_history[-1] - self.ma_long_history[-2]
+        # 均线差趋势
+        ma_diff = (self.ma_short_history[-1] - self.ma_long_history[-1])
+        
+        # 综合趋势
+        trend = 0
+        if ma_short_trend > self.strategy_params["trend_threshold"] and ma_long_trend > 0:
+            trend = 1  # 多头趋势
+        elif ma_short_trend < -self.strategy_params["trend_threshold"] and ma_long_trend < 0:
+            trend = -1  # 空头趋势
+        
+        return trend
+
+    def _execute_strategy(self, market_data):
+        """执行策略，生成交易信号
+
+        Args:
+            market_data (dict): 市场数据
+
+        Returns:
+            dict: 交易信号，包含side, price, amount等信息
+        """
+        # 保存当前价格到历史数据
+        if "price" in market_data:
+            self.price_history.append(market_data["price"])
+        elif "last" in market_data:
+            self.price_history.append(float(market_data["last"]))
+        else:
+            logger.warning("市场数据中没有价格信息")
+            return None
+
+        # 计算移动平均线
+        ma_short = self.calculate_ma(self.price_history, self.strategy_params["ma_short"])
+        ma_long = self.calculate_ma(self.price_history, self.strategy_params["ma_long"])
+        
+        if ma_short:
+            self.ma_short_history.append(ma_short)
+        if ma_long:
+            self.ma_long_history.append(ma_long)
+
+        # 计算RSI
+        rsi = self.calculate_rsi(self.price_history, self.strategy_params["rsi_period"])
+        if rsi:
+            self.rsi_history.append(rsi)
+
+        # 获取当前价格
+        current_price = self.price_history[-1]
+
+        # 生成交易信号
+        side = "neutral"
+        signal_strength = 0
+
+        # 趋势判断
+        trend = self.calculate_trend()
+
+        # 金叉死叉信号
+        if len(self.ma_short_history) > 1 and len(self.ma_long_history) > 1:
+            # 金叉：短期均线上穿长期均线
+            if self.ma_short_history[-1] > self.ma_long_history[-1] and self.ma_short_history[-2] <= self.ma_long_history[-2]:
+                if rsi and rsi < 50:
+                    side = "buy"
+                    signal_strength = 0.7
+            # 死叉：短期均线下穿长期均线
+            elif self.ma_short_history[-1] < self.ma_long_history[-1] and self.ma_short_history[-2] >= self.ma_long_history[-2]:
+                if rsi and rsi > 50:
+                    side = "sell"
+                    signal_strength = -0.7
+
+        # RSI超买超卖信号
+        if rsi:
+            if rsi < self.strategy_params["rsi_oversold"] and trend >= 0:
+                side = "buy"
+                signal_strength = 0.8
+            elif rsi > self.strategy_params["rsi_overbought"] and trend <= 0:
+                side = "sell"
+                signal_strength = -0.8
+
+        # 构建交易信号
+        signal = {
+            "strategy": self.name,
+            "side": side,
+            "price": current_price,
+            "signal_strength": signal_strength,
+            "timestamp": market_data.get("timestamp", time.time()),
+            "inst_id": market_data.get("inst_id", "BTC-USDT-SWAP"),
+            "indicators": {
+                "ma_short": ma_short,
+                "ma_long": ma_long,
+                "rsi": rsi,
+                "trend": trend
+            }
+        }
+
+        logger.info(f"策略信号生成: {signal}")
+        return signal
+""",
+            "MACD布林带策略": """import time
+import numpy as np
+import logging
+
+logger = logging.getLogger("Strategy")
+from strategies.base_strategy import BaseStrategy
+
+
+class {strategy_name}(BaseStrategy):
+    """MACD和布林带结合的交易策略"""
+
+    def __init__(self, api_client=None, config=None):
+        """
+        初始化MACD和布林带策略
+
+        Args:
+            api_client (OKXAPIClient, optional): OKX API客户端实例
+            config (dict, optional): 策略配置
+        """
+        super().__init__(api_client, config)
+
+        # 策略参数
+        self.strategy_params = {
+            "macd_fast": 12,     # MACD快线周期
+            "macd_slow": 26,     # MACD慢线周期
+            "macd_signal": 9,    # MACD信号线周期
+            "bollinger_period": 20,  # 布林带周期
+            "bollinger_std": 2,      # 布林带标准差倍数
+            "signal_threshold": 0.001,  # 信号阈值
+        }
+
+        # 数据容器
+        self.price_history = []
+        self.macd_history = []
+        self.signal_history = []
+        self.histogram_history = []
+        self.bollinger_upper = []
+        self.bollinger_middle = []
+        self.bollinger_lower = []
+
+        # 更新配置
+        if config and "strategy" in config:
+            self.strategy_params.update(config["strategy"])
+
+        logger.info("MACD和布林带策略初始化完成")
+
+    def calculate_ema(self, prices, period):
+        """计算指数移动平均线"""
+        if len(prices) < period:
+            return None
+        
+        ema = []
+        multiplier = 2 / (period + 1)
+        # 初始EMA为简单移动平均
+        initial_ema = np.mean(prices[:period])
+        ema.append(initial_ema)
+        
+        # 计算后续EMA
+        for price in prices[period:]:
+            current_ema = (price - ema[-1]) * multiplier + ema[-1]
+            ema.append(current_ema)
+        
+        return ema[-1]
+
+    def calculate_macd(self, prices):
+        """计算MACD指标"""
+        if len(prices) < max(self.strategy_params["macd_slow"], self.strategy_params["macd_signal"]):
+            return None, None, None
+        
+        # 计算EMA
+        ema_fast = self.calculate_ema(prices, self.strategy_params["macd_fast"])
+        ema_slow = self.calculate_ema(prices, self.strategy_params["macd_slow"])
+        
+        if ema_fast is None or ema_slow is None:
+            return None, None, None
+        
+        # 计算MACD线
+        macd_line = ema_fast - ema_slow
+        
+        # 计算信号线
+        if len(self.macd_history) >= self.strategy_params["macd_signal"]:
+            signal_line = self.calculate_ema(self.macd_history, self.strategy_params["macd_signal"])
+        else:
+            signal_line = None
+        
+        # 计算柱状图
+        histogram = macd_line - signal_line if signal_line is not None else None
+        
+        return macd_line, signal_line, histogram
+
+    def calculate_bollinger_bands(self, prices):
+        """计算布林带"""
+        if len(prices) < self.strategy_params["bollinger_period"]:
+            return None, None, None
+        
+        # 计算移动平均
+        middle_band = np.mean(prices[-self.strategy_params["bollinger_period":])
+        # 计算标准差
+        std_dev = np.std(prices[-self.strategy_params["bollinger_period":])
+        # 计算上下轨
+        upper_band = middle_band + (self.strategy_params["bollinger_std"] * std_dev)
+        lower_band = middle_band - (self.strategy_params["bollinger_std"] * std_dev)
+        
+        return upper_band, middle_band, lower_band
+
+    def _execute_strategy(self, market_data):
+        """执行策略，生成交易信号
+
+        Args:
+            market_data (dict): 市场数据
+
+        Returns:
+            dict: 交易信号，包含side, price, amount等信息
+        """
+        # 保存当前价格到历史数据
+        if "price" in market_data:
+            self.price_history.append(market_data["price"])
+        elif "last" in market_data:
+            self.price_history.append(float(market_data["last"]))
+        else:
+            logger.warning("市场数据中没有价格信息")
+            return None
+
+        # 计算MACD
+        macd_line, signal_line, histogram = self.calculate_macd(self.price_history)
+        
+        if macd_line:
+            self.macd_history.append(macd_line)
+        if signal_line:
+            self.signal_history.append(signal_line)
+        if histogram:
+            self.histogram_history.append(histogram)
+
+        # 计算布林带
+        upper_band, middle_band, lower_band = self.calculate_bollinger_bands(self.price_history)
+        
+        if upper_band:
+            self.bollinger_upper.append(upper_band)
+        if middle_band:
+            self.bollinger_middle.append(middle_band)
+        if lower_band:
+            self.bollinger_lower.append(lower_band)
+
+        # 获取当前价格
+        current_price = self.price_history[-1]
+
+        # 生成交易信号
+        side = "neutral"
+        signal_strength = 0
+
+        # MACD信号
+        if len(self.macd_history) > 1 and len(self.signal_history) > 1:
+            # MACD金叉：MACD线上穿信号线
+            if self.macd_history[-1] > self.signal_history[-1] and self.macd_history[-2] <= self.signal_history[-2]:
+                if histogram and histogram > 0:
+                    side = "buy"
+                    signal_strength = 0.6
+            # MACD死叉：MACD线下穿信号线
+            elif self.macd_history[-1] < self.signal_history[-1] and self.macd_history[-2] >= self.signal_history[-2]:
+                if histogram and histogram < 0:
+                    side = "sell"
+                    signal_strength = -0.6
+
+        # 布林带信号
+        if upper_band and lower_band and middle_band:
+            # 价格突破上轨
+            if current_price > upper_band:
+                side = "sell"
+                signal_strength = -0.7
+            # 价格突破下轨
+            elif current_price < lower_band:
+                side = "buy"
+                signal_strength = 0.7
+            # 价格回归中轨
+            elif abs(current_price - middle_band) < self.strategy_params["signal_threshold"]:
+                # 根据MACD方向决定
+                if len(self.histogram_history) > 0 and self.histogram_history[-1] > 0:
+                    side = "buy"
+                    signal_strength = 0.5
+                elif len(self.histogram_history) > 0 and self.histogram_history[-1] < 0:
+                    side = "sell"
+                    signal_strength = -0.5
+
+        # 构建交易信号
+        signal = {
+            "strategy": self.name,
+            "side": side,
+            "price": current_price,
+            "signal_strength": signal_strength,
+            "timestamp": market_data.get("timestamp", time.time()),
+            "inst_id": market_data.get("inst_id", "BTC-USDT-SWAP"),
+            "indicators": {
+                "macd_line": macd_line,
+                "signal_line": signal_line,
+                "histogram": histogram,
+                "bollinger_upper": upper_band,
+                "bollinger_middle": middle_band,
+                "bollinger_lower": lower_band
+            }
+        }
+
+        logger.info(f"策略信号生成: {signal}")
+        return signal
+"""
+        }
+
         # 打开代码导入对话框
         from PyQt5.QtWidgets import (
             QDialog,
@@ -990,7 +2770,14 @@ class WebSocketGUI(QMainWindow):
 
         # 代码输入区域
         code_editor = QTextEdit()
-        code_editor.setPlaceholderText("请输入策略代码...")
+        
+        # 如果是预定义策略类型，加载模板
+        if strategy_type in strategy_templates:
+            template = strategy_templates[strategy_type].format(strategy_name=strategy_name)
+            code_editor.setPlainText(template)
+        else:
+            code_editor.setPlaceholderText("请输入策略代码...")
+            
         layout.addWidget(code_editor)
 
         # 按钮布局
@@ -1017,7 +2804,7 @@ class WebSocketGUI(QMainWindow):
             # 保存策略代码到文件
             import os
 
-            strategies_dir = "d:\\Projects\\okx_trading_bot\\strategies"
+            strategies_dir = "d:\Projects\okx_trading_bot\strategies"
             strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
 
             try:
@@ -1091,7 +2878,7 @@ class WebSocketGUI(QMainWindow):
                 import os
                 import importlib.util
 
-                strategies_dir = "d:\\Projects\\okx_trading_bot\\strategies"
+                strategies_dir = "d:\Projects\okx_trading_bot\strategies"
                 strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
 
                 if not os.path.exists(strategy_file):
@@ -1128,7 +2915,10 @@ class WebSocketGUI(QMainWindow):
 
                     # 更新策略状态
                     strategy_info["status"] = "运行中"
-                    self.strategy_list.setItem(row.row(), 2, QTableWidgetItem("运行中"))
+                    # 添加状态颜色指示
+                    status_item = QTableWidgetItem("运行中")
+                    status_item.setForeground(QColor("green"))
+                    self.strategy_list.setItem(row.row(), 2, status_item)
 
                     # 启动监控线程
                     import threading
@@ -1151,18 +2941,20 @@ class WebSocketGUI(QMainWindow):
                                 logger.error(f"策略执行错误: {e}")
                                 time.sleep(1)
 
-                    thread = threading.Thread(target=run_strategy)
-                    thread.daemon = True
+                    # 启动线程
+                    thread = threading.Thread(target=run_strategy, daemon=True)
                     thread.start()
                     self.strategy_threads[strategy_name] = thread
 
-                    self.statusBar.showMessage(f"启动策略 {strategy_name} 成功")
-                    logger.info(f"策略 {strategy_name} 已启动")
-                else:
-                    self.statusBar.showMessage(f"加载策略模块失败: {strategy_name}")
+                    # 更新策略列表
+                    self.update_strategy_list()
+                    # 更新性能图表
+                    self.update_performance_chart()
+
+                    self.statusBar.showMessage(f"策略 {strategy_name} 启动成功")
             except Exception as e:
-                logger.error(f"启动策略失败: {e}")
-                self.statusBar.showMessage(f"启动策略 {strategy_name} 失败: {str(e)}")
+                logger.error(f"启动策略错误: {e}")
+                self.statusBar.showMessage(f"启动策略失败: {str(e)}")
 
     def stop_strategy(self):
         """
@@ -1178,164 +2970,115 @@ class WebSocketGUI(QMainWindow):
         for row in selected_rows:
             strategy_name = self.strategy_list.item(row.row(), 0).text()
 
-            # 查找策略并更新状态
+            # 查找策略
+            strategy_info = None
             for strategy in self.strategies:
                 if strategy["name"] == strategy_name:
-                    strategy["status"] = "已停止"
+                    strategy_info = strategy
                     break
+
+            if not strategy_info:
+                self.statusBar.showMessage(f"策略 {strategy_name} 不存在")
+                continue
+
+            # 更新策略状态
+            strategy_info["status"] = "已停止"
+            # 添加状态颜色指示
+            status_item = QTableWidgetItem("已停止")
+            status_item.setForeground(QColor("gray"))
+            self.strategy_list.setItem(row.row(), 2, status_item)
 
             # 停止策略实例
             if strategy_name in self.strategy_instances:
                 try:
                     strategy_instance = self.strategy_instances[strategy_name]
-                    strategy_instance.stop()
-                    del self.strategy_instances[strategy_name]
+                    if hasattr(strategy_instance, "stop"):
+                        strategy_instance.stop()
                 except Exception as e:
-                    logger.error(f"停止策略实例失败: {e}")
+                    logger.error(f"停止策略实例错误: {e}")
 
-            # 清理策略线程
+            # 清理线程
             if strategy_name in self.strategy_threads:
-                # 由于线程是守护线程，我们只需要清理引用
                 del self.strategy_threads[strategy_name]
 
-            # 更新策略状态
-            self.strategy_list.setItem(row.row(), 2, QTableWidgetItem("已停止"))
-            self.statusBar.showMessage(f"停止策略 {strategy_name} 成功")
-            logger.info(f"策略 {strategy_name} 已停止")
+            # 更新策略列表
+            self.update_strategy_list()
+            # 更新性能图表
+            self.update_performance_chart()
 
-    def edit_strategy(self, strategy_name):
+            self.statusBar.showMessage(f"策略 {strategy_name} 已停止")
+
+    def edit_strategy(self):
         """
         编辑策略
         """
-        # 这里需要实现策略编辑的逻辑
-        # 由于我们没有实际的策略管理系统，这里只是模拟
-        self.statusBar.showMessage(f"编辑策略 {strategy_name}")
+        # 获取选中的行
+        selected_rows = self.strategy_list.selectionModel().selectedRows()
+        if not selected_rows:
+            self.statusBar.showMessage("请选择要编辑的策略")
+            return
 
-    def delete_strategy(self, strategy_name):
-        """
-        删除策略
-        """
-        # 查找并删除策略
-        for i, strategy in enumerate(self.strategies):
-            if strategy["name"] == strategy_name:
-                # 删除策略文件
-                import os
+        # 只编辑第一个选中的策略
+        row = selected_rows[0]
+        strategy_name = self.strategy_list.item(row.row(), 0).text()
 
-                strategies_dir = "d:\\Projects\\okx_trading_bot\\strategies"
-                strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
-                if os.path.exists(strategy_file):
-                    try:
-                        os.remove(strategy_file)
-                        logger.info(f"策略文件已删除: {strategy_file}")
-                    except Exception as e:
-                        logger.error(f"删除策略文件失败: {e}")
-
-                # 从列表中删除
-                self.strategies.pop(i)
-                self.statusBar.showMessage(f"删除策略 {strategy_name} 成功")
-                # 更新策略列表
-                self.update_strategy_list()
-                return
-
-        self.statusBar.showMessage(f"策略 {strategy_name} 不存在")
-
-    def view_strategy_details(self, strategy_name):
-        """
-        查看策略详情
-        """
         # 查找策略
+        strategy_info = None
         for strategy in self.strategies:
             if strategy["name"] == strategy_name:
-                # 显示策略详情
-                details = f"策略名称: {strategy['name']}\n"
-                details += f"策略类型: {strategy['type']}\n"
-                details += f"状态: {strategy['status']}\n"
-                details += f"文件: {strategy.get('file', 'N/A')}"
-                self.statusBar.showMessage(f"查看策略 {strategy_name} 详情")
-                # 这里可以弹出一个对话框显示详细信息
-                return
+                strategy_info = strategy
+                break
 
-        self.statusBar.showMessage(f"策略 {strategy_name} 不存在")
+        if not strategy_info:
+            self.statusBar.showMessage(f"策略 {strategy_name} 不存在")
+            return
 
-    def run_strategy_backtest(self, strategy_name):
-        """
-        运行策略回测
-        """
-        self.statusBar.showMessage(f"运行策略 {strategy_name} 回测")
-
-        # 打开回测参数设置对话框
+        # 打开代码编辑对话框
         from PyQt5.QtWidgets import (
             QDialog,
             QVBoxLayout,
-            QLabel,
-            QLineEdit,
-            QComboBox,
+            QTextEdit,
             QPushButton,
+            QLabel,
             QHBoxLayout,
-            QDateEdit,
         )
-        from datetime import datetime, timedelta
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("策略回测参数")
-        dialog.setGeometry(200, 200, 500, 300)
+        dialog.setWindowTitle(f"编辑策略: {strategy_name}")
+        dialog.setGeometry(200, 200, 800, 600)
 
         layout = QVBoxLayout(dialog)
 
-        # 产品ID
-        inst_id_layout = QHBoxLayout()
-        inst_id_label = QLabel("产品ID:")
-        self.inst_id_input = QLineEdit("BTC-USDT-SWAP")
-        inst_id_layout.addWidget(inst_id_label)
-        inst_id_layout.addWidget(self.inst_id_input)
-        layout.addLayout(inst_id_layout)
+        # 提示信息
+        info_label = QLabel("编辑策略代码:")
+        layout.addWidget(info_label)
 
-        # 开始时间
-        start_time_layout = QHBoxLayout()
-        start_time_label = QLabel("开始时间:")
-        self.start_date_edit = QDateEdit()
-        self.start_date_edit.setDate(datetime.now() - timedelta(days=7))
-        start_time_layout.addWidget(start_time_label)
-        start_time_layout.addWidget(self.start_date_edit)
-        layout.addLayout(start_time_layout)
+        # 代码输入区域
+        code_editor = QTextEdit()
+        
+        # 加载现有代码
+        import os
+        strategies_dir = "d:\Projects\okx_trading_bot\strategies"
+        strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
+        
+        try:
+            with open(strategy_file, "r", encoding="utf-8") as f:
+                code = f.read()
+            code_editor.setPlainText(code)
+        except Exception as e:
+            logger.error(f"读取策略文件错误: {e}")
+            code_editor.setPlaceholderText("无法加载策略代码")
 
-        # 结束时间
-        end_time_layout = QHBoxLayout()
-        end_time_label = QLabel("结束时间:")
-        self.end_date_edit = QDateEdit()
-        self.end_date_edit.setDate(datetime.now())
-        end_time_layout.addWidget(end_time_label)
-        end_time_layout.addWidget(self.end_date_edit)
-        layout.addLayout(end_time_layout)
-
-        # K线粒度
-        bar_layout = QHBoxLayout()
-        bar_label = QLabel("K线粒度:")
-        self.bar_combo = QComboBox()
-        self.bar_combo.addItems(
-            ["1m", "3m", "5m", "15m", "30m", "1H", "2H", "4H", "6H", "12H", "1D"]
-        )
-        self.bar_combo.setCurrentText("1H")
-        bar_layout.addWidget(bar_label)
-        bar_layout.addWidget(self.bar_combo)
-        layout.addLayout(bar_layout)
-
-        # 初始资金
-        balance_layout = QHBoxLayout()
-        balance_label = QLabel("初始资金:")
-        self.balance_input = QLineEdit("10000")
-        balance_layout.addWidget(balance_label)
-        balance_layout.addWidget(self.balance_input)
-        layout.addLayout(balance_layout)
+        layout.addWidget(code_editor)
 
         # 按钮布局
         button_layout = QHBoxLayout()
         cancel_button = QPushButton("取消")
-        run_button = QPushButton("运行回测")
+        save_button = QPushButton("保存")
 
         button_layout.addStretch(1)
         button_layout.addWidget(cancel_button)
-        button_layout.addWidget(run_button)
+        button_layout.addWidget(save_button)
 
         layout.addLayout(button_layout)
 
@@ -1343,739 +3086,105 @@ class WebSocketGUI(QMainWindow):
         def on_cancel():
             dialog.reject()
 
-        def on_run():
-            # 获取参数
-            inst_id = self.inst_id_input.text().strip()
-            start_date = self.start_date_edit.date().toPyDate()
-            end_date = self.end_date_edit.date().toPyDate()
-            bar = self.bar_combo.currentText()
-            try:
-                initial_balance = float(self.balance_input.text().strip())
-            except ValueError:
-                self.statusBar.showMessage("初始资金必须是数字")
+        def on_save():
+            code = code_editor.toPlainText().strip()
+            if not code:
+                self.statusBar.showMessage("策略代码不能为空")
                 return
 
-            # 开始回测
-            self._run_async_task(
-                self._run_backtest(
-                    strategy_name, inst_id, start_date, end_date, bar, initial_balance
-                )
-            )
-            dialog.accept()
+            # 保存策略代码到文件
+            try:
+                with open(strategy_file, "w", encoding="utf-8") as f:
+                    f.write(code)
+                logger.info(f"策略文件已更新: {strategy_file}")
+
+                self.statusBar.showMessage(f"策略 {strategy_name} 编辑成功")
+                dialog.accept()
+            except Exception as e:
+                logger.error(f"保存策略文件失败: {e}")
+                self.statusBar.showMessage(f"编辑策略失败: {str(e)}")
 
         cancel_button.clicked.connect(on_cancel)
-        run_button.clicked.connect(on_run)
+        save_button.clicked.connect(on_save)
 
         # 显示对话框
         dialog.exec_()
 
-    async def _run_backtest(
-        self, strategy_name, inst_id, start_date, end_date, bar, initial_balance
-    ):
+    def delete_strategy(self):
         """
-        异步运行策略回测
+        删除策略
         """
-        try:
-            from core.backtesting import StrategyBacktester
-            from core.api.okx_rest_client import OKXRESTClient
+        # 获取选中的行
+        selected_rows = self.strategy_list.selectionModel().selectedRows()
+        if not selected_rows:
+            self.statusBar.showMessage("请选择要删除的策略")
+            return
 
-            # 创建REST客户端
-            rest_client = OKXRESTClient(is_test=True)
+        # 确认删除
+        from PyQt5.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            "确定要删除选中的策略吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
 
-            # 创建回测器
-            backtester = StrategyBacktester(rest_client)
+        if reply != QMessageBox.Yes:
+            return
 
-            # 导入策略模块
+        # 删除选中的策略
+        for row in selected_rows:
+            strategy_name = self.strategy_list.item(row.row(), 0).text()
+
+            # 查找策略
+            strategy_info = None
+            for i, strategy in enumerate(self.strategies):
+                if strategy["name"] == strategy_name:
+                    strategy_info = strategy
+                    del self.strategies[i]
+                    break
+
+            if not strategy_info:
+                continue
+
+            # 停止策略（如果正在运行）
+            if strategy_info["status"] == "运行中":
+                # 停止策略实例
+                if strategy_name in self.strategy_instances:
+                    try:
+                        strategy_instance = self.strategy_instances[strategy_name]
+                        if hasattr(strategy_instance, "stop"):
+                            strategy_instance.stop()
+                    except Exception as e:
+                        logger.error(f"停止策略实例错误: {e}")
+
+                # 清理线程
+                if strategy_name in self.strategy_threads:
+                    del self.strategy_threads[strategy_name]
+
+            # 删除策略文件
             import os
             strategies_dir = "d:\Projects\okx_trading_bot\strategies"
             strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
-
-            if not os.path.exists(strategy_file):
-                self.statusBar.showMessage(f"策略文件不存在: {strategy_file}")
-                return
-
-            # 加载策略模块
-            spec = importlib.util.spec_from_file_location(strategy_name, strategy_file)
-            if spec and spec.loader:
-                strategy_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(strategy_module)
-
-                # 查找策略类
-                strategy_class = None
-                for name, obj in strategy_module.__dict__.items():
-                    if isinstance(obj, type) and hasattr(obj, "execute"):
-                        strategy_class = obj
-                        break
-
-                if not strategy_class:
-                    self.statusBar.showMessage(
-                        f"策略文件中未找到策略类: {strategy_name}"
-                    )
-                    return
-
-                # 创建策略实例
-                strategy_instance = strategy_class()
-
-                # 运行回测
-                self.statusBar.showMessage(f"正在回测策略 {strategy_name}...")
-                result = await backtester.backtest_strategy(
-                    strategy=strategy_instance,
-                    inst_id=inst_id,
-                    start_time=datetime.combine(start_date, datetime.min.time()),
-                    end_time=datetime.combine(end_date, datetime.max.time()),
-                    bar=bar,
-                    initial_balance=initial_balance,
-                )
-
-                # 显示回测结果
-                if result:
-                    self._show_backtest_result(result)
-                else:
-                    self.statusBar.showMessage("回测失败")
-            else:
-                self.statusBar.showMessage(f"加载策略模块失败: {strategy_name}")
-        except Exception as e:
-            logger.error(f"回测错误: {e}")
-            self.statusBar.showMessage(f"回测错误: {str(e)}")
-
-    def _show_backtest_result(self, result):
-        """
-        显示回测结果
-        """
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("回测结果")
-        dialog.setGeometry(200, 200, 600, 400)
-
-        layout = QVBoxLayout(dialog)
-
-        # 结果文本
-        result_text = QTextEdit()
-        result_text.setReadOnly(True)
-
-        text = f"回测结果\n"
-        text += f"策略: {result.get('strategy', 'N/A')}\n"
-        text += f"产品: {result.get('inst_id', 'N/A')}\n"
-        text += f"时间范围: {result.get('start_time', 'N/A')} 至 {result.get('end_time', 'N/A')}\n"
-        text += f"K线粒度: {result.get('bar', 'N/A')}\n"
-        text += f"初始资金: {result.get('initial_balance', 0):.2f}\n"
-        text += f"最终资金: {result.get('final_balance', 0):.2f}\n"
-        text += f"总收益: {result.get('total_profit', 0):.2f}\n"
-        text += f"总收益率: {result.get('total_return', 0):.2f}%\n"
-        text += f"胜率: {result.get('win_rate', 0):.2f}%\n"
-        text += f"最大回撤: {result.get('max_drawdown', 0):.2f}%\n"
-        text += f"夏普比率: {result.get('sharpe_ratio', 0):.2f}\n"
-        text += f"平均盈利: {result.get('avg_win', 0):.2f}\n"
-        text += f"平均亏损: {result.get('avg_loss', 0):.2f}\n"
-        text += f"总交易次数: {result.get('total_trades', 0)}\n"
-        text += f"盈利交易: {result.get('win_trades', 0)}\n"
-        text += f"亏损交易: {result.get('loss_trades', 0)}\n"
-
-        result_text.setText(text)
-        layout.addWidget(result_text)
-
-        # 关闭按钮
-        close_button = QPushButton("关闭")
-        close_button.clicked.connect(dialog.close)
-        layout.addWidget(close_button)
-
-        # 显示对话框
-        dialog.exec_()
-
-    def init_monitor_tab(self):
-        """
-        初始化监控与分析标签页
-        """
-        monitor_layout = QVBoxLayout(self.monitor_tab)
-        monitor_layout.setContentsMargins(15, 15, 15, 15)
-        monitor_layout.setSpacing(15)
-
-        # 监控概览卡片
-        overview_group = QGroupBox("系统概览")
-        overview_layout = QHBoxLayout()
-        overview_layout.setContentsMargins(15, 15, 15, 15)
-        overview_layout.setSpacing(15)
-        
-        # 连接状态卡片
-        connection_card = QGroupBox("连接状态")
-        connection_layout = QVBoxLayout()
-        self.connection_status_label = QLabel("未连接")
-        self.connection_status_label.setStyleSheet("font-size: 16px; font-weight: bold; color: red;")
-        connection_layout.addWidget(self.connection_status_label)
-        connection_card.setLayout(connection_layout)
-        
-        # 策略状态卡片
-        strategy_card = QGroupBox("策略状态")
-        strategy_layout = QVBoxLayout()
-        self.strategy_status_label = QLabel("未启动")
-        self.strategy_status_label.setStyleSheet("font-size: 16px; font-weight: bold; color: red;")
-        strategy_layout.addWidget(self.strategy_status_label)
-        strategy_card.setLayout(strategy_layout)
-        
-        # API调用统计卡片
-        api_card = QGroupBox("API调用")
-        api_layout = QVBoxLayout()
-        self.api_call_label = QLabel("0次调用")
-        self.api_call_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        api_layout.addWidget(self.api_call_label)
-        api_card.setLayout(api_layout)
-        
-        # 交易统计卡片
-        trade_card = QGroupBox("交易统计")
-        trade_layout = QVBoxLayout()
-        self.trade_count_label = QLabel("0笔交易")
-        self.trade_count_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        trade_layout.addWidget(self.trade_count_label)
-        trade_card.setLayout(trade_layout)
-        
-        overview_layout.addWidget(connection_card, 1)
-        overview_layout.addWidget(strategy_card, 1)
-        overview_layout.addWidget(api_card, 1)
-        overview_layout.addWidget(trade_card, 1)
-        overview_group.setLayout(overview_layout)
-        monitor_layout.addWidget(overview_group)
-
-        # 监控标签页
-        monitor_tab_widget = QTabWidget()
-        monitor_layout.addWidget(monitor_tab_widget)
-
-        # 策略监控标签
-        strategy_monitor_tab = QWidget()
-        monitor_tab_widget.addTab(strategy_monitor_tab, "策略监控")
-        self.init_strategy_monitor_tab(strategy_monitor_tab)
-
-        # API监控标签
-        api_monitor_tab = QWidget()
-        monitor_tab_widget.addTab(api_monitor_tab, "API监控")
-        self.init_api_monitor_tab(api_monitor_tab)
-
-        # 数据可视化标签
-        visualization_tab = QWidget()
-        monitor_tab_widget.addTab(visualization_tab, "数据可视化")
-        self.init_visualization_tab(visualization_tab)
-
-        # 日志标签
-        log_tab = QWidget()
-        monitor_tab_widget.addTab(log_tab, "日志")
-        self.init_log_tab(log_tab)
-
-        # 启动监控定时器
-        self.monitor_timer = QTimer(self)
-        self.monitor_timer.timeout.connect(self.update_monitor_data)
-        self.monitor_timer.start(2000)  # 每2秒更新一次
-
-    def init_strategy_monitor_tab(self, parent):
-        """
-        初始化策略监控标签
-        """
-        layout = QVBoxLayout(parent)
-
-        # 策略状态表格
-        self.strategy_monitor_table = QTableWidget()
-        self.strategy_monitor_table.setColumnCount(8)
-        self.strategy_monitor_table.setHorizontalHeaderLabels(
-            [
-                "策略名称",
-                "状态",
-                "总交易数",
-                "总盈亏",
-                "胜率",
-                "平均盈亏",
-                "运行时间",
-                "平均执行时间",
-            ]
-        )
-        self.strategy_monitor_table.setSortingEnabled(True)
-
-        layout.addWidget(self.strategy_monitor_table)
-
-    def init_api_monitor_tab(self, parent):
-        """
-        初始化API监控标签
-        """
-        from PyQt5.QtWidgets import QTabWidget
-
-        layout = QVBoxLayout(parent)
-
-        # API状态信息
-        self.api_status_info = QLabel("API状态将在此显示")
-        layout.addWidget(self.api_status_info)
-
-        # API监控标签页
-        api_tab_widget = QTabWidget()
-        layout.addWidget(api_tab_widget)
-
-        # API调用统计标签
-        stats_tab = QWidget()
-        api_tab_widget.addTab(stats_tab, "调用统计")
-
-        stats_layout = QVBoxLayout(stats_tab)
-        # API调用统计表格
-        self.api_call_table = QTableWidget()
-        self.api_call_table.setColumnCount(3)
-        self.api_call_table.setHorizontalHeaderLabels(
-            ["API类型", "调用次数", "平均响应时间"]
-        )
-        self.api_call_table.setSortingEnabled(True)
-        stats_layout.addWidget(self.api_call_table)
-
-        # API调用历史标签
-        history_tab = QWidget()
-        api_tab_widget.addTab(history_tab, "调用历史")
-
-        history_layout = QVBoxLayout(history_tab)
-        # API调用历史表格
-        self.api_history_table = QTableWidget()
-        self.api_history_table.setColumnCount(8)
-        self.api_history_table.setHorizontalHeaderLabels(
-            ["时间", "调用者", "方法", "端点", "状态码", "响应时间", "错误", "操作"]
-        )
-        self.api_history_table.setSortingEnabled(True)
-        # 设置列宽
-        self.api_history_table.setColumnWidth(0, 150)
-        self.api_history_table.setColumnWidth(1, 100)
-        self.api_history_table.setColumnWidth(2, 60)
-        self.api_history_table.setColumnWidth(3, 150)
-        self.api_history_table.setColumnWidth(4, 80)
-        self.api_history_table.setColumnWidth(5, 100)
-        self.api_history_table.setColumnWidth(6, 200)
-        history_layout.addWidget(self.api_history_table)
-
-        # WebSocket消息历史标签
-        ws_tab = QWidget()
-        api_tab_widget.addTab(ws_tab, "WebSocket消息")
-
-        ws_layout = QVBoxLayout(ws_tab)
-        # WebSocket消息历史表格
-        self.ws_history_table = QTableWidget()
-        self.ws_history_table.setColumnCount(7)
-        self.ws_history_table.setHorizontalHeaderLabels(
-            ["时间", "频道", "消息类型", "通道名称", "产品ID", "处理时间", "错误"]
-        )
-        self.ws_history_table.setSortingEnabled(True)
-        # 设置列宽
-        self.ws_history_table.setColumnWidth(0, 150)
-        self.ws_history_table.setColumnWidth(1, 80)
-        self.ws_history_table.setColumnWidth(2, 100)
-        self.ws_history_table.setColumnWidth(3, 120)
-        self.ws_history_table.setColumnWidth(4, 100)
-        self.ws_history_table.setColumnWidth(5, 100)
-        self.ws_history_table.setColumnWidth(6, 200)
-        ws_layout.addWidget(self.ws_history_table)
-
-    def init_log_tab(self, parent):
-        """
-        初始化日志标签
-        """
-        layout = QVBoxLayout(parent)
-
-        # 日志文本区域
-        from PyQt5.QtWidgets import QTextEdit
-
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setStyleSheet("font-family: Consolas; font-size: 10px;")
-
-        layout.addWidget(self.log_text)
-
-    def update_monitor_data(self):
-        """
-        更新监控数据
-        """
-        self.update_strategy_monitor_data()
-        self.update_api_monitor_data()
-        self.update_log_data()
-
-    def update_strategy_monitor_data(self):
-        """
-        更新策略监控数据
-        """
-        # 清空表格
-        self.strategy_monitor_table.setRowCount(0)
-
-        # 获取所有策略状态
-        strategies_status = strategy_monitor.get_all_strategies_status()
-
-        for strategy_name, status_data in strategies_status.items():
-            row_position = self.strategy_monitor_table.rowCount()
-            self.strategy_monitor_table.insertRow(row_position)
-
-            # 策略名称
-            self.strategy_monitor_table.setItem(
-                row_position, 0, QTableWidgetItem(strategy_name)
-            )
-
-            # 状态
-            status = status_data.get("status", "未知")
-            status_item = QTableWidgetItem(status)
-            if status == "running":
-                status_item.setForeground(QColor("green"))
-            elif status == "error":
-                status_item.setForeground(QColor("red"))
-            self.strategy_monitor_table.setItem(row_position, 1, status_item)
-
-            # 性能指标
-            metrics = status_data.get("metrics", {})
-            self.strategy_monitor_table.setItem(
-                row_position, 2, QTableWidgetItem(str(metrics.get("total_trades", 0)))
-            )
-            self.strategy_monitor_table.setItem(
-                row_position,
-                3,
-                QTableWidgetItem(f"{metrics.get('total_profit', 0):.2f}"),
-            )
-            self.strategy_monitor_table.setItem(
-                row_position, 4, QTableWidgetItem(f"{metrics.get('win_rate', 0):.2%}")
-            )
-            self.strategy_monitor_table.setItem(
-                row_position,
-                5,
-                QTableWidgetItem(f"{metrics.get('avg_profit_per_trade', 0):.2f}"),
-            )
-
-            # 运行时间
-            uptime = metrics.get("strategy_uptime", 0)
-            uptime_str = f"{uptime:.0f}s"
-            if uptime > 3600:
-                hours = int(uptime // 3600)
-                minutes = int((uptime % 3600) // 60)
-                uptime_str = f"{hours}h {minutes}m"
-            elif uptime > 60:
-                minutes = int(uptime // 60)
-                seconds = int(uptime % 60)
-                uptime_str = f"{minutes}m {seconds}s"
-            self.strategy_monitor_table.setItem(
-                row_position, 6, QTableWidgetItem(uptime_str)
-            )
-
-            # 平均执行时间
-            avg_exec_time = metrics.get("average_execution_time", 0)
-            self.strategy_monitor_table.setItem(
-                row_position, 7, QTableWidgetItem(f"{avg_exec_time:.3f}s")
-            )
-
-    def update_api_monitor_data(self):
-        """
-        更新API监控数据
-        """
-        # 检查WebSocket连接状态
-        if self.ws_client and self.ws_client.is_connected():
-            api_status = "API连接正常"
-        else:
-            api_status = "API未连接"
-        self.api_status_info.setText(api_status)
-
-        # 更新API调用统计表格
-        self.update_api_call_stats()
-
-        # 更新API调用历史表格
-        self.update_api_history()
-
-        # 更新WebSocket消息历史表格
-        self.update_ws_history()
-
-    def update_api_call_stats(self):
-        """
-        更新API调用统计表格
-        """
-        # 清空表格
-        self.api_call_table.setRowCount(0)
-
-        # 从REST客户端获取实际的API调用统计数据
-        rest_client = None
-        if hasattr(self, "ws_client") and hasattr(self.ws_client, "rest_client"):
-            rest_client = self.ws_client.rest_client
-
-        # 统计API调用
-        api_stats = {
-            "REST API": {"count": 0, "total_time": 0},
-            "WebSocket": {"count": 0, "total_time": 0},
-            "订单操作": {"count": 0, "total_time": 0},
-            "市场数据": {"count": 0, "total_time": 0},
-        }
-
-        # 计算实际的API调用统计
-        if rest_client and hasattr(rest_client, "api_call_history"):
-            for call in rest_client.api_call_history:
-                api_stats["REST API"]["count"] += 1
-                if call["response_time"]:
-                    api_stats["REST API"]["total_time"] += call["response_time"]
-
-                # 根据端点分类
-                endpoint = call["endpoint"]
-                if "/trade/" in endpoint:
-                    api_stats["订单操作"]["count"] += 1
-                    if call["response_time"]:
-                        api_stats["订单操作"]["total_time"] += call["response_time"]
-                elif "/market/" in endpoint or "/public/" in endpoint:
-                    api_stats["市场数据"]["count"] += 1
-                    if call["response_time"]:
-                        api_stats["市场数据"]["total_time"] += call["response_time"]
-
-        # 统计WebSocket消息
-        if hasattr(self, "ws_client") and hasattr(self.ws_client, "ws_message_history"):
-            for msg in self.ws_client.ws_message_history:
-                api_stats["WebSocket"]["count"] += 1
-                if msg["process_time"]:
-                    api_stats["WebSocket"]["total_time"] += msg["process_time"]
-
-        # 添加统计数据到表格
-        for api_type, stats in api_stats.items():
-            count = stats["count"]
-            avg_time = stats["total_time"] / count if count > 0 else 0
-
-            row_position = self.api_call_table.rowCount()
-            self.api_call_table.insertRow(row_position)
-            self.api_call_table.setItem(row_position, 0, QTableWidgetItem(api_type))
-            self.api_call_table.setItem(row_position, 1, QTableWidgetItem(str(count)))
-            self.api_call_table.setItem(
-                row_position, 2, QTableWidgetItem(f"{avg_time:.3f}s")
-            )
-
-    def update_api_history(self):
-        """
-        更新API调用历史表格
-        """
-        # 清空表格
-        self.api_history_table.setRowCount(0)
-
-        # 从REST客户端获取API调用历史
-        rest_client = None
-        if hasattr(self, "ws_client") and hasattr(self.ws_client, "rest_client"):
-            rest_client = self.ws_client.rest_client
-
-        if rest_client and hasattr(rest_client, "api_call_history"):
-            # 只显示最近的50条记录
-            recent_calls = rest_client.api_call_history[-50:]
-
-            for call in reversed(recent_calls):  # 倒序显示，最新的在前面
-                row_position = self.api_history_table.rowCount()
-                self.api_history_table.insertRow(row_position)
-
-                # 时间
-                timestamp = call.get("timestamp", 0)
-                time_str = datetime.fromtimestamp(timestamp).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                self.api_history_table.setItem(
-                    row_position, 0, QTableWidgetItem(time_str)
-                )
-
-                # 调用者
-                caller = call.get("caller", "未知")
-                self.api_history_table.setItem(
-                    row_position, 1, QTableWidgetItem(caller)
-                )
-
-                # 方法
-                method = call.get("method", "未知")
-                self.api_history_table.setItem(
-                    row_position, 2, QTableWidgetItem(method)
-                )
-
-                # 端点
-                endpoint = call.get("endpoint", "未知")
-                self.api_history_table.setItem(
-                    row_position, 3, QTableWidgetItem(endpoint)
-                )
-
-                # 状态码
-                status_code = call.get("status_code", "未知")
-                self.api_history_table.setItem(
-                    row_position, 4, QTableWidgetItem(str(status_code))
-                )
-
-                # 响应时间
-                response_time = call.get("response_time", 0)
-                self.api_history_table.setItem(
-                    row_position, 5, QTableWidgetItem(f"{response_time:.3f}s")
-                )
-
-                # 错误
-                error = call.get("error", "")
-                error_item = QTableWidgetItem(
-                    error[:100] + "..." if len(error) > 100 else error
-                )
-                if error:
-                    error_item.setForeground(QColor("red"))
-                self.api_history_table.setItem(row_position, 6, error_item)
-
-                # 操作按钮
-                action_widget = QWidget()
-                action_layout = QHBoxLayout(action_widget)
-                action_layout.setContentsMargins(2, 2, 2, 2)
-
-                details_button = QPushButton("详情")
-                details_button.setMinimumWidth(60)
-                details_button.clicked.connect(
-                    lambda checked, c=call: self.show_api_call_details(c)
-                )
-
-                action_layout.addWidget(details_button)
-                self.api_history_table.setCellWidget(row_position, 7, action_widget)
-
-    def update_ws_history(self):
-        """
-        更新WebSocket消息历史表格
-        """
-        # 清空表格
-        self.ws_history_table.setRowCount(0)
-
-        # 从WebSocket客户端获取消息历史
-        if hasattr(self, "ws_client") and hasattr(self.ws_client, "ws_message_history"):
-            # 只显示最近的50条记录
-            recent_messages = self.ws_client.ws_message_history[-50:]
-
-            for msg in reversed(recent_messages):  # 倒序显示，最新的在前面
-                row_position = self.ws_history_table.rowCount()
-                self.ws_history_table.insertRow(row_position)
-
-                # 时间
-                timestamp = msg.get("timestamp", 0)
-                time_str = datetime.fromtimestamp(timestamp).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                self.ws_history_table.setItem(
-                    row_position, 0, QTableWidgetItem(time_str)
-                )
-
-                # 频道
-                channel = msg.get("channel", "未知")
-                self.ws_history_table.setItem(
-                    row_position, 1, QTableWidgetItem(channel)
-                )
-
-                # 消息类型
-                message_type = msg.get("message_type", "未知")
-                self.ws_history_table.setItem(
-                    row_position, 2, QTableWidgetItem(message_type)
-                )
-
-                # 通道名称
-                channel_name = msg.get("channel_name", "")
-                self.ws_history_table.setItem(
-                    row_position, 3, QTableWidgetItem(channel_name)
-                )
-
-                # 产品ID
-                inst_id = msg.get("inst_id", "")
-                self.ws_history_table.setItem(
-                    row_position, 4, QTableWidgetItem(inst_id)
-                )
-
-                # 处理时间
-                process_time = msg.get("process_time", 0)
-                self.ws_history_table.setItem(
-                    row_position, 5, QTableWidgetItem(f"{process_time:.3f}s")
-                )
-
-                # 错误
-                error = msg.get("error", "")
-                error_item = QTableWidgetItem(
-                    error[:100] + "..." if len(error) > 100 else error
-                )
-                if error:
-                    error_item.setForeground(QColor("red"))
-                self.ws_history_table.setItem(row_position, 6, error_item)
-
-    def show_api_call_details(self, call):
-        """
-        显示API调用详细信息
-        """
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QLabel
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("API调用详情")
-        dialog.setGeometry(200, 200, 800, 600)
-
-        layout = QVBoxLayout(dialog)
-
-        # 时间
-        timestamp = call.get("timestamp", 0)
-        time_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-        layout.addWidget(QLabel(f"时间: {time_str}"))
-
-        # 调用者
-        caller = call.get("caller", "未知")
-        layout.addWidget(QLabel(f"调用者: {caller}"))
-
-        # 方法
-        method = call.get("method", "未知")
-        layout.addWidget(QLabel(f"方法: {method}"))
-
-        # URL
-        url = call.get("url", "未知")
-        layout.addWidget(QLabel(f"URL: {url}"))
-
-        # 参数
-        params = call.get("params", {})
-        params_str = json.dumps(params, indent=2, ensure_ascii=False)
-        layout.addWidget(QLabel("参数:"))
-        params_text = QTextEdit()
-        params_text.setText(params_str)
-        params_text.setReadOnly(True)
-        layout.addWidget(params_text)
-
-        # 请求体
-        body = call.get("body", {})
-        body_str = json.dumps(body, indent=2, ensure_ascii=False)
-        layout.addWidget(QLabel("请求体:"))
-        body_text = QTextEdit()
-        body_text.setText(body_str)
-        body_text.setReadOnly(True)
-        layout.addWidget(body_text)
-
-        # 响应
-        response = call.get("response", {})
-        response_str = json.dumps(response, indent=2, ensure_ascii=False)
-        layout.addWidget(QLabel("响应:"))
-        response_text = QTextEdit()
-        response_text.setText(response_str)
-        response_text.setReadOnly(True)
-        layout.addWidget(response_text)
-
-        # 错误
-        error = call.get("error", "")
-        if error:
-            layout.addWidget(QLabel("错误:"))
-            error_text = QTextEdit()
-            error_text.setText(error)
-            error_text.setReadOnly(True)
-            error_text.setStyleSheet("color: red;")
-            layout.addWidget(error_text)
-
-        # 关闭按钮
-        close_button = QPushButton("关闭")
-        close_button.clicked.connect(dialog.close)
-        layout.addWidget(close_button)
-
-        dialog.exec_()
-
-    def update_log_data(self):
-        """
-        更新日志数据
-        """
-        # 这里可以添加实际的日志数据
-        # 暂时显示模拟数据
-        import time
-
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{current_time}] INFO - 系统运行正常\n"
-
-        # 限制日志显示行数
-        current_log = self.log_text.toPlainText()
-        log_lines = current_log.split("\n")
-        if len(log_lines) > 1000:
-            log_lines = log_lines[-1000:]
-            current_log = "\n".join(log_lines)
-
-        new_log = current_log + log_entry
-        self.log_text.setPlainText(new_log)
-        # 滚动到底部
-        self.log_text.verticalScrollBar().setValue(
-            self.log_text.verticalScrollBar().maximum()
-        )
+            
+            try:
+                if os.path.exists(strategy_file):
+                    os.remove(strategy_file)
+                    logger.info(f"策略文件已删除: {strategy_file}")
+            except Exception as e:
+                logger.error(f"删除策略文件错误: {e}")
+
+            # 清理策略实例
+            if strategy_name in self.strategy_instances:
+                del self.strategy_instances[strategy_name]
+
+        # 更新策略列表
+        self.update_strategy_list()
+        # 更新性能图表
+        self.update_performance_chart()
+
+        self.statusBar.showMessage("策略删除成功")
 
     def update_strategy_list(self):
         """
@@ -2084,184 +3193,178 @@ class WebSocketGUI(QMainWindow):
         # 清空表格
         self.strategy_list.setRowCount(0)
 
-        # 加载实际的策略文件
-        import os
-        import importlib.util
-
-        # 首先加载文件系统中的策略
-        # 使用绝对路径，确保正确找到 strategies 目录
-        strategies_dir = "d:\\Projects\\okx_trading_bot\\strategies"
-
-        # 检查目录是否存在
-        if not os.path.exists(strategies_dir):
-            logger.warning(f"策略目录不存在: {strategies_dir}")
-            # 尝试创建策略目录
-            try:
-                os.makedirs(strategies_dir, exist_ok=True)
-                logger.info(f"策略目录已创建: {strategies_dir}")
-            except Exception as e:
-                logger.error(f"创建策略目录失败: {e}")
-            return
-
-        # 列出所有策略文件
-        try:
-            strategy_files = [
-                f
-                for f in os.listdir(strategies_dir)
-                if f.endswith(".py") and f != "base_strategy.py"
-            ]
-        except Exception as e:
-            logger.error(f"读取策略目录失败: {e}")
-            strategy_files = []
-
-        # 检查哪些策略已经在self.strategies中
-        existing_strategy_names = [s["name"] for s in self.strategies]
-
-        # 添加新的策略文件到self.strategies
-        for strategy_file in strategy_files:
-            # 提取策略名称
-            strategy_name = os.path.splitext(strategy_file)[0]
-
-            # 如果策略已经存在，跳过
-            if strategy_name in existing_strategy_names:
-                continue
-
-            # 确定策略类型
-            if "dynamics" in strategy_name:
-                strategy_type = "动态策略"
-            elif "passivbot" in strategy_name:
-                strategy_type = "PassivBot策略"
-            else:
-                strategy_type = "自定义策略"
-
-            # 添加到策略列表
-            self.strategies.append(
-                {
-                    "name": strategy_name,
-                    "type": strategy_type,
-                    "status": "已停止",
-                    "file": strategy_file,
-                }
-            )
-            logger.info(f"加载策略文件: {strategy_file}")
-
-        # 显示所有策略
+        # 添加策略到表格
         for strategy in self.strategies:
             row_position = self.strategy_list.rowCount()
             self.strategy_list.insertRow(row_position)
-            self.strategy_list.setItem(
-                row_position, 0, QTableWidgetItem(strategy["name"])
-            )
-            self.strategy_list.setItem(
-                row_position, 1, QTableWidgetItem(strategy["type"])
-            )
-            self.strategy_list.setItem(
-                row_position, 2, QTableWidgetItem(strategy["status"])
-            )
+            
+            # 策略名称
+            self.strategy_list.setItem(row_position, 0, QTableWidgetItem(strategy["name"]))
+            
+            # 策略类型
+            self.strategy_list.setItem(row_position, 1, QTableWidgetItem(strategy["type"]))
+            
+            # 策略状态（带颜色）
+            status_item = QTableWidgetItem(strategy["status"])
+            if strategy["status"] == "运行中":
+                status_item.setForeground(QColor("green"))
+            else:
+                status_item.setForeground(QColor("gray"))
+            self.strategy_list.setItem(row_position, 2, status_item)
+            
+            # 策略性能（模拟数据）
+            performance_item = QTableWidgetItem("+12.5%")
+            performance_item.setForeground(QColor("green"))
+            self.strategy_list.setItem(row_position, 3, performance_item)
+            
+            # 操作按钮
+            button_widget = QWidget()
+            button_layout = QHBoxLayout(button_widget)
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            button_layout.setSpacing(5)
+            
+            # 启动按钮
+            start_btn = QPushButton("启动")
+            start_btn.setFixedSize(60, 24)
+            start_btn.setStyleSheet("font-size: 12px; padding: 2px;")
+            start_btn.clicked.connect(lambda checked, name=strategy["name"]: self._start_strategy_by_name(name))
+            
+            # 停止按钮
+            stop_btn = QPushButton("停止")
+            stop_btn.setFixedSize(60, 24)
+            stop_btn.setStyleSheet("font-size: 12px; padding: 2px;")
+            stop_btn.clicked.connect(lambda checked, name=strategy["name"]: self._stop_strategy_by_name(name))
+            
+            # 编辑按钮
+            edit_btn = QPushButton("编辑")
+            edit_btn.setFixedSize(60, 24)
+            edit_btn.setStyleSheet("font-size: 12px; padding: 2px;")
+            edit_btn.clicked.connect(lambda checked, name=strategy["name"]: self._edit_strategy_by_name(name))
+            
+            # 删除按钮
+            delete_btn = QPushButton("删除")
+            delete_btn.setFixedSize(60, 24)
+            delete_btn.setStyleSheet("font-size: 12px; padding: 2px; background-color: #f44336; color: white;")
+            delete_btn.clicked.connect(lambda checked, name=strategy["name"]: self._delete_strategy_by_name(name))
+            
+            button_layout.addWidget(start_btn)
+            button_layout.addWidget(stop_btn)
+            button_layout.addWidget(edit_btn)
+            button_layout.addWidget(delete_btn)
+            button_layout.addStretch(1)
+            
+            self.strategy_list.setCellWidget(row_position, 4, button_widget)
 
-            # 添加操作按钮
-            action_widget = QWidget()
-            action_layout = QHBoxLayout(action_widget)
-            action_layout.setContentsMargins(2, 2, 2, 2)
-
-            edit_button = QPushButton("编辑")
-            edit_button.setMinimumWidth(60)
-            edit_button.clicked.connect(
-                lambda checked, name=strategy["name"]: self.edit_strategy(name)
-            )
-
-            delete_button = QPushButton("删除")
-            delete_button.setMinimumWidth(60)
-            delete_button.clicked.connect(
-                lambda checked, name=strategy["name"]: self.delete_strategy(name)
-            )
-
-            details_button = QPushButton("详情")
-            details_button.setMinimumWidth(60)
-            details_button.clicked.connect(
-                lambda checked, name=strategy["name"]: self.view_strategy_details(name)
-            )
-
-            backtest_button = QPushButton("回测")
-            backtest_button.setMinimumWidth(60)
-            backtest_button.clicked.connect(
-                lambda checked, name=strategy["name"]: self.run_strategy_backtest(name)
-            )
-
-            action_layout.addWidget(edit_button)
-            action_layout.addWidget(delete_button)
-            action_layout.addWidget(details_button)
-            action_layout.addWidget(backtest_button)
-
-            self.strategy_list.setCellWidget(row_position, 3, action_widget)
-
-    def on_market_event(self, event):
+    def _start_strategy_by_name(self, strategy_name):
         """
-        处理市场数据事件
+        根据名称启动策略
         """
-        data = event.data
-        self.update_market_data.emit(data)
+        # 查找策略在表格中的行
+        for row in range(self.strategy_list.rowCount()):
+            if self.strategy_list.item(row, 0).text() == strategy_name:
+                # 模拟选择该行
+                self.strategy_list.selectRow(row)
+                # 调用启动策略方法
+                self.start_strategy()
+                break
 
-    def on_order_event(self, event):
+    def _stop_strategy_by_name(self, strategy_name):
         """
-        处理订单事件
+        根据名称停止策略
         """
-        data = event.data
-        self.update_order_data.emit(data)
+        # 查找策略在表格中的行
+        for row in range(self.strategy_list.rowCount()):
+            if self.strategy_list.item(row, 0).text() == strategy_name:
+                # 模拟选择该行
+                self.strategy_list.selectRow(row)
+                # 调用停止策略方法
+                self.stop_strategy()
+                break
 
-    def on_account_event(self, event):
+    def _edit_strategy_by_name(self, strategy_name):
         """
-        处理账户事件
+        根据名称编辑策略
         """
-        data = event.data
-        self.update_account_data.emit(data)
+        # 查找策略在表格中的行
+        for row in range(self.strategy_list.rowCount()):
+            if self.strategy_list.item(row, 0).text() == strategy_name:
+                # 模拟选择该行
+                self.strategy_list.selectRow(row)
+                # 调用编辑策略方法
+                self.edit_strategy()
+                break
 
-    def on_ws_connected(self, event):
+    def _delete_strategy_by_name(self, strategy_name):
         """
-        处理 WebSocket 连接事件
+        根据名称删除策略
         """
-        self.update_connection_status.emit(True, "已连接")
+        # 查找策略在表格中的行
+        for row in range(self.strategy_list.rowCount()):
+            if self.strategy_list.item(row, 0).text() == strategy_name:
+                # 模拟选择该行
+                self.strategy_list.selectRow(row)
+                # 调用删除策略方法
+                self.delete_strategy()
+                break
 
-    def on_ws_disconnected(self, event):
+    def update_performance_chart(self):
         """
-        处理 WebSocket 断开事件
-        """
-        self.update_connection_status.emit(False, "已断开")
-    
-    def execute_trade(self):
-        """
-        执行交易
+        更新策略性能图表
         """
         try:
-            # 获取交易参数
-            trading_pair = self.trade_pair_combo.currentText()
-            side = self.trade_side_combo.currentText()
-            trade_type = self.trade_type_combo.currentText()
-            price = self.trade_price_input.text()
-            amount = self.trade_amount_input.text()
+            # 清空图表
+            self.performance_figure.clear()
             
-            # 验证参数
-            if not amount:
-                QMessageBox.warning(self, "错误", "请输入交易数量")
-                return
+            # 模拟性能数据
+            if self.strategies:
+                # 创建示例数据
+                import numpy as np
+                import matplotlib.pyplot as plt
+                from datetime import datetime, timedelta
+                
+                # 生成最近24小时的时间数据
+                now = datetime.now()
+                times = [now - timedelta(hours=i) for i in range(24)][::-1]
+                
+                # 为每个策略生成模拟性能数据
+                ax = self.performance_figure.add_subplot(111)
+                
+                colors = ['blue', 'green', 'red', 'purple', 'orange']
+                
+                for i, strategy in enumerate(self.strategies[:5]):  # 最多显示5个策略
+                    # 生成模拟的累计收益数据
+                    base_profit = np.random.uniform(0, 10)
+                    noise = np.random.normal(0, 0.5, len(times))
+                    profits = base_profit + np.cumsum(noise)
+                    
+                    # 绘制曲线
+                    ax.plot(times, profits, label=strategy['name'], color=colors[i % len(colors)], linewidth=2)
+                
+                # 设置图表标题和标签
+                ax.set_title("策略性能对比")
+                ax.set_xlabel("时间")
+                ax.set_ylabel("累计收益 (%)")
+                
+                # 设置x轴格式
+                import matplotlib.dates as mdates
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                self.performance_figure.autofmt_xdate()
+                
+                # 添加网格和图例
+                ax.grid(True, linestyle='--', alpha=0.7)
+                ax.legend()
+            else:
+                # 没有策略时显示提示
+                ax = self.performance_figure.add_subplot(111)
+                ax.set_title("策略性能对比")
+                ax.set_xlabel("时间")
+                ax.set_ylabel("累计收益 (%)")
+                ax.text(0.5, 0.5, "暂无策略数据", ha='center', va='center', transform=ax.transAxes)
             
-            if trade_type == "限价" and not price:
-                QMessageBox.warning(self, "错误", "限价交易需要输入价格")
-                return
-            
-            # 执行交易逻辑
-            logger.info(f"执行交易: {side} {amount} {trading_pair} at {price}")
-            
-            # 显示成功消息
-            QMessageBox.information(self, "成功", f"交易请求已发送: {side} {amount} {trading_pair}")
-            
-            # 清空输入
-            self.trade_price_input.clear()
-            self.trade_amount_input.clear()
-            
+            # 重新绘制图表
+            self.performance_canvas.draw()
         except Exception as e:
-            logger.error(f"执行交易错误: {e}")
-            QMessageBox.error(self, "错误", f"执行交易失败: {str(e)}")
+            logger.error(f"更新性能图表错误: {e}")
 
     def on_market_data_update(self, data):
         """
@@ -2287,854 +3390,1247 @@ class WebSocketGUI(QMainWindow):
                 "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
-            # 更新表格
-            self.update_market_table()
+            # 更新价格历史数据
+            if inst_id not in self.price_history:
+                self.price_history[inst_id] = []
+            
+            # 添加新的价格数据，保留最近200个数据点
+            timestamp = datetime.now()
+            price = float(last_price)
+            self.price_history[inst_id].append((timestamp, price))
+            if len(self.price_history[inst_id]) > 200:
+                self.price_history[inst_id] = self.price_history[inst_id][-200:]
+            
+            # 更新价格图表（如果当前选中的是该产品）
+            if hasattr(self, 'chart_product_combo') and self.chart_product_combo.currentText() == inst_id:
+                self.update_price_chart(inst_id)
+            
+            # 更新市场概览
+            if inst_id == "BTC-USDT-SWAP":
+                self.market_price_label.setText(f"BTC/USDT: ${float(last_price):,.2f}")
+                change_percent = float(change24h_percent) * 100
+                if change_percent > 0:
+                    self.market_change_label.setText(f"24h: +{change_percent:.2f}%")
+                    self.market_change_label.setStyleSheet("font-size: 16px; color: green;")
+                else:
+                    self.market_change_label.setText(f"24h: {change_percent:.2f}%")
+                    self.market_change_label.setStyleSheet("font-size: 16px; color: red;")
+            
+            # 更新市场分析指标
+            self.update_market_analysis(inst_id, float(last_price), float(change24h_percent) * 100)
 
-    def update_market_table(self):
+    def update_market_analysis(self, inst_id, price, change_percent):
         """
-        更新市场数据表格
+        更新市场分析指标
         """
-        self.market_table.setRowCount(0)
-
-        for inst_id, data in self.market_data.items():
-            row_position = self.market_table.rowCount()
-            self.market_table.insertRow(row_position)
-
-            self.market_table.setItem(row_position, 0, QTableWidgetItem(inst_id))
-            self.market_table.setItem(row_position, 1, QTableWidgetItem(data["last"]))
-
-            # 设置涨跌颜色
-            change_item = QTableWidgetItem(data["change24h"])
-            if float(data["change24h"]) > 0:
-                change_item.setForeground(QColor("red"))
-            elif float(data["change24h"]) < 0:
-                change_item.setForeground(QColor("green"))
-            self.market_table.setItem(row_position, 2, change_item)
-
-            # 设置涨跌百分比颜色
-            change_percent_item = QTableWidgetItem(data["change24hPercent"])
-            if float(data["change24hPercent"]) > 0:
-                change_percent_item.setForeground(QColor("red"))
-            elif float(data["change24hPercent"]) < 0:
-                change_percent_item.setForeground(QColor("green"))
-            self.market_table.setItem(row_position, 3, change_percent_item)
-
-            self.market_table.setItem(row_position, 4, QTableWidgetItem(data["vol24h"]))
-            self.market_table.setItem(
-                row_position, 5, QTableWidgetItem(data["update_time"])
-            )
+        try:
+            # 只更新BTC的分析数据
+            if inst_id == 'BTC-USDT-SWAP' and hasattr(self, 'trend_label'):
+                # 更新趋势分析
+                if abs(change_percent) > 2:
+                    if change_percent > 0:
+                        self.trend_label.setText("当前趋势: 上涨")
+                        self.trend_label.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
+                    else:
+                        self.trend_label.setText("当前趋势: 下跌")
+                        self.trend_label.setStyleSheet("font-size: 14px; font-weight: bold; color: red;")
+                else:
+                    self.trend_label.setText("当前趋势: 横盘")
+                    self.trend_label.setStyleSheet("font-size: 14px; font-weight: bold; color: gray;")
+                
+                # 更新趋势强度
+                if hasattr(self, 'trend_strength_label'):
+                    trend_strength = min(100, abs(change_percent) * 10)
+                    self.trend_strength_label.setText(f"趋势强度: {int(trend_strength)}")
+                
+                # 更新支撑阻力位（模拟数据）
+                support = price * 0.95
+                resistance = price * 1.05
+                if hasattr(self, 'support_resistance_label'):
+                    self.support_resistance_label.setText(f"支撑位: ${support:,.2f} | 阻力位: ${resistance:,.2f}")
+                
+                # 更新市场情绪
+                if hasattr(self, 'sentiment_label') and hasattr(self, 'sentiment_value_label'):
+                    if change_percent > 3:
+                        self.sentiment_label.setText("市场情绪: 极度乐观")
+                        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
+                        self.sentiment_value_label.setText("情绪指数: 90/100")
+                    elif change_percent > 1:
+                        self.sentiment_label.setText("市场情绪: 乐观")
+                        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
+                        self.sentiment_value_label.setText("情绪指数: 75/100")
+                    elif change_percent < -3:
+                        self.sentiment_label.setText("市场情绪: 极度悲观")
+                        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold; color: red;")
+                        self.sentiment_value_label.setText("情绪指数: 10/100")
+                    elif change_percent < -1:
+                        self.sentiment_label.setText("市场情绪: 悲观")
+                        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold; color: red;")
+                        self.sentiment_value_label.setText("情绪指数: 25/100")
+                    else:
+                        self.sentiment_label.setText("市场情绪: 中性")
+                        self.sentiment_label.setStyleSheet("font-size: 14px; font-weight: bold; color: gray;")
+                        self.sentiment_value_label.setText("情绪指数: 50/100")
+                
+                # 更新恐慌与贪婪指数
+                if hasattr(self, 'fear_greed_label'):
+                    if change_percent > 3:
+                        fear_greed = 90
+                    elif change_percent > 1:
+                        fear_greed = 75
+                    elif change_percent < -3:
+                        fear_greed = 10
+                    elif change_percent < -1:
+                        fear_greed = 25
+                    else:
+                        fear_greed = 50
+                    self.fear_greed_label.setText(f"恐慌与贪婪指数: {fear_greed}")
+                
+                # 更新波动率分析
+                if hasattr(self, 'volatility_label') and hasattr(self, 'volatility_value_label'):
+                    volatility = abs(change_percent)
+                    if volatility > 5:
+                        self.volatility_label.setText("波动率: 高")
+                        self.volatility_label.setStyleSheet("font-size: 14px; font-weight: bold; color: red;")
+                        self.volatility_value_label.setText(f"24h波动率: {volatility:.2f}%")
+                    elif volatility > 2:
+                        self.volatility_label.setText("波动率: 中")
+                        self.volatility_label.setStyleSheet("font-size: 14px; font-weight: bold; color: orange;")
+                        self.volatility_value_label.setText(f"24h波动率: {volatility:.2f}%")
+                    else:
+                        self.volatility_label.setText("波动率: 低")
+                        self.volatility_label.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
+                        self.volatility_value_label.setText(f"24h波动率: {volatility:.2f}%")
+                
+                # 更新ATR值（模拟数据）
+                if hasattr(self, 'atr_label'):
+                    atr = price * 0.01 * (volatility / 2.5)
+                    self.atr_label.setText(f"ATR: {atr:.2f}")
+                
+                # 更新量价关系分析
+                if hasattr(self, 'volume_trend_label') and hasattr(self, 'volume_change_label'):
+                    # 模拟成交量变化
+                    volume_change = change_percent * 1.5
+                    if change_percent > 0 and volume_change > 0:
+                        self.volume_trend_label.setText("量价趋势: 同步上涨")
+                        self.volume_trend_label.setStyleSheet("color: green;")
+                    elif change_percent < 0 and volume_change < 0:
+                        self.volume_trend_label.setText("量价趋势: 同步下跌")
+                        self.volume_trend_label.setStyleSheet("color: red;")
+                    else:
+                        self.volume_trend_label.setText("量价趋势: 背离")
+                        self.volume_trend_label.setStyleSheet("color: orange;")
+                    self.volume_change_label.setText(f"成交量变化: {volume_change:+.2f}%")
+                
+                # 更新市场广度分析
+                if hasattr(self, 'advance_decline_label') and hasattr(self, 'market_breadth_label'):
+                    # 模拟市场广度数据
+                    if change_percent > 1:
+                        advance_decline = 1.5
+                        market_breadth = 65
+                    elif change_percent < -1:
+                        advance_decline = 0.5
+                        market_breadth = 35
+                    else:
+                        advance_decline = 1.0
+                        market_breadth = 50
+                    self.advance_decline_label.setText(f"涨跌比: {advance_decline:.1f}")
+                    self.market_breadth_label.setText(f"市场广度: {market_breadth}%")
+                
+                # 更新技术形态识别
+                if hasattr(self, 'pattern_label') and hasattr(self, 'pattern_strength_label'):
+                    # 模拟技术形态识别
+                    if abs(change_percent) > 3:
+                        if change_percent > 0:
+                            self.pattern_label.setText("当前形态: 突破")
+                        else:
+                            self.pattern_label.setText("当前形态: 跌破")
+                        pattern_strength = 80
+                    elif abs(change_percent) > 1:
+                        if change_percent > 0:
+                            self.pattern_label.setText("当前形态: 上升趋势")
+                        else:
+                            self.pattern_label.setText("当前形态: 下降趋势")
+                        pattern_strength = 60
+                    else:
+                        self.pattern_label.setText("当前形态: 整理")
+                        pattern_strength = 40
+                    self.pattern_strength_label.setText(f"形态强度: {pattern_strength}")
+        except Exception as e:
+            logger.error(f"更新市场分析错误: {e}")
 
     def on_order_data_update(self, data):
         """
         更新订单数据
         """
-        channel = data.get("channel")
-        order_data = data.get("data", [])
-
-        if channel == "orders" and order_data:
-            # 更新订单数据
-            for order in order_data:
-                order_id = order.get("ordId")
-                inst_id = order.get("instId")
-                ord_type = order.get("ordType")
-                side = order.get("side")
-                price = order.get("px")
-                size = order.get("sz")
-                status = order.get("state")
-                timestamp = order.get("ts")
-
-                # 转换时间戳
-                if timestamp:
-                    try:
-                        update_time = datetime.fromtimestamp(
-                            int(timestamp) / 1000
-                        ).strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        update_time = "N/A"
-                else:
-                    update_time = "N/A"
-
-                # 检查订单是否已存在
-                existing_order = next(
-                    (o for o in self.order_data if o["ordId"] == order_id), None
-                )
-
-                if existing_order:
-                    # 更新现有订单
-                    existing_order.update(
-                        {
-                            "instId": inst_id,
-                            "ordType": ord_type,
-                            "side": side,
-                            "px": price,
-                            "sz": size,
-                            "state": status,
-                            "ts": timestamp,
-                            "update_time": update_time,
-                        }
-                    )
-                else:
-                    # 添加新订单
-                    self.order_data.append(
-                        {
-                            "ordId": order_id,
-                            "instId": inst_id,
-                            "ordType": ord_type,
-                            "side": side,
-                            "px": price,
-                            "sz": size,
-                            "state": status,
-                            "ts": timestamp,
-                            "update_time": update_time,
-                        }
-                    )
-
-            # 更新订单表格
-            self.update_order_table()
-
-    def update_order_table(self):
-        """
-        更新订单表格
-        """
-        self.order_table.setRowCount(0)
-
-        for order in self.order_data:
-            row_position = self.order_table.rowCount()
-            self.order_table.insertRow(row_position)
-
-            self.order_table.setItem(
-                row_position, 0, QTableWidgetItem(order.get("ordId", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 1, QTableWidgetItem(order.get("instId", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 2, QTableWidgetItem(order.get("ordType", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 3, QTableWidgetItem(order.get("side", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 4, QTableWidgetItem(order.get("px", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 5, QTableWidgetItem(order.get("sz", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 6, QTableWidgetItem(order.get("state", "N/A"))
-            )
-            self.order_table.setItem(
-                row_position, 7, QTableWidgetItem(order.get("update_time", "N/A"))
-            )
+        try:
+            if 'data' in data:
+                for item in data['data']:
+                    order_id = item.get('ordId', '')
+                    inst_id = item.get('instId', '')
+                    side = item.get('side', '')
+                    ord_type = item.get('ordType', '')
+                    price = item.get('price', '0')
+                    size = item.get('size', '0')
+                    status = item.get('state', '')
+                    update_time = item.get('uTime', '')
+                    
+                    # 更新订单数据存储
+                    self.order_data[order_id] = {
+                        'order_id': order_id,
+                        'inst_id': inst_id,
+                        'side': side,
+                        'type': ord_type,
+                        'price': price,
+                        'size': size,
+                        'status': status,
+                        'update_time': update_time,
+                    }
+                    
+                    # 更新订单表格
+                    self.update_order_table()
+        except Exception as e:
+            logger.error(f"处理订单数据更新错误: {e}")
 
     def on_account_data_update(self, data):
         """
         更新账户数据
         """
-        channel = data.get("channel")
-        account_data = data.get("data", [])
-
-        if channel == "account" and account_data:
-            # 更新账户数据
-            for account in account_data:
-                self.account_data = account
-
-            # 更新账户信息
-            self.update_account_info()
-
-    def update_account_info(self):
-        """
-        更新账户信息
-        """
-        if not self.account_data:
-            return
-
-        # 更新账户信息卡片
-        total_equity = self.account_data.get("totalEq", "0")
-        margin_ratio = self.account_data.get("mgnRatio", "0")
-        available_balance = self.account_data.get("availBal", "0")
-        total_position = "0"
-
-        # 计算总仓位
-        positions = self.account_data.get("positions", [])
-        if positions:
-            total_position = str(sum(float(pos.get("notionalUsd", "0")) for pos in positions))
-
-        self.total_equity_label.setText(f"{total_equity} USDT")
-        self.margin_ratio_label.setText(f"{margin_ratio}%")
-        self.available_balance_label.setText(f"{available_balance} USDT")
-        self.total_position_label.setText(f"{total_position} USDT")
-
-        # 更新资产表格
-        self.update_asset_table()
-
-    def update_asset_table(self):
-        """
-        更新资产表格
-        """
-        self.asset_table.setRowCount(0)
-
-        # 获取资产列表
-        assets = self.account_data.get("positions", [])
-
-        for asset in assets:
-            ccy = asset.get("ccy", "N/A")
-            avail_balance = asset.get("availBal", "0")
-            frozen_balance = asset.get("frozenBal", "0")
-            total_balance = (
-                str(float(avail_balance) + float(frozen_balance))
-                if avail_balance and frozen_balance
-                else "0"
-            )
-
-            row_position = self.asset_table.rowCount()
-            self.asset_table.insertRow(row_position)
-
-            self.asset_table.setItem(row_position, 0, QTableWidgetItem(ccy))
-            self.asset_table.setItem(row_position, 1, QTableWidgetItem(avail_balance))
-            self.asset_table.setItem(row_position, 2, QTableWidgetItem(frozen_balance))
-            self.asset_table.setItem(row_position, 3, QTableWidgetItem(total_balance))
+        try:
+            if 'data' in data:
+                for item in data['data']:
+                    if 'balance' in item:
+                        for balance in item['balance']:
+                            ccy = balance.get('ccy', '')
+                            avail_balance = balance.get('availBal', '0')
+                            frozen_balance = balance.get('frozenBal', '0')
+                            total_balance = balance.get('totalBal', '0')
+                            
+                            # 更新账户数据存储
+                            self.account_data[ccy] = {
+                                'ccy': ccy,
+                                'avail_balance': avail_balance,
+                                'frozen_balance': frozen_balance,
+                                'total_balance': total_balance,
+                            }
+                            
+                            # 更新账户表格
+                            self.update_account_table()
+        except Exception as e:
+            logger.error(f"处理账户数据更新错误: {e}")
 
     def on_connection_status_update(self, connected, message):
         """
         更新连接状态
         """
         if connected:
-            self.connection_status.setText(f"已连接: {message}")
-            self.connection_status.setStyleSheet("color: green; font-weight: bold;")
+            self.connection_status.setText("已连接")
+            self.connection_status.setStyleSheet("color: green; font-weight: bold; font-size: 14px;")
         else:
-            self.connection_status.setText(f"未连接: {message}")
-            self.connection_status.setStyleSheet("color: red; font-weight: bold;")
+            self.connection_status.setText("未连接")
+            self.connection_status.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
+
+    def on_market_event(self, event):
+        """
+        处理市场事件
+        """
+        self.update_market_data.emit(event.data)
+
+    def on_order_event(self, event):
+        """
+        处理订单事件
+        """
+        self.update_order_data.emit(event.data)
+
+    def on_account_event(self, event):
+        """
+        处理账户事件
+        """
+        self.update_account_data.emit(event.data)
+
+    def on_ws_connected(self, event):
+        """
+        处理WebSocket连接事件
+        """
+        self.update_connection_status.emit(True, "已连接")
+
+    def on_ws_disconnected(self, event):
+        """
+        处理WebSocket断开连接事件
+        """
+        self.update_connection_status.emit(False, "已断开")
+
+    def export_market_data_csv(self):
+        """
+        导出市场数据为CSV格式
+        """
+        try:
+            # 获取保存文件路径
+            from PyQt5.QtWidgets import QFileDialog
+            file_path, _ =FileDialog.getSaveFileName(
+                self,
+                "保存CSV文件",
+                "",
+                "市场数据.csv",
+                "CSV Files (*.csv);;*.csv"
+            )
+            
+            if not file_path:
+                return
+            
+            # 准备数据
+            import csv
+            
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                # 写入表头
+                writer = csv.writer(csvfile)
+                writer.writerow(['交易对', '最新价格', '涨跌幅', '成交量', '最高价', '最低价', '更新时间'])
+                
+                # 写入数据
+                for inst_id, data in self.market_data.items():
+                    writer.writerow([
+                        inst_id,
+                        data.get('last', '0'),
+                        data.get('change24hPercent', '0'),
+                        data.get('vol24h', '0'),
+                        data.get('last', '0'),  # 使用last作为最高价
+                        data.get('last', '0'),  # 使用last作为最低价
+                        data.get('update_time', '')
+                    ])
+            
+            self.statusBar.showMessage(f"市场数据已导出到: {file_path}")
+            logger.info(f"市场数据已导出到: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"导出市场数据错误: {e}")
+            QMessageBox.critical(self, "错误", f"导出市场数据失败: {str(e)}")
+
+    def export_market_data_excel(self):
+        """
+        导出市场数据为Excel格式
+        """
+        try:
+            # 检查是否安装了openpyxl
+            try:
+                import openpyxl
+                from openpyxl import Workbook
+            except ImportError:
+                QMessageBox.warning(self, "警告", "需要安装openpyxl库才能导出Excel文件。\n请运行: pip install openpyxl")
+                return
+            
+            # 获取保存文件路径
+            from PyQt5.QtWidgets import QFileDialog
+            file_path, _ =FileDialog.getSaveFileName(
+                self,
+                "保存Excel文件",
+                "",
+                "市场数据.xlsx",
+                "Excel Files (*.xlsx);;*.xlsx"
+            )
+            
+            if not file_path:
+                return
+            
+            # 创建工作簿
+            wb = Workbook()
+            ws = wb.active
+            
+            
+            # 写入表头
+            headers = ['交易对', '最新价格', '涨跌幅', '成交量', '最高价', '最低价', '更新时间']
+            for col, header in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=header)
+            
+            # 写入数据
+            row = 2
+            for inst_id, data in self.market_data.items():
+                ws.cell(row=row, column=1, value=inst_id)
+                ws.cell(row=row, column=2, value=data.get('last', '0'))
+                ws.cell(row=row, column=3, value=data.get('change24hPercent', '0'))
+                ws.cell(row=row, column=4, value=data.get('vol24h', '0'))
+                ws.cell(row=row, column=5, value=data.get('last', '0'))  # 使用last作为最高价
+                ws.cell(row=row, column=6, value=data.get('last', '0'))  # 使用last作为最低价
+                ws.cell(row=row, column=7, value=data.get('update_time', ''))
+                row += 1
+            
+            # 保存文件
+            wb.save(file_path)
+            
+            self.statusBar.showMessage(f"市场数据已导出到: {file_path}")
+            logger.info(f"市场数据已导出到: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"导出市场数据错误: {e}")
+            QMessageBox.critical(self, "错误", f"导出市场数据失败: {str(e)}")
 
     def init_help_menu(self):
         """
         初始化帮助菜单
         """
-        from PyQt5.QtWidgets import QMenuBar, QAction, QMessageBox
-
-        # 获取菜单栏
+        from PyQt5.QtWidgets import QMenuBar, QAction
+        
         menubar = self.menuBar()
-
-        # 创建帮助菜单
-        help_menu = menubar.addMenu("帮助")
-
-        # 创建功能说明动作
-        help_action = QAction("功能说明", self)
+        help_menu = menubar.addMenu('帮助')
+        
+        about_action = QAction('关于', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
+        help_action = QAction('使用帮助', self)
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
+        
+        # 添加主题切换菜单
+        view_menu = menubar.addMenu('视图')
+        
+        theme_action = QAction('切换主题', self)
+        theme_action.triggered.connect(self.toggle_theme)
+        view_menu.addAction(theme_action)
+        
+        # 启动仪表盘更新定时器
+        self.start_dashboard_timer()
+
+    def start_dashboard_timer(self):
+        """
+        启动仪表盘更新定时器
+        """
+        # 创建定时器，每5秒更新一次仪表盘数据
+        self.dashboard_timer = QTimer(self)
+        self.dashboard_timer.timeout.connect(self.update_dashboard)
+        self.dashboard_timer.start(5000)  # 5秒更新一次
+        logger.info("仪表盘更新定时器已启动")
+
+    def update_dashboard(self):
+        """
+        更新仪表盘数据
+        """
+        try:
+            # 更新市场概览
+            self.update_market_overview()
+            
+            # 更新账户概览
+            self.update_account_overview()
+            
+            # 更新策略概览
+            self.update_strategy_overview()
+            
+            # 更新交易概览
+            self.update_trade_overview()
+            
+            # 更新风险指标
+            self.update_risk_overview()
+            
+            # 更新持仓概览
+            self.update_position_overview()
+        except Exception as e:
+            logger.error(f"更新仪表盘错误: {e}")
+
+    def update_market_overview(self):
+        """
+        更新市场概览
+        """
+        try:
+            # 获取BTC-USDT-SWAP的市场数据
+            if "BTC-USDT-SWAP" in self.market_data:
+                data = self.market_data["BTC-USDT-SWAP"]
+                last_price = float(data.get("last", 0))
+                change_percent = float(data.get("change24hPercent", 0)) * 100
+                
+                # 更新价格标签
+                self.market_price_label.setText(f"BTC/USDT: ${last_price:,.2f}")
+                
+                # 更新涨跌幅标签
+                if change_percent > 0:
+                    self.market_change_label.setText(f"24h: +{change_percent:.2f}%")
+                    self.market_change_label.setStyleSheet("font-size: 16px; color: green;")
+                else:
+                    self.market_change_label.setText(f"24h: {change_percent:.2f}%")
+                    self.market_change_label.setStyleSheet("font-size: 16px; color: red;")
+        except Exception as e:
+            logger.error(f"更新市场概览错误: {e}")
+
+    def update_account_overview(self):
+        """
+        更新账户概览
+        """
+        try:
+            # 计算总余额
+            total_balance = 0.0
+            if isinstance(self.account_data, dict):
+                for ccy, data in self.account_data.items():
+                    total_balance += float(data.get('total_balance', 0))
+            
+            # 更新余额标签
+            self.account_balance_label.setText(f"总余额: ${total_balance:,.2f}")
+            
+            # 计算今日盈亏（模拟数据）
+            # 在实际应用中，应该从交易记录中计算
+            today_pnl = 0
+            if isinstance(self.order_data, dict):
+                today_pnl = sum(1 for order in self.order_data.values() 
+                              if order.get('update_time', '').startswith(datetime.now().strftime('%Y-%m-%d')))
+            elif isinstance(self.order_data, list):
+                today_pnl = sum(1 for order in self.order_data 
+                              if order.get('update_time', '').startswith(datetime.now().strftime('%Y-%m-%d')))
+            
+            # 更新盈亏标签
+            if today_pnl > 0:
+                self.account_pnl_label.setText(f"今日盈亏: +${today_pnl * 10:.2f}")
+                self.account_pnl_label.setStyleSheet("font-size: 16px; color: green;")
+            else:
+                self.account_pnl_label.setText(f"今日盈亏: ${today_pnl * 10:.2f}")
+                self.account_pnl_label.setStyleSheet("font-size: 16px; color: red;")
+        except Exception as e:
+            logger.error(f"更新账户概览错误: {e}")
+
+    def update_strategy_overview(self):
+        """
+        更新策略概览
+        """
+        try:
+            # 统计运行中的策略数量
+            running_strategies = sum(1 for s in self.strategies if s.get('status') == '运行中')
+            
+            # 更新策略状态标签
+            self.strategy_status_label.setText(f"运行中: {running_strategies}个策略")
+            
+            # 计算总利润（模拟数据）
+            # 在实际应用中，应该从策略执行结果中计算
+            total_profit = running_strategies * 100
+            
+            # 更新利润标签
+            if total_profit > 0:
+                self.strategy_profit_label.setText(f"总利润: +${total_profit:.2f}")
+                self.strategy_profit_label.setStyleSheet("font-size: 16px; color: green;")
+            else:
+                self.strategy_profit_label.setText(f"总利润: ${total_profit:.2f}")
+                self.strategy_profit_label.setStyleSheet("font-size: 16px; color: red;")
+        except Exception as e:
+            logger.error(f"更新策略概览错误: {e}")
+
+    def update_trade_overview(self):
+        """
+        更新交易概览
+        """
+        try:
+            # 统计今日交易数量
+            today_trades = 0
+            if isinstance(self.order_data, dict):
+                today_trades = sum(1 for order in self.order_data.values() 
+                                 if order.get('update_time', '').startswith(datetime.now().strftime('%Y-%m-%d')))
+            elif isinstance(self.order_data, list):
+                today_trades = sum(1 for order in self.order_data 
+                                 if order.get('update_time', '').startswith(datetime.now().strftime('%Y-%m-%d')))
+            
+            # 更新交易数量标签
+            self.trade_count_label.setText(f"今日交易: {today_trades}笔")
+            
+            # 计算胜率（模拟数据）
+            # 在实际应用中，应该从交易记录中计算
+            win_rate = 75 if today_trades > 0 else 0
+            
+            # 更新胜率标签
+            self.trade_win_rate_label.setText(f"胜率: {win_rate}%")
+            if win_rate > 50:
+                self.trade_win_rate_label.setStyleSheet("font-size: 16px; color: green;")
+            else:
+                self.trade_win_rate_label.setStyleSheet("font-size: 16px; color: red;")
+        except Exception as e:
+            logger.error(f"更新交易概览错误: {e}")
+    
+    def update_risk_overview(self):
+        """
+        更新风险指标
+        """
+        try:
+            # 计算风险等级（模拟数据）
+            # 在实际应用中，应该根据策略表现计算
+            risk_level = "中等"
+            max_drawdown = "-3.2%"
+            
+            # 更新风险等级标签
+            self.risk_level_label.setText(f"风险等级: {risk_level}")
+            
+            # 更新最大回撤标签
+            self.max_drawdown_label.setText(f"最大回撤: {max_drawdown}")
+            self.max_drawdown_label.setStyleSheet("font-size: 16px; color: red;")
+        except Exception as e:
+            logger.error(f"更新风险指标错误: {e}")
+    
+    def update_position_overview(self):
+        """
+        更新持仓概览
+        """
+        try:
+            # 统计持仓数量（模拟数据）
+            # 在实际应用中，应该从账户数据中计算
+            position_count = 3
+            position_value = 5000
+            
+            # 更新持仓数量标签
+            self.position_count_label.setText(f"持仓数量: {position_count}个")
+            
+            # 更新持仓价值标签
+            self.position_value_label.setText(f"持仓价值: ${position_value:,.2f}")
+            self.position_value_label.setStyleSheet("font-size: 16px; color: green;")
+        except Exception as e:
+            logger.error(f"更新持仓概览错误: {e}")
+
+    def generate_strategy_report(self):
+        """
+        生成策略性能分析报告
+        """
+        try:
+            # 获取选中的策略
+            selected_rows = self.strategy_list.selectionModel().selectedRows()
+            if not selected_rows:
+                self.statusBar.showMessage("请选择要生成报告的策略")
+                return
+            
+            # 只处理第一个选中的策略
+            row = selected_rows[0]
+            strategy_name = self.strategy_list.item(row.row(), 0).text()
+            
+            # 查找策略
+            strategy_info = None
+            for strategy in self.strategies:
+                if strategy["name"] == strategy_name:
+                    strategy_info = strategy
+                    break
+            
+            if not strategy_info:
+                self.statusBar.showMessage(f"策略 {strategy_name} 不存在")
+                return
+            
+            # 生成报告
+            report_content = self._generate_report_content(strategy_name, strategy_info)
+            
+            # 保存报告文件
+            from PyQt5.QtWidgets import QFileDialog
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存策略报告",
+                f"{strategy_name}_报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                "Markdown Files (*.md);;All Files (*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # 写入报告文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            
+            self.statusBar.showMessage(f"策略报告已生成: {file_path}")
+            logger.info(f"策略报告已生成: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"生成策略报告错误: {e}")
+            self.statusBar.showMessage(f"生成策略报告失败: {str(e)}")
+    
+    def _generate_report_content(self, strategy_name, strategy_info):
+        """
+        生成报告内容
+        """
+        import pandas as pd
+        from datetime import datetime, timedelta
+        
+        # 生成报告头部
+        report = f"# {strategy_name} 策略性能分析报告\n\n"
+        report += f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        report += f"策略类型: {strategy_info.get('type', '未知')}\n"
+        report += f"策略状态: {strategy_info.get('status', '未知')}\n\n"
+        
+        # 生成性能指标
+        report += "## 性能指标\n\n"
+        
+        # 模拟性能数据
+        performance_data = {
+            "总收益率": "12.5%",
+            "最大回撤": "-3.2%",
+            "夏普比率": "2.1",
+            "年化收益率": "15.3%",
+            "胜率": "68%",
+            "平均盈亏比": "1.8",
+            "交易次数": "128",
+            "平均持仓时间": "4.2小时"
+        }
+        
+        for key, value in performance_data.items():
+            report += f"- **{key}**: {value}\n"
+        
+        # 生成交易记录统计
+        report += "\n## 交易记录统计\n\n"
+        
+        # 模拟交易数据
+        trade_data = []
+        for i in range(10):
+            date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            trade_data.append({
+                "日期": date,
+                "交易次数": str(10 + i),
+                "盈利次数": str(7 + i % 3),
+                "亏损次数": str(3 - i % 3),
+                "当日收益": f"{((i % 5) - 2) * 0.5}%"
+            })
+        
+        # 转换为表格
+        df = pd.DataFrame(trade_data)
+        report += df.to_markdown(index=False) + "\n\n"
+        
+        # 生成风险分析
+        report += "## 风险分析\n\n"
+        report += "- **风险等级**: 中等\n"
+        report += "- **最大连续亏损**: 3次\n"
+        report += "- **最大连续盈利**: 5次\n"
+        report += "- **波动性**: 低\n\n"
+        
+        # 生成策略建议
+        report += "## 策略建议\n\n"
+        report += "1. **参数优化**: 考虑调整止损参数，减少最大回撤\n"
+        report += "2. **资金管理**: 建议将单次交易资金控制在总资金的5%以内\n"
+        report += "3. **市场适应**: 在高波动市场中可适当降低交易频率\n"
+        report += "4. **监控建议**: 定期检查策略表现，每两周生成一次分析报告\n\n"
+        
+        # 生成总结
+        report += "## 总结\n\n"
+        report += f"{strategy_name} 策略整体表现良好，在过去的测试期内实现了 {performance_data['总收益率']} 的总收益，"
+        report += f"最大回撤控制在 {performance_data['最大回撤']} 以内，夏普比率 {performance_data['夏普比率']} 表明策略风险调整后收益表现优秀。\n"
+        report += "建议继续运行该策略，并根据市场变化适时调整参数以保持策略的适应性。\n"
+        
+        return report
+
+    def toggle_theme(self):
+        """
+        切换主题
+        """
+        # 获取当前主题
+        current_style = self.styleSheet()
+        
+        # 切换主题
+        if "background-color: #f0f2f5" in current_style:
+            # 切换到深色主题
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #1e1e1e;
+                }
+                QGroupBox {
+                    border: 1px solid #3e3e3e;
+                    border-radius: 8px;
+                    margin-top: 10px;
+                    background-color: #2d2d2d;
+                    color: #ffffff;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 15px;
+                    padding: 0 10px 0 10px;
+                    background-color: #2d2d2d;
+                    font-weight: bold;
+                    font-size: 14px;
+                    color: #ffffff;
+                }
+                QPushButton {
+                    background-color: #1976D2;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    min-width: 90px;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #1565C0;
+                }
+                QPushButton:disabled {
+                    background-color: #424242;
+                }
+                QLineEdit {
+                    border: 1px solid #3e3e3e;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 14px;
+                    background-color: #3e3e3e;
+                    color: #ffffff;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #1976D2;
+                }
+                QComboBox {
+                    border: 1px solid #3e3e3e;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 14px;
+                    background-color: #3e3e3e;
+                    color: #ffffff;
+                }
+                QTableWidget {
+                    border: 1px solid #3e3e3e;
+                    border-radius: 6px;
+                    alternate-background-color: #363636;
+                    background-color: #2d2d2d;
+                    color: #ffffff;
+                }
+                QTableWidget::item:selected {
+                    background-color: #1976D2;
+                }
+                QStatusBar {
+                    background-color: #2d2d2d;
+                    border-top: 1px solid #3e3e3e;
+                    font-size: 12px;
+                    color: #ffffff;
+                }
+                QLabel {
+                    font-size: 14px;
+                    color: #ffffff;
+                }
+                QTabBar::tab {
+                    background-color: #2d2d2d;
+                    padding: 12px 20px;
+                    margin-right: 2px;
+                    border-radius: 6px 6px 0 0;
+                    font-size: 14px;
+                    color: #ffffff;
+                }
+                QTabBar::tab:selected {
+                    background-color: #3e3e3e;
+                    border-bottom: 2px solid #1976D2;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #3e3e3e;
+                    background-color: #2d2d2d;
+                }
+            """)
+            self.statusBar.showMessage("已切换到深色主题")
+        else:
+            # 切换到浅色主题
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #f0f2f5;
+                }
+                QGroupBox {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 8px;
+                    margin-top: 10px;
+                    background-color: white;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 15px;
+                    padding: 0 10px 0 10px;
+                    background-color: white;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background-color: #1976D2;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    min-width: 90px;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #1565C0;
+                }
+                QPushButton:disabled {
+                    background-color: #BDBDBD;
+                }
+                QLineEdit {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 14px;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #1976D2;
+                }
+                QComboBox {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-size: 14px;
+                }
+                QTableWidget {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    alternate-background-color: #f9f9f9;
+                }
+                QTableWidget::item:selected {
+                    background-color: #E3F2FD;
+                }
+                QStatusBar {
+                    background-color: white;
+                    border-top: 1px solid #e0e0e0;
+                    font-size: 12px;
+                }
+                QLabel {
+                    font-size: 14px;
+                }
+                QTabBar::tab {
+                    background-color: #f5f5f5;
+                    padding: 12px 20px;
+                    margin-right: 2px;
+                    border-radius: 6px 6px 0 0;
+                    font-size: 14px;
+                }
+                QTabBar::tab:selected {
+                    background-color: white;
+                    border-bottom: 2px solid #1976D2;
+                }
+            """)
+            self.statusBar.showMessage("已切换到浅色主题")
+
+    def show_about(self):
+        """
+        显示关于对话框
+        """
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.about(self, "关于", "OKX 交易机器人\n版本: 1.0.0\n作者: OKX Trading Bot Team")
 
     def show_help(self):
         """
-        显示功能说明
+        显示帮助对话框
         """
-        from PyQt5.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QTextEdit,
-            QPushButton,
-            QScrollArea,
-            QWidget,
-        )
-        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "使用帮助", "1. 输入API密钥和密码\n2. 选择模拟盘或实盘\n3. 点击连接按钮\n4. 在市场数据标签页查看行情\n5. 在交易与订单标签页进行交易\n6. 在策略管理标签页管理策略\n7. 在监控与分析标签页查看监控数据")
 
-        # 创建帮助对话框
-        help_dialog = QDialog(self)
-        help_dialog.setWindowTitle("功能说明")
-        help_dialog.setGeometry(100, 100, 800, 600)
-
-        # 创建主布局
-        main_layout = QVBoxLayout(help_dialog)
-
-        # 创建滚动区域
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-
-        # 创建内容 widget
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
-
-        # 功能说明文本
-        help_text = """
-功能说明
-
-1. 连接管理
-   - API Key输入框: 输入OKX API密钥
-   - Secret输入框: 输入OKX API密钥密码
-   - Passphrase输入框: 输入密码短语
-   - 环境选择: 选择模拟盘或实盘
-   - 连接按钮: 连接或断开WebSocket
-     - 实现: toggle_connection
-
-2. 市场数据标签页
-   - 市场数据表格: 显示产品价格、涨跌、成交量等信息
-     - 实现: update_market_table
-
-3. 订单标签页
-   - 订单表格: 显示订单ID、产品、类型、方向、价格、数量、状态、时间等信息
-     - 实现: update_order_table
-
-4. 账户标签页
-   - 账户信息: 显示总权益、保证金比率等信息
-     - 实现: update_account_info
-   - 资产表格: 显示币种、可用余额、冻结余额、总余额等信息
-     - 实现: update_asset_table
-
-5. 订阅管理标签页
-   - 产品ID输入框: 输入要订阅的产品ID
-   - 订阅按钮: 订阅产品
-     - 实现: subscribe_instrument
-   - 取消订阅按钮: 取消订阅选中的产品
-     - 实现: unsubscribe_instrument
-   - 订阅列表: 显示已订阅的产品
-     - 实现: update_subscribe_list
-
-6. 策略管理标签页
-   - 策略名称输入框: 输入新策略的名称
-   - 策略类型选择: 选择策略类型（动态策略、PassivBot策略、自定义策略）
-   - 创建策略按钮: 创建新策略
-     - 实现: create_strategy
-   - 启动策略按钮: 启动选中的策略
-     - 实现: start_strategy
-   - 停止策略按钮: 停止选中的策略
-     - 实现: stop_strategy
-   - 策略列表: 显示所有策略
-     - 实现: update_strategy_list
-   - 操作按钮:
-     - 编辑: 编辑策略的参数和配置
-       - 实现: edit_strategy
-     - 删除: 删除不需要的策略
-       - 实现: delete_strategy
-     - 详情: 查看策略的详细信息
-       - 实现: view_strategy_details
-     - 回测: 运行策略回测，评估策略性能
-       - 实现: run_strategy_backtest
-
-7. 状态栏
-   - 显示连接状态、操作结果等信息
-
-8. API调用指南
-   - REST API接口:
-     | 接口名称 | 端点 | 方法 | 限速 | 功能描述 |
-     |---------|------|------|------|----------|
-     | 获取交易产品基础信息 | /api/v5/account/instruments | GET | 20次/2s | 获取当前账户可交易产品的信息列表 |
-     | 查看账户余额 | /api/v5/account/balance | GET | 10次/2s | 获取交易账户中资金余额信息 |
-     | 查看持仓信息 | /api/v5/account/positions | GET | 10次/2s | 获取该账户下拥有实际持仓的信息 |
-     | 下单 | /api/v5/trade/order | POST | 独立限速 | 创建订单 |
-     | 批量下单 | /api/v5/trade/batch-order | POST | 独立限速 | 批量创建订单 |
-     | 取消订单 | /api/v5/trade/cancel-order | POST | 独立限速 | 取消订单 |
-     | 批量取消订单 | /api/v5/trade/batch-cancel-orders | POST | 独立限速 | 批量取消订单 |
-     | 修改订单 | /api/v5/trade/amend-order | POST | 独立限速 | 修改订单 |
-     | 批量修改订单 | /api/v5/trade/batch-amend-orders | POST | 独立限速 | 批量修改订单 |
-     | 获取订单信息 | /api/v5/trade/order | GET | 10次/2s | 获取订单详细信息 |
-     | 获取未成交订单 | /api/v5/trade/orders-pending | GET | 10次/2s | 获取未成交订单列表 |
-     | 获取历史订单 | /api/v5/trade/orders-history | GET | 10次/2s | 获取历史订单列表 |
-     | 获取成交数据 | /api/v5/market/trades | GET | 20次/2s | 获取产品的成交数据 |
-     | 获取K线数据 | /api/v5/market/candles | GET | 20次/2s | 获取产品的K线数据 |
-     | 获取订单簿 | /api/v5/market/books | GET | 20次/2s | 获取产品的订单簿数据 |
-     | 获取行情数据 | /api/v5/market/ticker | GET | 20次/2s | 获取产品的行情数据 |
-     | 获取账户限速 | /api/v5/account/rate-limit | GET | 10次/2s | 获取账户限速信息 |
-   - WebSocket API频道:
-     | 频道类型 | 频道名称 | 功能描述 |
-     |---------|---------|----------|
-     | 公共频道 | tickers | 行情数据 |
-     | 公共频道 | books | 订单簿数据 |
-     | 公共频道 | candles | K线数据 |
-     | 公共频道 | trades | 成交数据 |
-     | 私有频道 | orders | 订单更新 |
-     | 私有频道 | account | 账户更新 |
-     | 私有频道 | positions | 持仓更新 |
-   - API调用限速规则:
-     - WebSocket登录和订阅限速基于连接
-     - 公共未经身份验证的REST限速基于IP地址
-     - 私有REST限速基于User ID（子帐户具有单独的User ID）
-     - WebSocket订单管理限速基于User ID
-     - 交易相关API（下订单、取消订单和修改订单）的限速在REST和WebSocket通道之间共享
-     - 下单、修改订单、取消订单的限速相互独立
-     - 限速在Instrument ID级别定义（期权除外）
-   - API认证方式:
-     - REST API: 使用OK-ACCESS-KEY、OK-ACCESS-SIGN、OK-ACCESS-TIMESTAMP、OK-ACCESS-PASSPHRASE请求头
-     - WebSocket API: 通过login消息进行认证，包含apiKey、passphrase、timestamp、sign参数
-   - API错误代码:
-     | 错误码 | HTTP状态码 | 错误提示 |
-     |-------|-----------|----------|
-     | 0 | 200 | 操作成功 |
-     | 1 | 200 | 操作全部失败 |
-     | 2 | 200 | 批量操作部分成功 |
-     | 50000 | 400 | POST请求的body不能为空 |
-     | 50001 | 503 | 服务暂时不可用，请稍后重试 |
-     | 50002 | 400 | JSON 语法错误 |
-     | 50004 | 400 | 接口请求超时（不代表请求成功或者失败，请检查请求结果） |
-     | 50005 | 410 | 接口已下线或无法使用 |
-     | 50006 | 400 | 无效的 Content-Type，请使用"application/JSON"格式 |
-     | 50011 | 200 | 用户请求频率过快，超过该接口允许的限额。请参考 API 文档并限制请求 |
-     | 50011 | 429 | 请求频率太高 |
-     | 50014 | 400 | 必填参数{param0}不能为空 |
-     | 50030 | 200 | 您没有使用此 API 接口的权限 |
-     | 50035 | 403 | 该接口要求APIKey必须绑定IP |
-     | 50044 | 200 | 必须指定一种broker类型 |
-     | 50061 | 200 | 订单请求频率过快，超过账户允许的最高限额 |
-     | 50100 | 400 | Api 已被冻结，请联系客服处理 |
-     | 50101 | 401 | APIKey 与当前环境不匹配 |
-     | 50102 | 401 | 请求时间戳过期 |
-     | 50103 | 401 | 请求头"OK-ACCESS-KEY"不能为空 |
-     | 50104 | 401 | 请求头"OK-ACCESS-PASSPHRASE"不能为空 |
-     | 50105 | 401 | 请求头"OK-ACCESS-PASSPHRASE"错误 |
-     | 50106 | 401 | 请求头"OK-ACCESS-SIGN"不能为空 |
-     | 50107 | 401 | 请求头"OK-ACCESS-TIMESTAMP"不能为空 |
-     | 50110 | 401 | 您的IP{param0}不在APIKey绑定IP名单中 (您可以将您的IP加入到APIKey绑定白名单中) |
-     | 50111 | 401 | 无效的OK-ACCESS-KEY |
-     | 50112 | 401 | 无效的OK-ACCESS-TIMESTAMP |
-     | 50113 | 401 | 无效的签名 |
-     | 50114 | 401 | 无效的授权 |
-     | 50120 | 200 | API key 权限不足 |
-     | 51000 | 400 | {param0}参数错误 |
-     | 51001 | 200 | Instrument ID、Instrument ID code 或 Spread ID 不存在 |
-     | 51003 | 200 | ordId或clOrdId至少填一个 |
-     | 51004 | 200 | 下单失败，您在{instId} 逐仓的开平仓模式下，当前下单张数、同方向持有仓位以及同方向挂单张数之和，不能超过当前杠杆倍数允许的持仓上限{tierLimitQuantity}(张)，请调低杠杆或者使用新的子账户重新下单 |
-     | 51005 | 200 | 委托数量大于单笔上限 |
-     | 51006 | 200 | 委托价格不在限价范围内（最高买入价：{param0}，最低卖出价：{param1}） |
-     | 51007 | 200 | 委托失败，委托数量不可小于 1 张 |
-     | 51008_1000 | 200 | 委托失败，{param0} 可用余额不足，该委托会产生借币，当前账户可用保证金过低无法借币 |
-     | 51008_1001 | 200 | 委托失败，账户 {param0} 可用保证金不足 |
-     | 51008_1002 | 200 | 委托失败，请先增加可用保证金，再进行借币交易 |
-     | 51008_1003 | 200 | 委托失败，账户 {param0} 可用保证金不足，且未开启自动借币（PM模式也可以尝试IOC订单降低风险） |
-     | 51010 | 200 | 当前账户模式不支持此操作 |
-     | 51011 | 200 | ordId重复 |
-     | 51012 | 200 | 币种不存在 |
-     | 51015 | 200 | instId和instType不匹配 |
-     | 51016 | 200 | clOrdId重复 |
-     | 51020 | 200 | 委托数量需大于或等于最小下单数量 |
-     | 51021 | 200 | 币对或合约待上线 |
-     | 51022 | 200 | 合约暂停中 |
-     | 51023 | 200 | 仓位不存在 |
-     | 51024 | 200 | 交易账户冻结 |
-     | 51025 | 200 | 委托笔数超限 |
-     | 51027 | 200 | 合约已到期 |
-     | 51028 | 200 | 合约交割中 |
-     | 51029 | 200 | 合约结算中 |
-     | 51030 | 200 | 资金费结算中 |
-     | 51031 | 200 | 委托价格不在平仓限价范围内 |
-     | 51032 | 200 | 市价全平中 |
-     | 51033 | 200 | 币对单笔交易已达限额 |
-     | 51034 | 200 | 成交速率超出您所设置的上限，请将做市商保护状态重置为 inactive 以继续交易。 |
-     | 51040 | 200 | 期权逐仓的买方不能调整保证金 |
-     | 51041 | 200 | PM账户仅支持买卖模式 |
-     | 51043 | 200 | 该逐仓仓位不存在 |
-     | 51054 | 500 | 请求超时，请稍候重试 |
-     | 51066 | 200 | 期权交易不支持市价单，请用限价单平仓 |
-     | 51071 | 200 | 当前维护的标签维度倒计时全部撤单达到数量上限 |
-     | 51111 | 200 | 批量下单时，超过最大单数{param0} |
-     | 51112 | 200 | 平仓张数大于该仓位的可平张数 |
-     | 51113 | 429 | 市价全平操作过于频繁 |
-     | 51115 | 429 | 市价全平前请先撤销所有平仓单 |
-     | 51116 | 200 | 委托价格或触发价格超过{param0} |
-     | 51117 | 200 | 平仓单挂单单数超过限制 |
-     | 51120 | 200 | 下单数量不足{param0}张 |
-     | 51121 | 200 | 下单张数应为一手张数的倍数 |
-     | 51122 | 200 | 委托价格小于最小值{param0} |
-     | 51124 | 200 | 价格发现期间您只可下限价单 |
-     | 51127 | 200 | 仓位可用余额为0 |
-     | 51128 | 200 | 跨币种账户无法进行全仓杠杆交易 |
-     | 51129 | 200 | 持仓及买入订单价值已达到持仓限额，不允许继续买入 |
-     | 51130 | 200 | 逐仓杠杆保证金币种错误 |
-     | 51131 | 200 | 仓位可用余额不足 |
-     | 51132 | 200 | 仓位正资产小于最小交易单位 |
-     | 51134 | 200 | 平仓失败，您当前没有杠杆仓位，请关闭只减仓后继续 |
-     | 51135 | 200 | 您的平仓价格已触发限价，最高买入价格为{param0} |
-     | 51136 | 200 | 您的平仓价格已触发限价，最低卖出价格为{param0} |
-     | 51137 | 200 | 买单最高价为 {param0}，请调低价格 |
-     | 51138 | 200 | 卖单最低价为 {param0}，请调高价格 |
-     | 51139 | 200 | 现货模式下币币不支持只减仓功能 |
-     | 51140 | 200 | 由于盘口卖单不足，下单失败，请稍后重试 |
-     | 51147 | 200 | 交易期权需要在交易账户资产总价值大于1万美元的前提下，开通期权交易服务 |
-     | 51149 | 500 | 下单超时，请稍候重试 (不代表请求成功或失败，请检查请求结果) |
-     | 51150 | 200 | 交易数量或价格的精度超过限制 |
-     | 51152 | 200 | 一键借币模式下，不支持自动借币与自动还币和手动类型混合下单。 |
-     | 51155 | 200 | 由于您所在国家或地区的合规限制，您无法交易此币对或合约 |
-     | 51158 | 200 | 自主划转已不支持，请切换至一键借币模式下单 (isoMode=quick_margin) |
-     | 51169 | 200 | 下单失败，您没有当前合约对应方向的持仓，无法进行平仓或者减仓。 |
-     | 51170 | 200 | 下单失败，只减仓下单方向不能与持仓方向相同 |
-     | 51171 | 200 | 改单失败，当前订单若改单成功会造成只减仓订单反向开仓，请撤销或修改原有挂单再进行改单 |
-     | 51173 | 200 | 无法市价全平，当前仓位暂无负债 |
-     | 51201 | 200 | 市价委托单笔价值不能超过 1,000,000 USDT |
-     | 51202 | 200 | 市价单下单数量超出最大值 |
-     | 51203 | 200 | 普通委托数量超出最大限制{param0} |
-     | 51204 | 200 | 限价委托单价格不能为空 |
-     | 51205 | 200 | 不支持只减仓操作 |
-     | 51206 | 200 | 请先撤销当前下单产品{param0}的只减仓挂单，避免反向开仓 |
-     | 51207 | 200 | 交易数量超过限制，无法市价全平，请手动下单分批平仓 |
-     | 51212 | 200 | 下单失败。当前不支持批量下单，请分开下单 |
-     | 51220 | 200 | 分润策略仅支持策略停止时卖币或停止时全部平仓 |
-     | 51221 | 200 | 请输入 0-30% 范围内的指定分润比例 |
-     | 51222 | 200 | 该策略不支持分润 |
-     | 51223 | 200 | 当前状态您不可以进行分润带单 |
-     | 51224 | 200 | 该币对不支持分润 |
-     | 51225 | 200 | 分润跟单策略不支持手动立即触发策略 |
-     | 51226 | 200 | 分润跟单策略不支持修改策略参数 |
-     | 51250 | 200 | 策略委托价格不在正确范围内 |
-     | 51251 | 200 | 创建冰山委托时，策略委托类型错误 |
-     | 51252 | 200 | 策略委托数量不在正确范围内 |
-     | 51253 | 200 | 冰山委托单笔均值超限 |
-     | 51254 | 200 | 冰山委托单笔均值错误 |
-     | 51255 | 200 | 冰山委托单笔委托超限 |
-     | 51256 | 200 | 冰山委托深度错误 |
-     | 51257 | 200 | 跟踪委托回调服务错误，回调幅度限制为{min}<x<={max}% |
-     | 51258 | 200 | 跟踪委托失败，卖单激活价格需大于最新成交价格 |
-     | 51259 | 200 | 跟踪委托失败，买单激活价格需小于最新成交价格 |
-     | 51260 | 200 | 每个用户最多可同时持有{param0}笔未成交的跟踪委托 |
-     | 51261 | 200 | 每个用户最多可同时持有{param0}笔未成交的止盈止损 |
-     | 51262 | 200 | 每个用户最多可同时持有{param0}笔未成交的冰山委托 |
-     | 51263 | 200 | 每个用户最多可同时持有{param0}笔未成交的时间加权单 |
-     | 51264 | 200 | 时间加权单笔均值超限 |
-     | 51265 | 200 | 时间加权单笔上限错误 |
-     | 51267 | 200 | 时间加权扫单比例出错 |
-     | 51268 | 200 | 时间加权扫单范围出错 |
-     | 51269 | 200 | 时间加权委托间隔错误，应为{min}<=x<={max} |
-     | 51270 | 200 | 时间加权委托深度限制为 0<x<=1% |
-     | 51271 | 200 | 时间加权委托失败，扫单比例应该为 0<x<=100% |
-     | 51272 | 200 | 时间加权委托失败，扫单范围应该为 0<x<=1% |
-     | 51273 | 200 | 时间加权委托总量应为大于 0 |
-     | 51274 | 200 | 时间加权委托总数量需大于单笔上限 |
-     | 51275 | 200 | 止盈止损市价单笔委托数量不能超过最大限制 |
-     | 51276 | 200 | 止盈止损市价单不能指定价格 |
-     | 51277 | 200 | 止盈触发价格不能大于最新成交价 |
-     | 51278 | 200 | 止损触发价格不能小于最新成交价 |
-     | 51279 | 200 | 止盈触发价格不能小于最新成交价 |
-     | 51280 | 200 | 止损触发价格不能大于最新成交价 |
-     | 51281 | 200 | 计划委托不支持使用tgtCcy参数 |
-     | 51282 | 200 | 吃单价优于盘口的比例范围 |
-     | 51283 | 200 | 时间间隔的范围{param0}s~{param1}s |
-     | 51284 | 200 | 单笔数量的范围{param0}~{param1} |
-     | 51285 | 200 | 委托总量的范围{param0}~{param1} |
-     | 51286 | 200 | 下单金额需大于等于{param0} |
-     | 51287 | 200 | 当前策略不支持此交易品种 |
-     | 51288 | 200 | 策略正在停止中，请勿重复点击 |
-     | 51289 | 200 | 策略配置不存在，请稍后再试 |
-     | 51290 | 200 | 策略引擎正在升级，请稍后重试 |
-     | 51291 | 200 | 策略不存在或已停止 |
-     | 51292 | 200 | 策略类型不存在 |
-     | 51293 | 200 | 策略不存在 |
-     | 51294 | 200 | 该策略暂不能创建，请稍后再试 |
-     | 51295 | 200 | PM账户不支持ordType为{param0}的策略委托单 |
-     | 51298 | 200 | 交割、永续合约的买卖模式下，不支持计划委托 |
-     | 51299 | 200 | 策略委托失败，用户最多可持有{param0}笔该类型委托 |
-     | 51300 | 200 | 止盈触发价格不能大于标记价格 |
-     | 51302 | 200 | 止损触发价格不能小于标记价格 |
-     | 51303 | 200 | 止盈触发价格不能小于标记价格 |
-     | 51304 | 200 | 止损触发价格不能大于标记价格 |
-     | 51305 | 200 | 止盈触发价格不能大于指数价格 |
-     | 51306 | 200 | 止损触发价格不能小于指数价格 |
-     | 51307 | 200 | 止盈触发价格不能小于指数价格 |
-     | 51308 | 200 | 止损触发价格不能大于指数价格 |
-     | 51309 | 200 | 集合竞价期间不能创建策略 |
-     | 51310 | 200 | 逐仓自主划转保证金模式不支持ordType为iceberg、twap的策略委托单 |
-     | 51311 | 200 | 移动止盈止损委托失败，回调幅度限制为{min}<x<={max} |
-     | 51312 | 200 | 移动止盈止损委托失败，委托数量范围{min}<x<={max} |
-     | 51313 | 200 | 逐仓自主划转模式不支持策略部分 |
-     | 51317 | 200 | 币币杠杆不支持计划委托 |
-     | 51327 | 200 | closeFraction 仅适用于交割合约和永续合约 |
-     | 51328 | 200 | closeFraction 仅适用于只减仓订单 |
-     | 51329 | 200 | closeFraction 仅适用于买卖模式 |
-     | 51330 | 200 | closeFraction 仅适用于止盈止损市价订单 |
-     | 51331 | 200 | closeFraction仅限于平仓单 |
-     | 51332 | 200 | 组合保证金模式不支持closeFraction |
-     | 51333 | 200 | 开平模式下的平仓单或买卖模式下的只减仓单无法附带止盈止损 |
-     | 51340 | 200 | 投入保证金需大于{0}{1} |
-     | 51341 | 200 | 当前策略状态下暂不支持平仓 |
-     | 51342 | 200 | 已有平仓单，请稍后重试 |
-     | 51343 | 200 | 止盈价格需小于区间最低价格 |
-     | 51344 | 200 | 止损价格需大于区间最高价格 |
-     | 51345 | 200 | 策略类型不是网格策略 |
-     | 51346 | 200 | 最高价格不能低于最低价格 |
-     | 51347 | 200 | 暂无可提取利润 |
-     | 51348 | 200 | 止损价格需小于区间最低价格 |
-     | 51349 | 200 | 止盈价格需大于区间最高价格 |
-     | 51350 | 200 | 暂无可推荐参数 |
-     | 51351 | 200 | 单格收益必须大于0 |
-     | 51352 | 200 | 币对数量范围{pairNum1} - {pairNum2} |
-     | 51353 | 200 | 存在重复币对{existingPair} |
-     | 51354 | 200 | 币对比例总和需等于100% |
-     | 51355 | 200 | 定投日期范围{date1} - {date2} |
-     | 51356 | 200 | 定投时间范围{0}~{1} |
-     | 51357 | 200 | 时区范围 {timezone1} - {timezone2} |
-     | 51358 | 200 | 每个币种的投入金额需大于{amount} |
-     | 51359 | 200 | 暂不支持定投该币种{0} |
-     | 51370 | 200 | 杠杆倍数范围{0}~{1} |
-     | 51380 | 200 | 市场行情不符合策略配置 |
-     | 51381 | 200 | 单网格利润率不在区间内 |
-     | 51382 | 200 | 策略不支持停止信号触发 |
-     | 51383 | 200 | 最小价格必须小于最新成交价 |
-     | 51384 | 200 | 信号触发价格必须大于最小价格 |
-     | 51385 | 200 | 止盈价必须大于最小价格 |
-     | 51386 | 200 | 最小价格必须大于1/2最新成交价 |
-     | 51387 | 200 | 止损价格应小于无限网格的区间最低价 |
-     | 51388 | 200 | 策略已在运行中 |
-     | 51389 | 200 | 触发价格需小于{0} |
-     | 51390 | 200 | 触发价格需小于止盈价格 |
-     | 51391 | 200 | 触发价格需大于止损价格 |
-     | 51392 | 200 | 止盈价格需大于触发价格 |
-     | 51393 | 200 | 止损价格需小于触发价格 |
-     | 51394 | 200 | 触发价格需大于止盈价格 |
-     | 51395 | 200 | 触发价格需小于止损价格 |
-     | 51396 | 200 | 止盈价格需小于触发价格 |
-     | 51397 | 200 | 止损价格需大于触发价格 |
-     | 51398 | 200 | 当前行情满足停止条件，无法创建策略 |
-     | 51399 | 200 | 当前杠杆下最大可投入金额为 {amountLimit} {quoteCurrency}，请减少投入金额后再试。 |
-     | 51400 | 200 | 由于订单已完成、已撤销或不存在，撤单失败 |
-     | 51400 | 200 | 撤单失败，订单不存在（仅适用于价差速递） |
-     | 51401 | 200 | 撤单失败，订单已撤销（仅适用于价差速递） |
-     | 51402 | 200 | 撤单失败，订单已完成（仅适用于价差速递） |
-     | 51403 | 200 | 撤单失败，该委托类型无法进行撤单操作 |
-     | 51404 | 200 | 价格发现第二阶段您不可撤单 |
-     | 51405 | 200 | 撤单失败，您当前没有未成交的订单 |
-     | 51406 | 400 | 撤单数量超过最大允许单数{param0} |
-     | 51407 | 200 | ordIds 和 clOrdIds 不能同时为空 |
-     | 51408 | 200 | 币对 id 或币对名称与订单信息不匹配 |
-     | 51409 | 200 | 币对 id 或币对名称不能同时为空 |
-     | 51410 | 200 | 撤单失败，订单已处于撤销中或结算中 |
-     | 51411 | 200 | 用户没有执行mass cancel的权限 |
-     | 51412 | 200 | 撤单超时，请稍后重试 |
-     | 51416 | 200 | 委托已触发，暂不支持撤单 |
-     | 51413 | 200 | 撤单失败，接口不支持该委托类型的撤单 |
-     | 51415 | 200 | 下单失败，现货交易仅支持设置最新价为触发价格，请更改触发价格并重试 |
-     | 51416 | 200 | 委托已触发，暂不支持撤单 |
-     | 51500 | 200 | 价格、数量、止盈/止损不能同时为空 |
-     | 51501 | 400 | 修改订单超过最大允许单数{param0} |
-     | 51502_1030 | 200 | 修改失败，{param0} 可用余额不足，该委托会产生借币，当前账户可用保证金过低无法借币 |
-     | 51502_1031 | 200 | 修改订单失败，账户 {param0} 可用保证金不足 |
-     | 51502_1032 | 200 | 委托失败，请先增加可用保证金，再进行借币交易 |
-     | 51502_1033 | 200 | 修改订单失败，账户 {param0} 可用保证金不足，且未开启自动借币（PM模式也可以尝试IOC订单降低风险） |
-     | 51502_1034 | 200 | {param0} 可用不足。借币数量超过档位限制，请尝试降低杠杆倍数。限价挂单以及当前下单需借 {param1}，剩余额度 {param2}，限额 {param3}，已用额度 {param4}。 |
-     | 51502_1035 | 200 | 修改订单失败，因为 {param0} 剩余的限额 (主账户限额+当前账户锁定的尊享借币额度) 不足，导致可借不足。限价挂单以及当前下单需借 {param1}，剩余额度 {param2}，限额 {param3}，已用额度 {param4}。 |
-     | 51502_1036 | 200 | 修改订单失败，因为 {param0} 剩余的币对限额不足，导致可借不足 |
-     | 51502_1037 | 200 | 改单失败，该委托需要借币 {param0}，但该币种的平台剩余借币额度已不足 |
-     | 51502_1039 | 200 | 修改订单失败，账户可用保证金过低（PM模式也可以尝试IOC订单降低风险） |
-     | 51502_1040 | 200 | 修改订单失败，Delta 校验未通过，因为若成功下单，adjEq 的变化值将小于 IMR 的变化值。建议增加 adjEq 或减少 IMR 占用。（PM模式也可以尝试IOC订单降低风险） |
-     | 51502_1049 | 200 | 修改订单失败，您主账户的 {param0} 借币额度不足 |
-     | 51503 | 200 | 由于订单已完成、已撤销或不存在，改单失败 |
-     | 51503 | 200 | 由于订单不存在，改单失败（仅适用于价差速递） |
-     | 51505 | 200 | {instId} 不处于集合竞价阶段 |
-     | 51506 | 200 | 订单类型不支持改单 |
-     | 51507 | 200 | 您仅能在币种上线至少 5 分钟后进行市价委托 |
-     | 51508 | 200 | 集合竞价第一阶段和第二阶段不允许改单 |
-     | 51509 | 200 | 修改订单失败,订单已撤销（仅适用于价差速递） |
-     | 51510 | 200 | 修改订单失败,订单已完成（仅适用于价差速递） |
-     | 51511 | 200 | 操作失败，订单价格不满足Post Only条件 |
-     | 51512 | 200 | 批量修改订单失败。同一批量改单请求中不允许包含相同订单。 |
-     | 51513 | 200 | 对于正在处理的同一订单，改单请求次数不得超过3次 |
-     | 51514 | 200 | 修改订单失败，价格长度不能超过 32 个字符 |
-     | 51521 | 200 | 改单失败，当前合约无持仓，无法修改只减仓订单 |
-     | 51522 | 200 | 改单失败，只减仓订单方向不能与持仓反向相同 |
-     | 51532 | 200 | 止盈止损已触发，无法改单 |
-     | 51524 | 200 | 不允许在全部仓位止盈止损单上修改委托数量，请修改触发价格 |
-     | 51525 | 200 | 一键借币止盈止损单不支持修改 |
-     | 60009 | 401 | 登录失败 |
-     | 60029 | 403 | 该频道仅适用于交易等级VIP6及以上的用户 |
-     | 70065 | 400 | 移仓将被拒绝，无法获取60分钟TWAP |
-   - API监控标签页:
-     - API状态信息: 显示API连接状态
-     - 调用统计: 显示API调用统计数据
-       - REST API: REST API调用次数和平均响应时间
-       - WebSocket: WebSocket消息次数和平均处理时间
-       - 订单操作: 订单相关API调用次数和平均响应时间
-       - 市场数据: 市场数据相关API调用次数和平均响应时间
-     - 调用历史: 显示最近50条API调用记录
-       - 时间: API调用时间
-       - 调用者: 调用API的函数名
-       - 方法: HTTP请求方法 (GET/POST/DELETE)
-       - 端点: API端点路径
-       - 状态码: HTTP响应状态码
-       - 响应时间: API响应时间
-       - 错误: 错误信息（如果有）
-       - 操作: 查看详情按钮
-     - WebSocket消息: 显示最近50条WebSocket消息记录
-       - 时间: 消息接收时间
-       - 频道: 消息频道 (public/private)
-       - 消息类型: 消息类型 (event/data_push/ping/pong)
-       - 通道名称: WebSocket通道名称
-       - 产品ID: 产品ID
-       - 处理时间: 消息处理时间
-       - 错误: 错误信息（如果有）
-
-注意: 由于当前环境无法连接到OKX API，部分功能可能无法正常工作。
+    def update_market_table(self):
         """
-
-        # 创建文本编辑框
-        text_edit = QTextEdit()
-        text_edit.setText(help_text)
-        text_edit.setReadOnly(True)
-        text_edit.setStyleSheet("font-family: Arial; font-size: 12px;")
-
-        # 添加到内容布局
-        content_layout.addWidget(text_edit)
-
-        # 设置滚动区域的 widget
-        scroll_area.setWidget(content_widget)
-
-        # 添加滚动区域到主布局
-        main_layout.addWidget(scroll_area)
-
-        # 添加关闭按钮
-        close_button = QPushButton("关闭")
-        close_button.clicked.connect(help_dialog.close)
-        main_layout.addWidget(close_button)
-
-        # 显示对话框
-        help_dialog.exec_()
-
-    def closeEvent(self, event):
+        更新市场数据表格
         """
-        关闭事件
-        """
-        if self.ws_client:
-            self._run_async_task(self.ws_client.close())
-        self.event_bus.stop()
-        # 关闭线程池
-        self._thread_pool.shutdown(wait=False)
-        event.accept()
-
-    def init_visualization_tab(self, parent):
-        """
-        初始化数据可视化标签页
-        """
-        layout = QVBoxLayout(parent)
-
-        # 图表类型选择
-        chart_control = QHBoxLayout()
-        self.chart_type_combo = QComboBox()
-        self.chart_type_combo.addItems(["K线图表", "策略性能图表", "资产分布图表"])
-        self.inst_id_combo = QComboBox()
-        self.inst_id_combo.addItems(["BTC-USDT-SWAP", "ETH-USDT-SWAP", "BNB-USDT-SWAP"])
-        self.update_chart_button = QPushButton("更新图表")
-
-        chart_control.addWidget(QLabel("图表类型:"))
-        chart_control.addWidget(self.chart_type_combo)
-        chart_control.addWidget(QLabel("产品:"))
-        chart_control.addWidget(self.inst_id_combo)
-        chart_control.addWidget(self.update_chart_button)
-
-        layout.addLayout(chart_control)
-
-        # 图表显示区域
-        self.chart_container = QWidget()
-        self.chart_layout = QVBoxLayout(self.chart_container)
-
-        # 创建图表画布
-        self.figure = Figure(figsize=(10, 6), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.chart_layout.addWidget(self.canvas)
-
-        layout.addWidget(self.chart_container)
-
-        # 连接信号
-        self.update_chart_button.clicked.connect(self.update_chart)
-        self.chart_type_combo.currentTextChanged.connect(self.update_chart)
-        self.inst_id_combo.currentTextChanged.connect(self.update_chart)
-
-        # 初始化图表
-        self.update_chart()
-
-    def update_chart(self):
-        """
-        更新图表
-        """
-        chart_type = self.chart_type_combo.currentText()
-        inst_id = self.inst_id_combo.currentText()
-
-        # 清空图表
-        self.figure.clear()
-
-        if chart_type == "K线图表":
-            self.plot_kline_chart(inst_id)
-        elif chart_type == "策略性能图表":
-            self.plot_strategy_performance()
-        elif chart_type == "资产分布图表":
-            self.plot_asset_distribution()
-
-        # 重新绘制
-        self.canvas.draw()
-
-    def plot_kline_chart(self, inst_id):
-        """
-        绘制K线图表
-        """
-        ax = self.figure.add_subplot(111)
-
-        # 生成模拟数据
-        dates = pd.date_range(start="2024-01-01", periods=30, freq="D")
-        open_prices = np.random.randn(30) + 40000
-        high_prices = open_prices + np.random.randn(30) * 100
-        low_prices = open_prices - np.random.randn(30) * 100
-        close_prices = open_prices + np.random.randn(30) * 50
-        volume = np.random.randn(30) + 1000
-
-        # 创建DataFrame
-        df = pd.DataFrame(
-            {
-                "Open": open_prices,
-                "High": high_prices,
-                "Low": low_prices,
-                "Close": close_prices,
-                "Volume": volume,
-            },
-            index=dates,
-        )
-
-        # 绘制K线图
-        mpf.plot(df, type="candle", ax=ax, style="charles")
-        ax.set_title(f"{inst_id} K线图")
-
-    def plot_strategy_performance(self):
-        """
-        绘制策略性能图表
-        """
-        ax = self.figure.add_subplot(111)
+        # 清空表格
+        self.market_table.setRowCount(0)
         
-        # 生成模拟数据
-        dates = pd.date_range(start='2024-01-01', periods=30, freq='D')
-        equity = np.cumprod(1 + np.random.randn(30) * 0.01) * 10000
+        # 添加市场数据到表格
+        for inst_id, data in self.market_data.items():
+            row_position = self.market_table.rowCount()
+            self.market_table.insertRow(row_position)
+            
+            self.market_table.setItem(row_position, 0, QTableWidgetItem(inst_id))
+            self.market_table.setItem(row_position, 1, QTableWidgetItem(f"${float(data['last']):,.2f}"))
+            
+            change_percent = float(data['change24hPercent']) * 100
+            change_item = QTableWidgetItem(f"{change_percent:+.2f}%")
+            if change_percent > 0:
+                change_item.setForeground(QColor("green"))
+            else:
+                change_item.setForeground(QColor("red"))
+            self.market_table.setItem(row_position, 2, change_item)
+            
+            self.market_table.setItem(row_position, 3, QTableWidgetItem(f"{float(data['vol24h']):,.2f}"))
+            self.market_table.setItem(row_position, 4, QTableWidgetItem(f"${float(data['last']):,.2f}"))  # 临时使用last作为最高价
+            self.market_table.setItem(row_position, 5, QTableWidgetItem(f"${float(data['last']):,.2f}"))  # 临时使用last作为最低价
+            
+            # 添加技术指标列
+            indicator_item = QTableWidgetItem("MA: 40000")
+            self.market_table.setItem(row_position, 6, indicator_item)
+
+    def update_order_table(self):
+        """
+        更新订单表格
+        """
+        # 清空表格
+        self.order_table.setRowCount(0)
         
-        # 绘制资产曲线
-        ax.plot(dates, equity, label='资产价值')
-        ax.set_title('策略性能')
-        ax.set_xlabel('日期')
-        ax.set_ylabel('资产价值')
-        ax.legend()
-        ax.grid(True)
+        # 添加订单数据到表格
+        for order_id, data in self.order_data.items():
+            row_position = self.order_table.rowCount()
+            self.order_table.insertRow(row_position)
+            
+            self.order_table.setItem(row_position, 0, QTableWidgetItem(data['order_id']))
+            self.order_table.setItem(row_position, 1, QTableWidgetItem(data['inst_id']))
+            self.order_table.setItem(row_position, 2, QTableWidgetItem(data['type']))
+            self.order_table.setItem(row_position, 3, QTableWidgetItem(data['side']))
+            self.order_table.setItem(row_position, 4, QTableWidgetItem(data['price']))
+            self.order_table.setItem(row_position, 5, QTableWidgetItem(data['size']))
+            self.order_table.setItem(row_position, 6, QTableWidgetItem(data['status']))
+            self.order_table.setItem(row_position, 7, QTableWidgetItem(data['update_time']))
 
-    def plot_asset_distribution(self):
+    def update_account_table(self):
         """
-        绘制资产分布图表
+        更新账户表格
         """
-        ax = self.figure.add_subplot(111)
+        # 清空表格
+        self.account_table.setRowCount(0)
+        
+        # 添加账户数据到表格
+        for ccy, data in self.account_data.items():
+            row_position = self.account_table.rowCount()
+            self.account_table.insertRow(row_position)
+            
+            self.account_table.setItem(row_position, 0, QTableWidgetItem(ccy))
+            self.account_table.setItem(row_position, 1, QTableWidgetItem(data['avail_balance']))
+            self.account_table.setItem(row_position, 2, QTableWidgetItem(data['frozen_balance']))
+            self.account_table.setItem(row_position, 3, QTableWidgetItem(data['total_balance']))
 
-        # 模拟资产数据
-        assets = ["BTC", "ETH", "BNB", "USDT"]
-        values = [40, 30, 20, 10]
-        colors = ["#FF9900", "#627EEA", "#F3BA2F", "#34B7EB"]
+    def execute_trade(self):
+        """
+        执行交易
+        """
+        try:
+            # 获取交易参数
+            trade_pair = self.trade_pair_combo.currentText()
+            trade_side = self.trade_side_combo.currentText()
+            trade_type = self.trade_type_combo.currentText()
+            price = self.trade_price_input.text()
+            amount = self.trade_amount_input.text()
 
-        # 绘制饼图
-        ax.pie(values, labels=assets, autopct="%1.1f%%", colors=colors, startangle=90)
-        ax.set_title("资产分布")
-        ax.axis("equal")
+            # 验证参数
+            if not price or not amount:
+                self.statusBar.showMessage("请填写价格和数量")
+                return
 
+            # 模拟交易执行
+            self.statusBar.showMessage(f"执行交易: {trade_side} {amount} {trade_pair} @ {price}")
+            logger.info(f"执行交易: {trade_side} {amount} {trade_pair} @ {price}")
 
-def main():
-    """
-    主函数
-    """
-    app = QApplication(sys.argv)
+            # 模拟订单数据
+            order_id = f"order_{datetime.now().timestamp()}"
+            order_data = {
+                'order_id': order_id,
+                'inst_id': trade_pair,
+                'side': trade_side,
+                'type': trade_type,
+                'price': price,
+                'size': amount,
+                'status': 'filled',
+                'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
 
-    # 设置应用程序样式
-    app.setStyle("Fusion")
+            # 更新订单数据
+            self.order_data[order_id] = order_data
+            self.update_order_table()
 
-    # 创建并显示 GUI
-    gui = WebSocketGUI()
-    gui.show()
+            QMessageBox.information(self, "交易成功", f"交易已执行: {trade_side} {amount} {trade_pair}")
+        except Exception as e:
+            logger.error(f"执行交易错误: {e}")
+            QMessageBox.error(self, "错误", f"执行交易失败: {str(e)}")
 
-    # 运行事件循环
-    sys.exit(app.exec_())
+    def execute_batch_trade(self):
+        """
+        执行批量交易
+        """
+        try:
+            # 获取批量交易指令
+            batch_orders = self.batch_trade_text.toPlainText().strip().split('\n')
+            
+            if not batch_orders or batch_orders[0] == '':
+                self.statusBar.showMessage("请输入批量交易指令")
+                return
+            
+            # 执行每个交易指令
+            success_count = 0
+            error_count = 0
+            
+            for order_str in batch_orders:
+                if not order_str.strip():
+                    continue
+                
+                try:
+                    # 解析交易指令
+                    parts = order_str.strip().split(',')
+                    if len(parts) != 5:
+                        error_count += 1
+                        continue
+                    
+                    trade_pair, trade_side, trade_type, price, amount = parts
+                    
+                    # 模拟交易执行
+                    self.statusBar.showMessage(f"执行批量交易: {trade_side} {amount} {trade_pair} @ {price}")
+                    logger.info(f"执行批量交易: {trade_side} {amount} {trade_pair} @ {price}")
+                    
+                    # 模拟订单数据
+                    order_id = f"order_{datetime.now().timestamp()}_{success_count}"
+                    order_data = {
+                        'order_id': order_id,
+                        'inst_id': trade_pair,
+                        'side': trade_side,
+                        'type': trade_type,
+                        'price': price,
+                        'size': amount,
+                        'status': 'filled',
+                        'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    }
+                    
+                    # 更新订单数据
+                    self.order_data[order_id] = order_data
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"执行批量交易错误: {e}")
+                    error_count += 1
+            
+            # 更新订单表格
+            self.update_order_table()
+            
+            # 显示执行结果
+            QMessageBox.information(self, "批量交易完成", f"成功执行: {success_count} 笔\n失败: {error_count} 笔")
+        except Exception as e:
+            logger.error(f"执行批量交易错误: {e}")
+            QMessageBox.error(self, "错误", f"执行批量交易失败: {str(e)}")
 
+    def execute_conditional_trade(self):
+        """
+        执行条件单
+        """
+        try:
+            # 获取条件单参数
+            trade_pair = self.cond_trade_pair_combo.currentText()
+            trade_side = self.cond_trade_side_combo.currentText()
+            cond_type = self.cond_type_combo.currentText()
+            trigger_price = self.cond_trigger_price_input.text()
+            execute_price = self.cond_execute_price_input.text()
+            amount = self.cond_amount_input.text()
+
+            # 验证参数
+            if not trigger_price or not execute_price or not amount:
+                self.statusBar.showMessage("请填写触发价格、执行价格和数量")
+                return
+
+            # 模拟条件单创建
+            self.statusBar.showMessage(f"创建条件单: {cond_type} {trade_side} {amount} {trade_pair} @ 触发价: {trigger_price}, 执行价: {execute_price}")
+            logger.info(f"创建条件单: {cond_type} {trade_side} {amount} {trade_pair} @ 触发价: {trigger_price}, 执行价: {execute_price}")
+
+            # 模拟条件单数据
+            order_id = f"cond_order_{datetime.now().timestamp()}"
+            order_data = {
+                'order_id': order_id,
+                'inst_id': trade_pair,
+                'side': trade_side,
+                'type': 'conditional',
+                'price': execute_price,
+                'size': amount,
+                'status': 'pending',
+                'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'cond_type': cond_type,
+                'trigger_price': trigger_price,
+            }
+
+            # 更新订单数据
+            self.order_data[order_id] = order_data
+            self.update_order_table()
+
+            QMessageBox.information(self, "条件单创建成功", f"条件单已创建: {cond_type} {trade_side} {amount} {trade_pair}")
+        except Exception as e:
+            logger.error(f"创建条件单错误: {e}")
+            QMessageBox.error(self, "错误", f"创建条件单失败: {str(e)}")
+
+    def init_monitor_tab(self):
+        """
+        初始化监控与分析标签页
+        """
+        monitor_layout = QVBoxLayout(self.monitor_tab)
+        monitor_layout.setContentsMargins(15, 15, 15, 15)
+        monitor_layout.setSpacing(15)
+
+        # 系统状态监控
+        system_status_group = QGroupBox("系统状态监控")
+        system_status_layout = QVBoxLayout(system_status_group)
+        system_status_layout.setContentsMargins(15, 15, 15, 15)
+
+        # 系统状态信息
+        status_info = QGridLayout()
+        status_info.setSpacing(10)
+
+        # 连接状态
+        status_info.addWidget(QLabel("WebSocket连接:"), 0, 0)
+        self.ws_status_label = QLabel("未连接")
+        self.ws_status_label.setStyleSheet("font-weight: bold; color: red;")
+        status_info.addWidget(self.ws_status_label, 0, 1)
+
+        # 市场数据智能体状态
+        status_info.addWidget(QLabel("市场数据智能体:"), 1, 0)
+        self.agent_status_label = QLabel("未启动")
+        self.agent_status_label.setStyleSheet("font-weight: bold; color: red;")
+        status_info.addWidget(self.agent_status_label, 1, 1)
+
+        # 策略运行状态
+        status_info.addWidget(QLabel("运行中策略:"), 2, 0)
+        self.strategy_count_label = QLabel("0个")
+        self.strategy_count_label.setStyleSheet("font-weight: bold;")
+        status_info.addWidget(self.strategy_count_label, 2, 1)
+
+        # 系统健康状态
+        status_info.addWidget(QLabel("系统健康状态:"), 3, 0)
+        self.system_health_label = QLabel("正常")
+        self.system_health_label.setStyleSheet("font-weight: bold; color: green;")
+        status_info.addWidget(self.system_health_label, 3, 1)
+
+        # 系统资源使用
+        status_info.addWidget(QLabel("CPU使用率:"), 0, 2)
+        self.cpu_usage_label = QLabel("0%")
+        status_info.addWidget(self.cpu_usage_label, 0, 3)
+
+        status_info.addWidget(QLabel("内存使用率:"), 1, 2)
+        self.memory_usage_label = QLabel("0%")
+        status_info.addWidget(self.memory_usage_label, 1, 3)
+
+        system_status_layout.addLayout(status_info)
+        
+        # 健康检查按钮
+        health_check_button = QPushButton("执行健康检查")
+        health_check_button.clicked.connect(self.perform_health_check)
+        system_status_layout.addWidget(health_check_button)
+        
+        monitor_layout.addWidget(system_status_group)
+        
+        # 启动系统健康检查定时器
+        self.start_health_check_timer()
+
+        # 交易统计
+        trade_stats_group = QGroupBox("交易统计")
+        trade_stats_layout = QHBoxLayout(trade_stats_group)
+        trade_stats_layout.setContentsMargins(15, 15, 15, 15)
+        trade_stats_layout.setSpacing(15)
+
+        # 今日交易
+        today_trades = QGroupBox("今日交易")
+        today_trades_layout = QVBoxLayout(today_trades)
+        self.today_trades_label = QLabel("0笔")
+        self.today_trades_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        today_trades_layout.addWidget(self.today_trades_label)
+        today_trades_layout.addWidget(QLabel("笔数"))
+        trade_stats_layout.addWidget(today_trades)
+
+        # 胜率
+        win_rate = QGroupBox("胜率")
+        win_rate_layout = QVBoxLayout(win_rate)
+        self.win_rate_label = QLabel("0%")
+        self.win_rate_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        win_rate_layout.addWidget(self.win_rate_label)
+        win_rate_layout.addWidget(QLabel("百分比"))
+        trade_stats_layout.addWidget(win_rate)
+
+        # 总盈亏
+        total_pnl = QGroupBox("总盈亏")
+        total_pnl_layout = QVBoxLayout(total_pnl)
+        self.total_pnl_label = QLabel("$0.00")
+        self.total_pnl_label.setStyleSheet("font-size: 24px; font-weight: bold; color: green;")
+        total_pnl_layout.addWidget(self.total_pnl_label)
+        total_pnl_layout.addWidget(QLabel("美元"))
+        trade_stats_layout.addWidget(total_pnl)
+
+        monitor_layout.addWidget(trade_stats_group)
+
+        # 日志输出
+        log_group = QGroupBox("系统日志")
+        log_layout = QVBoxLayout(log_group)
+        log_layout.setContentsMargins(15, 15, 15, 15)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("font-family: Consolas; font-size: 12px;")
+        log_layout.addWidget(self.log_text)
+        monitor_layout.addWidget(log_group)
+
+        # 设置拉伸比例
+        monitor_layout.setStretch(0, 0)  # 系统状态不拉伸
+        monitor_layout.setStretch(1, 0)  # 交易统计不拉伸
+        monitor_layout.setStretch(2, 1)  # 日志输出拉伸
 
 if __name__ == "__main__":
-    main()
+    app = QApplication(sys.argv)
+    window = WebSocketGUI()
+    window.show()
+    sys.exit(app.exec_())

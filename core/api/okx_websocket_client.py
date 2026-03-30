@@ -116,7 +116,14 @@ class OKXWebSocketClient:
         url = self.PUBLIC_URL_TEST if self.is_test else self.PUBLIC_URL
 
         try:
-            self.public_ws = await websockets.connect(url)
+            # 配置安全的WebSocket连接
+            self.public_ws = await websockets.connect(
+                url,
+                ssl=True,  # 启用SSL
+                max_size=2 * 1024 * 1024,  # 限制消息大小为2MB
+                ping_interval=30,  # 心跳间隔
+                ping_timeout=60,  # 心跳超时
+            )
             self._public_connected = True
 
             # 启动消息接收任务
@@ -157,7 +164,14 @@ class OKXWebSocketClient:
         url = self.PRIVATE_URL_TEST if self.is_test else self.PRIVATE_URL
 
         try:
-            self.private_ws = await websockets.connect(url)
+            # 配置安全的WebSocket连接
+            self.private_ws = await websockets.connect(
+                url,
+                ssl=True,  # 启用SSL
+                max_size=2 * 1024 * 1024,  # 限制消息大小为2MB
+                ping_interval=30,  # 心跳间隔
+                ping_timeout=60,  # 心跳超时
+            )
             self._private_connected = True
 
             # 登录
@@ -539,7 +553,7 @@ class OKXWebSocketClient:
         delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["public"] - 1)), self._max_reconnect_delay)
         
         logger.info(
-            f"尝试重新连接公共WebSocket ({self._reconnect_attempts['public']}/{self._max_reconnect_attempts})，延迟 {delay:.2f}秒"
+            f"尝试重新连接公共WebSocket ({self._reconnect_attempts['public']})，延迟 {delay:.2f}秒"
         )
 
         await asyncio.sleep(delay)
@@ -548,17 +562,10 @@ class OKXWebSocketClient:
             self._reconnect_attempts["public"] = 0
             return
 
-        if self._reconnect_attempts["public"] >= self._max_reconnect_attempts:
-            logger.error("公共WebSocket重连失败")
-            await self.event_bus.publish_async(
-                Event(
-                    type=EventType.WS_DISCONNECTED,
-                    source="websocket_client",
-                    data={"channel": "public", "reconnect_failed": True},
-                )
-            )
-            # 重置重连尝试次数
-            self._reconnect_attempts["public"] = 0
+        # 持续尝试重新连接，不设置最大重试次数
+        logger.warning("公共WebSocket重连失败，将继续尝试")
+        # 继续尝试重新连接
+        asyncio.create_task(self._reconnect_public())
 
     async def _reconnect_private(self):
         """重新连接私有频道"""
@@ -568,7 +575,7 @@ class OKXWebSocketClient:
         delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["private"] - 1)), self._max_reconnect_delay)
         
         logger.info(
-            f"尝试重新连接私有WebSocket ({self._reconnect_attempts['private']}/{self._max_reconnect_attempts})，延迟 {delay:.2f}秒"
+            f"尝试重新连接私有WebSocket ({self._reconnect_attempts['private']})，延迟 {delay:.2f}秒"
         )
 
         await asyncio.sleep(delay)
@@ -577,17 +584,10 @@ class OKXWebSocketClient:
             self._reconnect_attempts["private"] = 0
             return
 
-        if self._reconnect_attempts["private"] >= self._max_reconnect_attempts:
-            logger.error("私有WebSocket重连失败")
-            await self.event_bus.publish_async(
-                Event(
-                    type=EventType.WS_DISCONNECTED,
-                    source="websocket_client",
-                    data={"channel": "private", "reconnect_failed": True},
-                )
-            )
-            # 重置重连尝试次数
-            self._reconnect_attempts["private"] = 0
+        # 持续尝试重新连接，不设置最大重试次数
+        logger.warning("私有WebSocket重连失败，将继续尝试")
+        # 继续尝试重新连接
+        asyncio.create_task(self._reconnect_private())
 
     async def _connection_monitor(self):
         """连接监控任务，检测连接状态和心跳超时"""

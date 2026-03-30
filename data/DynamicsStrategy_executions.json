@@ -1,0 +1,43 @@
+[
+  {
+    "timestamp": "2026-03-30T17:09:12.614611",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "exec_1774861752614",
+    "event_type": "start",
+    "details": {
+      "price": 50000.0,
+      "timestamp": 1234567890
+    }
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.616234",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "exec_1774861752614",
+    "event_type": "end",
+    "details": {
+      "signal": {
+        "strategy": "DynamicsStrategy",
+        "side": "neutral",
+        "price": 50000.0,
+        "signal_strength": 0,
+        "timestamp": 1234567890,
+        "inst_id": "BTC-USDT-SWAP"
+      },
+      "execution_time": "0.002s"
+    }
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.628794",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.630886",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

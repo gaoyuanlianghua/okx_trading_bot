@@ -1,0 +1,36 @@
+[
+  {
+    "timestamp": "2026-03-30T17:09:12.538556",
+    "strategy": "BaseStrategy",
+    "execution_id": "exec_1774861752538",
+    "event_type": "start",
+    "details": {
+      "price": 50000.0,
+      "timestamp": 1234567890
+    }
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.586815",
+    "strategy": "BaseStrategy",
+    "execution_id": "exec_1774861752538",
+    "event_type": "error",
+    "details": {
+      "error": "子类必须实现_execute_strategy方法",
+      "execution_time": "0.048s"
+    }
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.594828",
+    "strategy": "BaseStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-03-30T17:09:12.596430",
+    "strategy": "BaseStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

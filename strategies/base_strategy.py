@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 from core.monitoring import strategy_monitor
+from core.storage.data_persistence import data_persistence
 
 logger = logging.getLogger("Strategy")
 
@@ -30,15 +31,17 @@ class BaseStrategy:
             "max_drawdown": 0,
             "sharpe_ratio": 0,
         }
-        self.trade_logs = []
-        self.execution_logs = []
+        
+        # 加载历史日志
+        self.trade_logs = data_persistence.load_trade_logs(self.name)
+        self.execution_logs = data_persistence.load_execution_logs(self.name)
         self.last_execution_time = None
 
         # 注册策略到监控器
         strategy_monitor.register_strategy(self.name)
         strategy_monitor.update_strategy_status(self.name, self.status)
 
-        logger.info(f"策略初始化完成: {self.name}")
+        logger.info(f"策略初始化完成: {self.name}, 加载了 {len(self.trade_logs)} 条交易记录, {len(self.execution_logs)} 条执行记录")
 
     def execute(self, market_data):
         """执行策略，生成交易信号
@@ -259,6 +262,9 @@ class BaseStrategy:
         }
         self.trade_logs.append(trade_log)
         logger.info(f"交易记录: {json.dumps(trade_log, ensure_ascii=False)}")
+        
+        # 保存到文件
+        data_persistence.save_trade_logs(self.name, self.trade_logs)
 
     def _log_execution(self, execution_id, event_type, details):
         """记录执行日志
@@ -277,6 +283,9 @@ class BaseStrategy:
         }
         self.execution_logs.append(execution_log)
         logger.debug(f"执行记录: {json.dumps(execution_log, ensure_ascii=False)}")
+        
+        # 保存到文件
+        data_persistence.save_execution_logs(self.name, self.execution_logs)
 
     def get_trade_logs(self, limit=100):
         """获取交易日志
@@ -304,6 +313,9 @@ class BaseStrategy:
         """清空日志"""
         self.trade_logs = []
         self.execution_logs = []
+        # 清空文件中的数据
+        data_persistence.save_trade_logs(self.name, self.trade_logs)
+        data_persistence.save_execution_logs(self.name, self.execution_logs)
         logger.info(f"策略日志已清空: {self.name}")
 
     @property
