@@ -447,6 +447,55 @@ class RiskAgent(BaseAgent):
         """清空当前警报"""
         self._alerts.clear()
 
+    def calculate_sharpe_ratio(self, returns: List[float]) -> float:
+        """计算夏普比率
+        
+        Args:
+            returns: 收益率列表
+            
+        Returns:
+            float: 夏普比率
+        """
+        import numpy as np
+        
+        if not returns:
+            return 0.0
+        
+        mean_return = np.mean(returns)
+        std_return = np.std(returns)
+        
+        if std_return == 0:
+            return 0.0
+        
+        # 假设无风险利率为0
+        sharpe_ratio = mean_return / std_return
+        return sharpe_ratio
+    
+    def calculate_max_drawdown(self, prices: List[float]) -> float:
+        """计算最大回撤
+        
+        Args:
+            prices: 价格列表
+            
+        Returns:
+            float: 最大回撤比例
+        """
+        if not prices or len(prices) < 2:
+            return 0.0
+        
+        import numpy as np
+        prices = np.array(prices)
+        
+        # 计算累计最大值
+        cumulative_max = np.maximum.accumulate(prices)
+        
+        # 计算回撤
+        drawdown = (prices - cumulative_max) / cumulative_max
+        
+        # 计算最大回撤
+        max_drawdown = np.min(drawdown)
+        return abs(max_drawdown)
+    
     def get_status(self) -> Dict[str, Any]:
         """获取状态"""
         base_status = super().get_status()

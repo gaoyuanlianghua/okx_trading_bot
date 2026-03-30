@@ -49,6 +49,12 @@ class MarketDataAgent(BaseAgent):
         # API客户端
         self.rest_client = exchange_manager.get_exchange(exchange_name, **exchange_kwargs)
         self.ws_client = exchange_manager.get_websocket_client(exchange_name, **exchange_kwargs)
+        
+        # 确保客户端初始化成功
+        if not self.rest_client:
+            logger.warning(f"无法创建{exchange_name} REST客户端，部分功能可能不可用")
+        if not self.ws_client:
+            logger.warning(f"无法创建{exchange_name} WebSocket客户端，部分功能可能不可用")
 
         # 数据缓存
         self._ticker_cache: Dict[str, Dict] = {}

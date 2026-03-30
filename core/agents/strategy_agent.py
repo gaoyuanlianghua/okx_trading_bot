@@ -90,137 +90,145 @@ class StrategyAgent(BaseAgent):
     async def _load_default_strategies(self):
         """加载默认策略"""
         try:
-            # 导入策略类
-            from strategies.base_strategy import BaseStrategy
-            from strategies.dynamics_strategy import DynamicsStrategy
-            from strategies.passivbot_integrator import PassivbotIntegrator
-            from strategies.combined_strategy import CombinedStrategy
-            from strategies.machine_learning_strategy import MachineLearningStrategy
-            from strategies.arbitrage_strategy import ArbitrageStrategy
-            from strategies.cross_market_arbitrage_strategy import CrossMarketArbitrageStrategy
+            logger.info("开始加载默认策略...")
             
-            # 创建动力学策略
-            dynamics_config = {
-                "dynamics": {
-                    "ε": 0.85,
-                    "G_eff": 1.2e-3,
-                    "n": 3,
-                    "η": 0.75,
-                    "γ": 0.1,
-                    "κ": 2.5,
-                    "λ": 3.0,
-                    "t_coll": 0.1,
-                }
-            }
-
-            dynamics_strategy = DynamicsStrategy(config=dynamics_config)
-            self._strategies["DynamicsStrategy"] = dynamics_strategy
-
-            logger.info(f"加载策略成功: DynamicsStrategy")
-
-            # 创建Passivbot策略
-            passivbot_config = {
-                "broker": "okx",
-                "symbol": "BTC-USDT-SWAP",
-                "timeframe": "1h",
-                "strategy": "default",
-            }
-
-            passivbot_strategy = PassivbotIntegrator(config=passivbot_config)
-            self._strategies["PassivbotStrategy"] = passivbot_strategy
-
-            logger.info(f"加载策略成功: PassivbotStrategy")
-
-            # 创建机器学习策略
-            ml_config = {
-                "window_size": 20,
-                "threshold": 0.001,
-                "lookback": 100
-            }
-
-            ml_strategy = MachineLearningStrategy(config=ml_config)
-            self._strategies["MachineLearningStrategy"] = ml_strategy
-
-            logger.info(f"加载策略成功: MachineLearningStrategy")
-
-            # 创建套利策略
-            arb_config = {
-                "arb_pairs": [
-                    {
-                        "inst_id1": "BTC-USDT-SWAP",
-                        "inst_id2": "BTC-USDT",
-                        "ratio": 1.0
-                    },
-                    {
-                        "inst_id1": "ETH-USDT-SWAP",
-                        "inst_id2": "ETH-USDT",
-                        "ratio": 1.0
-                    }
-                ],
-                "min_profit": 0.001,
-                "max_trade_amount": 0.01
-            }
-
-            arb_strategy = ArbitrageStrategy(config=arb_config)
-            self._strategies["ArbitrageStrategy"] = arb_strategy
-
-            logger.info(f"加载策略成功: ArbitrageStrategy")
-
-            # 创建组合策略
-            combined_config = {
-                "sub_strategies": [
-                    {
-                        "name": "DynamicsStrategy",
-                        "class": DynamicsStrategy,
-                        "config": dynamics_config,
-                        "weight": 0.3,
-                    },
-                    {
-                        "name": "PassivbotStrategy",
-                        "class": PassivbotIntegrator,
-                        "config": passivbot_config,
-                        "weight": 0.3,
-                    },
-                    {
-                        "name": "MachineLearningStrategy",
-                        "class": MachineLearningStrategy,
-                        "config": ml_config,
-                        "weight": 0.2,
-                    },
-                    {
-                        "name": "ArbitrageStrategy",
-                        "class": ArbitrageStrategy,
-                        "config": arb_config,
-                        "weight": 0.2,
-                    },
-                ]
-            }
-
-            combined_strategy = CombinedStrategy(config=combined_config)
-            self._strategies["CombinedStrategy"] = combined_strategy
-
-            logger.info(f"加载策略成功: CombinedStrategy")
-
-            # 创建跨市场套利策略
-            cross_market_config = {
-                "arbitrage_threshold": 0.5,
-                "max_trade_amount": 10000,
-                "min_trade_amount": 100,
-                "exchanges": ["okx", "binance"],
-                "trading_pairs": ["BTC/USDT", "ETH/USDT"],
-                "polling_interval": 1,
-                "max_position": 0.1,
-                "fee_estimate": 0.1,
-                "profit_threshold": 0.1
-            }
-
-            cross_market_strategy = CrossMarketArbitrageStrategy(config=cross_market_config)
-            self._strategies["CrossMarketArbitrageStrategy"] = cross_market_strategy
-
-            logger.info(f"加载策略成功: CrossMarketArbitrageStrategy")
+            # 尝试导入策略类
+            strategies_to_load = [
+                ("DynamicsStrategy", "strategies.dynamics_strategy", "DynamicsStrategy"),
+                ("PassivbotStrategy", "strategies.passivbot_integrator", "PassivbotIntegrator"),
+                ("MachineLearningStrategy", "strategies.machine_learning_strategy", "MachineLearningStrategy"),
+                ("ArbitrageStrategy", "strategies.arbitrage_strategy", "ArbitrageStrategy"),
+                ("CrossMarketArbitrageStrategy", "strategies.cross_market_arbitrage_strategy", "CrossMarketArbitrageStrategy"),
+                ("CombinedStrategy", "strategies.combined_strategy", "CombinedStrategy"),
+            ]
+            
+            loaded_strategies = {}
+            
+            # 先加载基础策略
+            try:
+                from strategies.base_strategy import BaseStrategy
+                logger.info("导入基础策略类成功")
+            except Exception as e:
+                logger.error(f"导入基础策略类失败: {e}")
+                return
+            
+            # 加载各个策略
+            for strategy_name, module_name, class_name in strategies_to_load:
+                try:
+                    logger.info(f"导入{strategy_name}...")
+                    module = __import__(module_name, fromlist=[class_name])
+                    strategy_class = getattr(module, class_name)
+                    
+                    # 根据策略类型创建配置
+                    if strategy_name == "DynamicsStrategy":
+                        config = {
+                            "dynamics": {
+                                "ε": 0.85,
+                                "G_eff": 1.2e-3,
+                                "n": 3,
+                                "η": 0.75,
+                                "γ": 0.1,
+                                "κ": 2.5,
+                                "λ": 3.0,
+                                "t_coll": 0.1,
+                            }
+                        }
+                    elif strategy_name == "PassivbotStrategy":
+                        config = {
+                            "broker": "okx",
+                            "symbol": "BTC-USDT-SWAP",
+                            "timeframe": "1h",
+                            "strategy": "default",
+                        }
+                    elif strategy_name == "MachineLearningStrategy":
+                        config = {
+                            "window_size": 20,
+                            "threshold": 0.001,
+                            "lookback": 100
+                        }
+                    elif strategy_name == "ArbitrageStrategy":
+                        config = {
+                            "arb_pairs": [
+                                {
+                                    "inst_id1": "BTC-USDT-SWAP",
+                                    "inst_id2": "BTC-USDT",
+                                    "ratio": 1.0
+                                },
+                                {
+                                    "inst_id1": "ETH-USDT-SWAP",
+                                    "inst_id2": "ETH-USDT",
+                                    "ratio": 1.0
+                                }
+                            ],
+                            "min_profit": 0.001,
+                            "max_trade_amount": 0.01
+                        }
+                    elif strategy_name == "CrossMarketArbitrageStrategy":
+                        config = {
+                            "arbitrage_threshold": 0.5,
+                            "max_trade_amount": 10000,
+                            "min_trade_amount": 100,
+                            "exchanges": ["okx", "binance"],
+                            "trading_pairs": ["BTC/USDT", "ETH/USDT"],
+                            "polling_interval": 1,
+                            "max_position": 0.1,
+                            "fee_estimate": 0.1,
+                            "profit_threshold": 0.1
+                        }
+                    elif strategy_name == "CombinedStrategy":
+                        # 组合策略需要其他策略已经加载
+                        if "DynamicsStrategy" in loaded_strategies and "PassivbotStrategy" in loaded_strategies and "MachineLearningStrategy" in loaded_strategies and "ArbitrageStrategy" in loaded_strategies:
+                            config = {
+                                "sub_strategies": [
+                                    {
+                                        "name": "DynamicsStrategy",
+                                        "class": loaded_strategies["DynamicsStrategy"],
+                                        "config": loaded_strategies["DynamicsStrategy"].config,
+                                        "weight": 0.3,
+                                    },
+                                    {
+                                        "name": "PassivbotStrategy",
+                                        "class": loaded_strategies["PassivbotStrategy"],
+                                        "config": loaded_strategies["PassivbotStrategy"].config,
+                                        "weight": 0.3,
+                                    },
+                                    {
+                                        "name": "MachineLearningStrategy",
+                                        "class": loaded_strategies["MachineLearningStrategy"],
+                                        "config": loaded_strategies["MachineLearningStrategy"].config,
+                                        "weight": 0.2,
+                                    },
+                                    {
+                                        "name": "ArbitrageStrategy",
+                                        "class": loaded_strategies["ArbitrageStrategy"],
+                                        "config": loaded_strategies["ArbitrageStrategy"].config,
+                                        "weight": 0.2,
+                                    },
+                                ]
+                            }
+                        else:
+                            logger.warning("组合策略依赖的策略未加载，跳过加载")
+                            continue
+                    else:
+                        config = {}
+                    
+                    # 创建策略实例
+                    strategy = strategy_class(config=config)
+                    self._strategies[strategy_name] = strategy
+                    loaded_strategies[strategy_name] = strategy_class
+                    logger.info(f"加载策略成功: {strategy_name}")
+                except Exception as e:
+                    logger.error(f"加载策略 {strategy_name} 失败: {e}")
+                    import traceback
+                    logger.error(f"详细错误信息: {traceback.format_exc()}")
+                    continue
+            
+            logger.info(f"所有策略加载完成，共 {len(self._strategies)} 个策略")
 
         except Exception as e:
             logger.error(f"加载默认策略失败: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     async def _execute_strategy_cycle(self, strategy_name: str):
         """执行策略周期"""
