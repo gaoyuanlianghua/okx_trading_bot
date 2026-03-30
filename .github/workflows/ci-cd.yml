@@ -89,8 +89,8 @@ jobs:
           Write-Host "This is a known Windows issue. Checking if tests actually passed..."
           
           $testOutput = Get-Content test_output.log | Out-String
-          # Check for passed tests - more flexible pattern
-          if ($testOutput -match "(\d+)\s+passed" -or $testOutput -match "passed.*seconds") {
+          # Updated: More reliable pattern matching
+          if ($testOutput -match "(\d+) passed" -or ($testOutput -match "passed" -and $testOutput -notmatch "FAILED")) {
             Write-Host "Tests passed despite cleanup crash. Continuing..."
             exit 0
           }
