@@ -1,0 +1,49 @@
+api:
+  api_key: ''
+  api_secret: ''
+  is_test: true
+  passphrase: ''
+  timeout: 30
+backtesting:
+  data_source: okx
+  end_date: '2024-01-31'
+  initial_balance: 10000
+  start_date: '2024-01-01'
+  timeframe: 1m
+gui:
+  refresh_interval: 2
+  show_count: 20
+  theme: light
+logging:
+  level: INFO
+  log_dir: logs
+  structured: false
+market:
+  default_inst_id: BTC-USDT-SWAP
+  subscribed_instruments:
+  - BTC-USDT-SWAP
+  - ETH-USDT-SWAP
+  websocket:
+    ping_interval: 20
+    reconnect_attempts: 10
+    reconnect_delay: 5
+risk:
+  alert_thresholds:
+    drawdown: 0.05
+    leverage: 8
+    position_size: 0.4
+  max_drawdown: 0.1
+  max_leverage: 10
+  max_position_percent: 0.5
+  stop_loss_enabled: true
+  take_profit_enabled: true
+strategy:
+  default_strategy: DynamicsStrategy
+  strategies:
+    DynamicsStrategy:
+      G_eff: 0.0012
+      max_position: 0.5
+      position_size: 0.1
+      stop_loss: 0.02
+      take_profit: 0.05
+      ε: 0.85

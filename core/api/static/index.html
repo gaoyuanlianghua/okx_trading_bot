@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OKX交易机器人管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        info: '#6366f1',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .sidebar-active {
+                @apply bg-blue-100 text-blue-700;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="flex h-screen overflow-hidden">
+        <!-- 侧边栏 -->
+        <aside class="w-64 bg-white border-r border-gray-200 shadow-sm hidden md:block">
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-800 flex items-center">
+                    <i class="fa fa-line-chart mr-2 text-primary"></i>
+                    交易机器人管理
+                </h1>
+            </div>
+            <nav class="p-4">
+                <ul class="space-y-2">
+                    <li>
+                        <a href="#dashboard" class="flex items-center px-4 py-2 rounded-lg sidebar-active" data-page="dashboard">
+                            <i class="fa fa-dashboard w-5 text-center mr-2"></i>
+                            <span>仪表盘</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#bots" class="flex items-center px-4 py-2 rounded-lg hover:bg-gray-100" data-page="bots">
+                            <i class="fa fa-robot w-5 text-center mr-2"></i>
+                            <span>机器人管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#strategies" class="flex items-center px-4 py-2 rounded-lg hover:bg-gray-100" data-page="strategies">
+                            <i class="fa fa-lightbulb-o w-5 text-center mr-2"></i>
+                            <span>策略管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#orders" class="flex items-center px-4 py-2 rounded-lg hover:bg-gray-100" data-page="orders">
+                            <i class="fa fa-shopping-cart w-5 text-center mr-2"></i>
+                            <span>订单管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#analysis" class="flex items-center px-4 py-2 rounded-lg hover:bg-gray-100" data-page="analysis">
+                            <i class="fa fa-bar-chart w-5 text-center mr-2"></i>
+                            <span>市场分析</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#settings" class="flex items-center px-4 py-2 rounded-lg hover:bg-gray-100" data-page="settings">
+                            <i class="fa fa-cog w-5 text-center mr-2"></i>
+                            <span>系统设置</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            <div class="absolute bottom-0 w-64 p-4 border-t border-gray-200">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
+                        <i class="fa fa-user text-gray-600"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-700">管理员</p>
+                        <p class="text-xs text-gray-500">admin@example.com</p>
+                    </div>
+                    <button class="ml-auto text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-sign-out"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- 顶部导航栏 -->
+            <header class="bg-white shadow-sm z-10">
+                <div class="flex items-center justify-between p-4">
+                    <div class="flex items-center md:hidden">
+                        <button id="sidebar-toggle" class="text-gray-500 hover:text-gray-700">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <h2 class="ml-3 text-lg font-semibold text-gray-800">交易机器人管理</h2>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="relative">
+                            <input type="text" placeholder="搜索..." class="pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <div class="relative">
+                            <button class="text-gray-500 hover:text-gray-700">
+                                <i class="fa fa-bell"></i>
+                                <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 内容区域 -->
+            <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <!-- 仪表盘页面 -->
+                <div id="dashboard-page" class="page-content">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">仪表盘</h2>
+                    
+                    <!-- 统计卡片 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-500">总交易量</p>
+                                    <h3 class="text-2xl font-bold text-gray-800">$125,432</h3>
+                                    <p class="text-sm text-green-600 mt-1"><i class="fa fa-arrow-up"></i> 12.5% 较昨日</p>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-primary">
+                                    <i class="fa fa-exchange"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-500">活跃机器人</p>
+                                    <h3 class="text-2xl font-bold text-gray-800">5</h3>
+                                    <p class="text-sm text-green-600 mt-1"><i class="fa fa-arrow-up"></i> 2 较昨日</p>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-secondary">
+                                    <i class="fa fa-robot"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-500">总收益</p>
+                                    <h3 class="text-2xl font-bold text-gray-800">$8,743</h3>
+                                    <p class="text-sm text-green-600 mt-1"><i class="fa fa-arrow-up"></i> 8.2% 本月</p>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-secondary">
+                                    <i class="fa fa-line-chart"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-500">待处理订单</p>
+                                    <h3 class="text-2xl font-bold text-gray-800">12</h3>
+                                    <p class="text-sm text-red-600 mt-1"><i class="fa fa-arrow-up"></i> 3 较昨日</p>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-warning">
+                                    <i class="fa fa-clock-o"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 图表区域 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">收益趋势</h3>
+                            <div class="h-64">
+                                <canvas id="profitChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">机器人状态</h3>
+                            <div class="h-64">
+                                <canvas id="botStatusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 最近交易 -->
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">最近交易</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="border-b border-gray-200">
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">时间</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">交易对</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">类型</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">价格</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">数量</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:45</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">BTC/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">买入</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$45,234</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">0.05</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:30</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">ETH/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-red-600">卖出</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$3,245</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">1.2</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:15</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">BTC/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-red-600">卖出</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$45,345</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">0.03</td>
+                                        <td class="py-3 px-4 text-sm text-yellow-600">处理中</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:00</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">SOL/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">买入</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$123.45</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">10</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 机器人管理页面 -->
+                <div id="bots-page" class="page-content hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">机器人管理</h2>
+                    
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="relative">
+                            <input type="text" placeholder="搜索机器人..." class="pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <button class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">
+                            <i class="fa fa-plus mr-2"></i>
+                            创建机器人
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="border-b border-gray-200">
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">机器人名称</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">策略</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">状态</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">当前收益</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">运行时间</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">BTC趋势跟踪</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">移动平均线策略</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">运行中</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">+12.5%</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2d 14h</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-red-600 hover:text-red-800 mr-3">
+                                                <i class="fa fa-stop"></i>
+                                            </button>
+                                            <button class="text-blue-600 hover:text-blue-800 mr-3">
+                                                <i class="fa fa-pencil"></i>
+                                            </button>
+                                            <button class="text-gray-600 hover:text-gray-800">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">ETH套利</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">套利策略</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">运行中</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">+8.3%</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">1d 8h</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-red-600 hover:text-red-800 mr-3">
+                                                <i class="fa fa-stop"></i>
+                                            </button>
+                                            <button class="text-blue-600 hover:text-blue-800 mr-3">
+                                                <i class="fa fa-pencil"></i>
+                                            </button>
+                                            <button class="text-gray-600 hover:text-gray-800">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">SOL均值回归</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">均值回归策略</td>
+                                        <td class="py-3 px-4 text-sm text-gray-500">已停止</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">+5.7%</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">3d 6h</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-green-600 hover:text-green-800 mr-3">
+                                                <i class="fa fa-play"></i>
+                                            </button>
+                                            <button class="text-blue-600 hover:text-blue-800 mr-3">
+                                                <i class="fa fa-pencil"></i>
+                                            </button>
+                                            <button class="text-gray-600 hover:text-gray-800">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-3 px-4 text-sm text-gray-900">多币种组合</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">组合策略</td>
+                                        <td class="py-3 px-4 text-sm text-gray-500">已停止</td>
+                                        <td class="py-3 px-4 text-sm text-red-600">-2.1%</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">1d 2h</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-green-600 hover:text-green-800 mr-3">
+                                                <i class="fa fa-play"></i>
+                                            </button>
+                                            <button class="text-blue-600 hover:text-blue-800 mr-3">
+                                                <i class="fa fa-pencil"></i>
+                                            </button>
+                                            <button class="text-gray-600 hover:text-gray-800">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 策略管理页面 -->
+                <div id="strategies-page" class="page-content hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">策略管理</h2>
+                    
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="relative">
+                            <input type="text" placeholder="搜索策略..." class="pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <button class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">
+                            <i class="fa fa-plus mr-2"></i>
+                            创建策略
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">移动平均线策略</h3>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">活跃</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">基于短期和长期移动平均线交叉的趋势跟踪策略。</p>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-500">收益: <span class="text-green-600">+12.5%</span></span>
+                                <span class="text-gray-500">胜率: <span class="text-green-600">68%</span></span>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-pencil mr-1"></i> 编辑
+                                </button>
+                                <button class="flex-1 bg-primary hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-play mr-1"></i> 运行
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">套利策略</h3>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">活跃</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">利用不同交易对之间的价格差异进行套利。</p>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-500">收益: <span class="text-green-600">+8.3%</span></span>
+                                <span class="text-gray-500">胜率: <span class="text-green-600">75%</span></span>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-pencil mr-1"></i> 编辑
+                                </button>
+                                <button class="flex-1 bg-primary hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-play mr-1"></i> 运行
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">均值回归策略</h3>
+                                <span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">非活跃</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">基于价格回归到均值的策略，适合震荡市场。</p>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-500">收益: <span class="text-green-600">+5.7%</span></span>
+                                <span class="text-gray-500">胜率: <span class="text-green-600">62%</span></span>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-pencil mr-1"></i> 编辑
+                                </button>
+                                <button class="flex-1 bg-primary hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-play mr-1"></i> 运行
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">机器学习策略</h3>
+                                <span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">非活跃</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">基于线性回归的价格预测策略。</p>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-500">收益: <span class="text-red-600">-2.1%</span></span>
+                                <span class="text-gray-500">胜率: <span class="text-yellow-600">51%</span></span>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-pencil mr-1"></i> 编辑
+                                </button>
+                                <button class="flex-1 bg-primary hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-play mr-1"></i> 运行
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">组合策略</h3>
+                                <span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">非活跃</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">多种策略的组合，根据市场情况自动切换。</p>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-500">收益: <span class="text-green-600">+7.8%</span></span>
+                                <span class="text-gray-500">胜率: <span class="text-green-600">65%</span></span>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-pencil mr-1"></i> 编辑
+                                </button>
+                                <button class="flex-1 bg-primary hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm">
+                                    <i class="fa fa-play mr-1"></i> 运行
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 订单管理页面 -->
+                <div id="orders-page" class="page-content hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">订单管理</h2>
+                    
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="relative">
+                            <input type="text" placeholder="搜索订单..." class="pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <div class="flex space-x-2">
+                            <select class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option>所有状态</option>
+                                <option>已完成</option>
+                                <option>处理中</option>
+                                <option>已取消</option>
+                            </select>
+                            <select class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option>所有交易对</option>
+                                <option>BTC/USDT</option>
+                                <option>ETH/USDT</option>
+                                <option>SOL/USDT</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="border-b border-gray-200">
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">订单ID</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">交易对</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">类型</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">价格</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">数量</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">总金额</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">状态</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">时间</th>
+                                        <th class="py-3 px-4 text-left text-sm font-medium text-gray-500">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">ORD123456</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">BTC/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">买入</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$45,234</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">0.05</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$2,261.70</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:45</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-blue-600 hover:text-blue-800">
+                                                <i class="fa fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">ORD123457</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">ETH/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-red-600">卖出</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$3,245</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">1.2</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$3,894.00</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:30</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-blue-600 hover:text-blue-800">
+                                                <i class="fa fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-3 px-4 text-sm text-gray-900">ORD123458</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">BTC/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-red-600">卖出</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$45,345</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">0.03</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$1,360.35</td>
+                                        <td class="py-3 px-4 text-sm text-yellow-600">处理中</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:15</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-blue-600 hover:text-blue-800 mr-3">
+                                                <i class="fa fa-eye"></i>
+                                            </button>
+                                            <button class="text-red-600 hover:text-red-800">
+                                                <i class="fa fa-times"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-3 px-4 text-sm text-gray-900">ORD123459</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">SOL/USDT</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">买入</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$123.45</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">10</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">$1,234.50</td>
+                                        <td class="py-3 px-4 text-sm text-green-600">已完成</td>
+                                        <td class="py-3 px-4 text-sm text-gray-900">2026-03-30 13:00</td>
+                                        <td class="py-3 px-4 text-sm">
+                                            <button class="text-blue-600 hover:text-blue-800">
+                                                <i class="fa fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 市场分析页面 -->
+                <div id="analysis-page" class="page-content hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">市场分析</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2">
+                            <div class="bg-white rounded-lg shadow p-4 mb-6">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-lg font-semibold text-gray-800">价格图表</h3>
+                                    <div class="flex space-x-2">
+                                        <button class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">1H</button>
+                                        <button class="px-3 py-1 text-sm bg-primary text-white rounded-lg">4H</button>
+                                        <button class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">1D</button>
+                                        <button class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">1W</button>
+                                    </div>
+                                </div>
+                                <div class="h-80">
+                                    <canvas id="priceChart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">技术指标</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <h4 class="text-sm font-medium text-gray-600 mb-2">RSI (14)</h4>
+                                        <div class="h-40">
+                                            <canvas id="rsiChart"></canvas>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-medium text-gray-600 mb-2">MACD</h4>
+                                        <div class="h-40">
+                                            <canvas id="macdChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="bg-white rounded-lg shadow p-4 mb-6">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">市场情绪</h3>
+                                <div class="flex items-center justify-center mb-4">
+                                    <div class="relative w-40 h-40">
+                                        <canvas id="sentimentChart"></canvas>
+                                        <div class="absolute inset-0 flex items-center justify-center flex-col">
+                                            <span class="text-3xl font-bold text-green-600">68%</span>
+                                            <span class="text-sm text-gray-600">看涨</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">社交媒体</span>
+                                            <span class="text-green-600">72%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-green-500 h-2 rounded-full" style="width: 72%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">新闻</span>
+                                            <span class="text-green-600">65%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-green-500 h-2 rounded-full" style="width: 65%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">技术分析</span>
+                                            <span class="text-green-600">62%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-green-500 h-2 rounded-full" style="width: 62%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">基本面分析</h3>
+                                <div class="space-y-3">
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">市值排名</span>
+                                        <span class="text-sm font-medium text-gray-900">#1</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">24h交易量</span>
+                                        <span class="text-sm font-medium text-gray-900">$24.5B</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">流通供应量</span>
+                                        <span class="text-sm font-medium text-gray-900">19.3M BTC</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">开发者活跃度</span>
+                                        <span class="text-sm font-medium text-gray-900">高</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">社区活跃度</span>
+                                        <span class="text-sm font-medium text-gray-900">高</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 系统设置页面 -->
+                <div id="settings-page" class="page-content hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">系统设置</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2">
+                            <div class="bg-white rounded-lg shadow p-6 mb-6">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">API设置</h3>
+                                <form>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" value="****************************************************************">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">API Secret</label>
+                                            <input type="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" value="****************************************************************">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Passphrase</label>
+                                            <input type="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" value="********">
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary">
+                                                <span class="ml-2 text-sm text-gray-700">使用测试网</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600">保存设置</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">通知设置</h3>
+                                <form>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary" checked>
+                                                <span class="ml-2 text-sm text-gray-700">交易执行通知</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary" checked>
+                                                <span class="ml-2 text-sm text-gray-700">价格警报通知</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary" checked>
+                                                <span class="ml-2 text-sm text-gray-700">策略绩效通知</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary">
+                                                <span class="ml-2 text-sm text-gray-700">市场情绪变化通知</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" class="form-checkbox h-4 w-4 text-primary">
+                                                <span class="ml-2 text-sm text-gray-700">风险阈值警报</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600">保存设置</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="bg-white rounded-lg shadow p-6 mb-6">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">系统状态</h3>
+                                <div class="space-y-3">
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">系统版本</span>
+                                        <span class="text-sm font-medium text-gray-900">1.0.0</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">运行时间</span>
+                                        <span class="text-sm font-medium text-gray-900">5d 12h 34m</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">CPU使用率</span>
+                                        <span class="text-sm font-medium text-gray-900">15%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">内存使用率</span>
+                                        <span class="text-sm font-medium text-gray-900">32%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">磁盘使用率</span>
+                                        <span class="text-sm font-medium text-gray-900">28%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-sm text-gray-600">API连接状态</span>
+                                        <span class="text-sm font-medium text-green-600">已连接</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-4">用户设置</h3>
+                                <form>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" value="admin">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                                            <input type="email" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" value="admin@example.com">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                                            <input type="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="输入新密码">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+                                            <input type="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="确认新密码">
+                                        </div>
+                                        <div>
+                                            <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600">保存设置</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // 页面切换
+        document.addEventListener('DOMContentLoaded', function() {
+            const pageLinks = document.querySelectorAll('a[data-page]');
+            const pageContents = document.querySelectorAll('.page-content');
+            
+            pageLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetPage = this.getAttribute('data-page');
+                    
+                    // 隐藏所有页面
+                    pageContents.forEach(page => {
+                        page.classList.add('hidden');
+                    });
+                    
+                    // 显示目标页面
+                    document.getElementById(`${targetPage}-page`).classList.remove('hidden');
+                    
+                    // 更新侧边栏激活状态
+                    pageLinks.forEach(l => {
+                        l.classList.remove('sidebar-active');
+                    });
+                    this.classList.add('sidebar-active');
+                });
+            });
+            
+            // 初始化图表
+            initCharts();
+        });
+        
+        function initCharts() {
+            // 收益趋势图表
+            const profitCtx = document.getElementById('profitChart').getContext('2d');
+            new Chart(profitCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+                    datasets: [{
+                        label: '收益',
+                        data: [1200, 1900, 3000, 5000, 6500, 8743],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            
+            // 机器人状态图表
+            const botStatusCtx = document.getElementById('botStatusChart').getContext('2d');
+            new Chart(botStatusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['运行中', '已停止', '错误'],
+                    datasets: [{
+                        data: [5, 3, 1],
+                        backgroundColor: ['#10b981', '#6b7280', '#ef4444']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+            
+            // 价格图表
+            const priceCtx = document.getElementById('priceChart').getContext('2d');
+            new Chart(priceCtx, {
+                type: 'candlestick',
+                data: {
+                    datasets: [{
+                        label: 'BTC/USDT',
+                        data: [
+                            { t: new Date('2026-03-29T00:00:00'), o: 45000, h: 45500, l: 44800, c: 45200 },
+                            { t: new Date('2026-03-29T04:00:00'), o: 45200, h: 45800, l: 45000, c: 45600 },
+                            { t: new Date('2026-03-29T08:00:00'), o: 45600, h: 46000, l: 45400, c: 45800 },
+                            { t: new Date('2026-03-29T12:00:00'), o: 45800, h: 46200, l: 45600, c: 46000 },
+                            { t: new Date('2026-03-29T16:00:00'), o: 46000, h: 46500, l: 45800, c: 46200 },
+                            { t: new Date('2026-03-29T20:00:00'), o: 46200, h: 46800, l: 46000, c: 46500 },
+                            { t: new Date('2026-03-30T00:00:00'), o: 46500, h: 47000, l: 46300, c: 46800 },
+                            { t: new Date('2026-03-30T04:00:00'), o: 46800, h: 47200, l: 46600, c: 47000 },
+                            { t: new Date('2026-03-30T08:00:00'), o: 47000, h: 47500, l: 46800, c: 47200 },
+                            { t: new Date('2026-03-30T12:00:00'), o: 47200, h: 47800, l: 47000, c: 47500 }
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+            
+            // RSI图表
+            const rsiCtx = document.getElementById('rsiChart').getContext('2d');
+            new Chart(rsiCtx, {
+                type: 'line',
+                data: {
+                    labels: ['', '', '', '', '', '', '', '', '', ''],
+                    datasets: [{
+                        label: 'RSI',
+                        data: [45, 52, 58, 65, 72, 68, 62, 55, 50, 58],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+            
+            // MACD图表
+            const macdCtx = document.getElementById('macdChart').getContext('2d');
+            new Chart(macdCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['', '', '', '', '', '', '', '', '', ''],
+                    datasets: [{
+                        label: 'MACD',
+                        data: [0.2, 0.5, 0.8, 1.2, 1.5, 1.0, 0.5, 0.2, -0.1, 0.3],
+                        backgroundColor: '#10b981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            
+            // 市场情绪图表
+            const sentimentCtx = document.getElementById('sentimentChart').getContext('2d');
+            new Chart(sentimentCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['看涨', '看跌', '中性'],
+                    datasets: [{
+                        data: [68, 22, 10],
+                        backgroundColor: ['#10b981', '#ef4444', '#6b7280']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%'
+                }
+            });
+        }
+    </script>
+</body>
+</html>
