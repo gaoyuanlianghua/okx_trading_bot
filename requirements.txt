@@ -23,3 +23,6 @@ requests>=2.28.0
 
 # 异步HTTP请求
 aiohttp>=3.8.0
+
+# WebSocket通信
+websockets>=10.0.0
