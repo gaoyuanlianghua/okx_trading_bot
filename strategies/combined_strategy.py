@@ -73,7 +73,16 @@ class CombinedStrategy(BaseStrategy):
         """
         if not self.sub_strategies:
             logger.warning("组合策略没有配置子策略")
-            return None
+            # 返回中性信号
+            return {
+                "strategy": self.name,
+                "side": "neutral",
+                "price": market_data.get("price", 0),
+                "signal_strength": 0,
+                "timestamp": time.time(),
+                "inst_id": market_data.get("inst_id", "BTC-USDT-SWAP"),
+                "sub_signals": {}
+            }
 
         # 收集子策略信号
         sub_signals = {}
@@ -91,9 +100,6 @@ class CombinedStrategy(BaseStrategy):
                         ][-100:]
             except Exception as e:
                 logger.error(f"执行子策略失败 {strategy.name}: {e}")
-
-        if not sub_signals:
-            return None
 
         # 计算组合信号
         combined_signal = self._combine_signals(sub_signals)
@@ -114,7 +120,16 @@ class CombinedStrategy(BaseStrategy):
             dict: 组合信号
         """
         if not sub_signals:
-            return None
+            # 返回中性信号
+            return {
+                "strategy": self.name,
+                "side": "neutral",
+                "price": 0,
+                "signal_strength": 0,
+                "timestamp": time.time(),
+                "inst_id": "BTC-USDT-SWAP",
+                "sub_signals": {}
+            }
 
         # 计算信号强度加权和
         buy_strength = 0.0
@@ -140,7 +155,16 @@ class CombinedStrategy(BaseStrategy):
                 )
 
         if total_weight == 0:
-            return None
+            # 返回中性信号
+            return {
+                "strategy": self.name,
+                "side": "neutral",
+                "price": sub_signals[next(iter(sub_signals))].get("price", 0) if sub_signals else 0,
+                "signal_strength": 0,
+                "timestamp": time.time(),
+                "inst_id": sub_signals[next(iter(sub_signals))].get("inst_id", "BTC-USDT-SWAP") if sub_signals else "BTC-USDT-SWAP",
+                "sub_signals": sub_signals,
+            }
 
         # 归一化信号强度
         buy_strength /= total_weight
@@ -174,8 +198,16 @@ class CombinedStrategy(BaseStrategy):
                 "sub_signals": sub_signals,
             }
         else:
-            # 信号强度不足，不生成交易信号
-            return None
+            # 信号强度不足，返回中性信号
+            return {
+                "strategy": self.name,
+                "side": "neutral",
+                "price": sub_signals[next(iter(sub_signals))].get("price", 0),
+                "signal_strength": max(buy_strength, sell_strength),
+                "timestamp": time.time(),
+                "inst_id": sub_signals[next(iter(sub_signals))].get("inst_id", "BTC-USDT-SWAP"),
+                "sub_signals": sub_signals,
+            }
 
         return signal
 

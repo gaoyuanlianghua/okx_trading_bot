@@ -305,3 +305,8 @@ class BaseStrategy:
         self.trade_logs = []
         self.execution_logs = []
         logger.info(f"策略日志已清空: {self.name}")
+
+    @property
+    def is_running(self):
+        """是否正在运行"""
+        return self.status == "running"

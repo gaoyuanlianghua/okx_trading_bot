@@ -87,7 +87,7 @@ class TestDynamicsStrategy:
         market_data = {"price": 50000.0, "timestamp": 1234567890}
         signal = dynamics_strategy.execute(market_data)
         assert signal is not None
-        assert "action" in signal
+        assert "side" in signal
         assert "price" in signal
     
     def test_start_stop(self, dynamics_strategy):
@@ -133,7 +133,7 @@ class TestCombinedStrategy:
         market_data = {"price": 50000.0, "timestamp": 1234567890}
         signal = combined_strategy.execute(market_data)
         assert signal is not None
-        assert "action" in signal
+        assert "side" in signal
         assert "price" in signal
     
     def test_start_stop(self, combined_strategy):

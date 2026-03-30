@@ -18,21 +18,32 @@ from core.api.okx_websocket_client import OKXWebSocketClient
 class TestBaseAgent:
     """测试基础智能体"""
     
+    class TestAgent(BaseAgent):
+        """测试用智能体子类"""
+        async def _initialize(self):
+            pass
+        
+        async def _cleanup(self):
+            pass
+        
+        async def _execute_cycle(self):
+            await asyncio.sleep(0.1)
+    
     @pytest.fixture
     def base_agent(self):
         """创建基础智能体实例"""
         config = AgentConfig(name="TestAgent", description="测试智能体")
-        return BaseAgent(config)
+        return self.TestAgent(config)
     
     async def test_start_stop(self, base_agent):
         """测试智能体启动和停止"""
         result = await base_agent.start()
         assert result is True
-        assert base_agent.status == base_agent._status.RUNNING
+        assert base_agent.status.name == "RUNNING"
         
         result = await base_agent.stop()
         assert result is True
-        assert base_agent.status == base_agent._status.STOPPED
+        assert base_agent.status.name == "STOPPED"
     
     async def test_get_status(self, base_agent):
         """测试获取智能体状态"""

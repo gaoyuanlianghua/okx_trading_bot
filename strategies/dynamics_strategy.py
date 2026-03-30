@@ -839,7 +839,7 @@ class DynamicsStrategy(BaseStrategy):
         elif signal_strength < -0.5:
             side = "sell"
         else:
-            return None  # 信号强度不足，不生成交易信号
+            side = "neutral"  # 信号强度不足，返回中性信号
 
         # 获取当前价格
         current_price = (
