@@ -89,7 +89,7 @@ jobs:
           Write-Host "This is a known Windows issue. Checking if tests actually passed..."
           
           $testOutput = Get-Content test_output.log | Out-String
-          if ($testOutput -match "(\d+) passed") {
+          if ($testOutput -match "(\d+)\s+passed") {
             Write-Host "Tests passed despite cleanup crash. Continuing..."
             exit 0
           }

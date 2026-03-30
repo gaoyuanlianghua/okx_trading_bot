@@ -92,6 +92,8 @@ class TestWebSocketGUI(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """清理测试环境"""
+        # Properly quit the application to avoid cleanup crashes on Windows
+        cls.app.quit()
         del cls.app
 
 class TestDraggableDashboardCard(unittest.TestCase):
@@ -122,6 +124,8 @@ class TestDraggableDashboardCard(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """清理测试环境"""
+        # Properly quit the application to avoid cleanup crashes on Windows
+        cls.app.quit()
         del cls.app
 
 class TestAnimatedTabWidget(unittest.TestCase):
@@ -147,6 +151,8 @@ class TestAnimatedTabWidget(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """清理测试环境"""
+        # Properly quit the application to avoid cleanup crashes on Windows
+        cls.app.quit()
         del cls.app
 
 if __name__ == '__main__':
