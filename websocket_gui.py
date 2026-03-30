@@ -2804,7 +2804,7 @@ class {strategy_name}(BaseStrategy):
             # 保存策略代码到文件
             import os
 
-            strategies_dir = "d:\Projects\okx_trading_bot\strategies"
+            strategies_dir = "d:/Projects/okx_trading_bot/strategies"
             strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
 
             try:
@@ -2878,7 +2878,7 @@ class {strategy_name}(BaseStrategy):
                 import os
                 import importlib.util
 
-                strategies_dir = "d:\Projects\okx_trading_bot\strategies"
+                strategies_dir = "d:/Projects/okx_trading_bot/strategies"
                 strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
 
                 if not os.path.exists(strategy_file):
@@ -3058,7 +3058,7 @@ class {strategy_name}(BaseStrategy):
         
         # 加载现有代码
         import os
-        strategies_dir = "d:\Projects\okx_trading_bot\strategies"
+        strategies_dir = "d:/Projects/okx_trading_bot/strategies"
         strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
         
         try:
@@ -3165,7 +3165,7 @@ class {strategy_name}(BaseStrategy):
 
             # 删除策略文件
             import os
-            strategies_dir = "d:\Projects\okx_trading_bot\strategies"
+            strategies_dir = "d:/Projects/okx_trading_bot/strategies"
             strategy_file = os.path.join(strategies_dir, f"{strategy_name}.py")
             
             try:
