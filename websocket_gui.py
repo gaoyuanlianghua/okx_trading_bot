@@ -181,8 +181,9 @@ class WebSocketGUI(QMainWindow):
         # 初始化权限控制
         self._init_permission_system()
         
-        # 初始化事件总线
-        self.event_bus = EventBus()
+        # 初始化事件总线 - 使用全局实例
+        from core.events.event_bus import event_bus
+        self.event_bus = event_bus
 
         # 数据存储
         self.market_data = {}
