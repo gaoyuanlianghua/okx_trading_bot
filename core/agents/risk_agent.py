@@ -84,25 +84,30 @@ class RiskAgent(BaseAgent):
 
     async def _initialize(self):
         """初始化"""
-        self.register_message_handler(MessageType.REQUEST_DATA, self._handle_risk_check)
-        self.register_message_handler(
-            MessageType.STRATEGY_METRICS, self._handle_strategy_metrics
-        )
+        try:
+            self.register_message_handler(MessageType.REQUEST_DATA, self._handle_risk_check)
+            self.register_message_handler(
+                MessageType.STRATEGY_METRICS, self._handle_strategy_metrics
+            )
 
-        # 订阅相关事件
-        self.event_bus.subscribe(
-            EventType.ORDER_CREATED, self._on_order_event, async_callback=True
-        )
-        self.event_bus.subscribe(
-            EventType.RISK_ALERT, self._on_risk_alert, async_callback=True
-        )
-        self.event_bus.subscribe(
-            EventType.STRATEGY_PERFORMANCE,
-            self._on_strategy_performance,
-            async_callback=True,
-        )
+            # 订阅相关事件
+            self.event_bus.subscribe(
+                EventType.ORDER_CREATED, self._on_order_event, async_callback=True
+            )
+            self.event_bus.subscribe(
+                EventType.RISK_ALERT, self._on_risk_alert, async_callback=True
+            )
+            self.event_bus.subscribe(
+                EventType.STRATEGY_PERFORMANCE,
+                self._on_strategy_performance,
+                async_callback=True,
+            )
 
-        logger.info("风险管理智能体初始化完成")
+            logger.info("风险管理智能体初始化完成")
+        except Exception as e:
+            logger.error(f"风险管理智能体初始化时出错: {e}")
+            # 即使初始化出错，也继续启动智能体
+            logger.info("风险管理智能体初始化完成（部分功能可能受限）")
 
     async def _cleanup(self):
         """清理"""
@@ -127,14 +132,23 @@ class RiskAgent(BaseAgent):
             # 获取账户余额
             balance = await self.rest_client.get_account_balance()
             if balance:
-                self._account_balance = float(balance.get("totalEq", 0))
+                # 安全转换为浮点数
+                def safe_float(value, default=0):
+                    if value is None:
+                        return default
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return default
+
+                self._account_balance = safe_float(balance.get("totalEq"))
 
                 # 提取账户信息
                 self._account_info = {
-                    "total_balance": float(balance.get("totalEq", 0)),
-                    "available_balance": float(balance.get("availBal", 0)),
-                    "margin": float(balance.get("margin", 0)),
-                    "unrealized_pnl": float(balance.get("upl", 0)),
+                    "total_balance": safe_float(balance.get("totalEq")),
+                    "available_balance": safe_float(balance.get("availBal")),
+                    "margin": safe_float(balance.get("margin")),
+                    "unrealized_pnl": safe_float(balance.get("upl")),
                 }
 
                 # 构建资产分布
@@ -144,8 +158,8 @@ class RiskAgent(BaseAgent):
                         ccy = detail.get("ccy")
                         if ccy:
                             self._asset_distribution[ccy] = {
-                                "balance": float(detail.get("bal", 0)),
-                                "available": float(detail.get("availBal", 0)),
+                                "balance": safe_float(detail.get("bal")),
+                                "available": safe_float(detail.get("availBal")),
                             }
 
             # 获取持仓

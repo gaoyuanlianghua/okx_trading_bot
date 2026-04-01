@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2026-04-01T20:47:58.835299",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:49:47.876550",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.145092",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.705291",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

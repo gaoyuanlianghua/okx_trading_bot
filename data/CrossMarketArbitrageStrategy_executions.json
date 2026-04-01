@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2026-04-01T20:47:58.837683",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:49:47.880419",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.138431",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.697210",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

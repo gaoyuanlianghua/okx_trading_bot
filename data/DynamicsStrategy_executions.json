@@ -162,5 +162,33 @@
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:47:58.833507",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:49:47.874529",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.143411",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.701581",
+    "strategy": "DynamicsStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
   }
 ]

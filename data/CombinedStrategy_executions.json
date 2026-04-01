@@ -166,5 +166,19 @@
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.139695",
+    "strategy": "CombinedStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.699592",
+    "strategy": "CombinedStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
   }
 ]

@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2026-04-01T20:47:58.837134",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:49:47.879011",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.150340",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.708020",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

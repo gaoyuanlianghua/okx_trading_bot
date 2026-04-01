@@ -1,8 +1,8 @@
 api:
-  api_key: ''
-  api_secret: ''
+  api_key: 19500a62-5586-44ac-ad05-0aa8b1410af0
+  api_secret: 5939DA431FA0C9D820C46D13F7AB17F8
   is_test: true
-  passphrase: ''
+  passphrase: Gy528329818.123
   timeout: 30
 backtesting:
   data_source: okx
@@ -38,10 +38,17 @@ risk:
   stop_loss_enabled: true
   take_profit_enabled: true
 strategy:
-  default_strategy: DynamicsStrategy
+  default_strategy: NuclearDynamicsStrategy
   strategies:
     DynamicsStrategy:
       G_eff: 0.0012
+      max_position: 0.5
+      position_size: 0.1
+      stop_loss: 0.02
+      take_profit: 0.05
+      ε: 0.85
+    NuclearDynamicsStrategy:
+      G_eff: 0.0015
       max_position: 0.5
       position_size: 0.1
       stop_loss: 0.02

@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from core.events.event_bus import EventBus
+from core.events.event_bus import EventBus, Event, EventType
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -97,12 +97,18 @@ class MarketSentimentAnalyzer:
             
             # 发布情绪分析事件
             if self.event_bus:
-                await self.event_bus.publish("market_sentiment_updated", {
-                    "cryptocurrency": cryptocurrency,
-                    "sentiment_score": final_score,
-                    "timestamp": sentiment_data.timestamp,
-                    "confidence": sentiment_data.confidence
-                })
+                event = Event(
+                    type=EventType.CUSTOM,
+                    source="market_sentiment_analyzer",
+                    data={
+                        "event": "market_sentiment_updated",
+                        "cryptocurrency": cryptocurrency,
+                        "sentiment_score": final_score,
+                        "timestamp": sentiment_data.timestamp,
+                        "confidence": sentiment_data.confidence
+                    }
+                )
+                await self.event_bus.publish_async(event)
             
             return final_score
             

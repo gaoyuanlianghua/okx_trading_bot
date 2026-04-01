@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from core.events.event_bus import EventBus
+from core.events.event_bus import EventBus, EventType
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -53,19 +53,20 @@ class SmartNotificationSystem:
     def _register_event_listeners(self):
         """注册事件监听器"""
         events_to_listen = [
-            "trade_executed",
-            "price_alert_triggered",
-            "strategy_performance_updated",
-            "market_sentiment_updated",
-            "risk_threshold_exceeded"
+            EventType.ORDER_FILLED,
+            EventType.STRATEGY_SIGNAL,
+            EventType.RISK_ALERT
         ]
         
         for event_type in events_to_listen:
             self.event_bus.subscribe(event_type, self._handle_event)
     
-    async def _handle_event(self, event_type: str, event_data: Dict[str, Any]):
+    async def _handle_event(self, event):
         """处理事件"""
         try:
+            event_type = event.type.name
+            event_data = event.data
+            
             # 查找匹配的规则
             matching_rules = [
                 rule for rule in self.rules.values() 

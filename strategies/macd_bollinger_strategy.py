@@ -94,9 +94,10 @@ class MacdBollingerStrategy(BaseStrategy):
             return None, None, None
         
         # 计算移动平均
-        middle_band = np.mean(prices[-self.strategy_params["bollinger_period":])
+        period = self.strategy_params["bollinger_period"]
+        middle_band = np.mean(prices[-period:])
         # 计算标准差
-        std_dev = np.std(prices[-self.strategy_params["bollinger_period":])
+        std_dev = np.std(prices[-period:])
         # 计算上下轨
         upper_band = middle_band + (self.strategy_params["bollinger_std"] * std_dev)
         lower_band = middle_band - (self.strategy_params["bollinger_std"] * std_dev)

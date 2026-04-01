@@ -71,6 +71,10 @@ class OKXWebSocketClient:
         self._private_connected = False
         self._logged_in = False
 
+        # 接收任务状态
+        self._public_receiving = False
+        self._private_receiving = False
+
         # 订阅管理
         self._subscriptions: Set[str] = set()
         self._subscription_callbacks: Dict[str, List[Callable]] = {}
@@ -87,6 +91,10 @@ class OKXWebSocketClient:
         self._reconnect_attempts = {
             "public": 0,
             "private": 0
+        }
+        self._reconnecting = {
+            "public": False,
+            "private": False
         }
 
         # 心跳配置
@@ -116,6 +124,15 @@ class OKXWebSocketClient:
         url = self.PUBLIC_URL_TEST if self.is_test else self.PUBLIC_URL
 
         try:
+            # 关闭现有的连接
+            if self.public_ws:
+                try:
+                    await self.public_ws.close()
+                except:
+                    pass
+                self.public_ws = None
+                self._public_connected = False
+
             # 配置安全的WebSocket连接
             self.public_ws = await websockets.connect(
                 url,
@@ -127,11 +144,11 @@ class OKXWebSocketClient:
             self._public_connected = True
 
             # 启动消息接收任务
-            task = asyncio.create_task(self._receive_public_messages())
+            task = asyncio.ensure_future(self._receive_public_messages())
             self._tasks.append(task)
 
             # 启动心跳任务
-            task = asyncio.create_task(self._heartbeat_public())
+            task = asyncio.ensure_future(self._heartbeat_public())
             self._tasks.append(task)
 
             # 重新订阅
@@ -164,6 +181,15 @@ class OKXWebSocketClient:
         url = self.PRIVATE_URL_TEST if self.is_test else self.PRIVATE_URL
 
         try:
+            # 关闭现有的连接
+            if self.private_ws:
+                try:
+                    await self.private_ws.close()
+                except:
+                    pass
+                self.private_ws = None
+                self._private_connected = False
+
             # 配置安全的WebSocket连接
             self.private_ws = await websockets.connect(
                 url,
@@ -179,11 +205,11 @@ class OKXWebSocketClient:
                 await self._login()
 
             # 启动消息接收任务
-            task = asyncio.create_task(self._receive_private_messages())
+            task = asyncio.ensure_future(self._receive_private_messages())
             self._tasks.append(task)
 
             # 启动心跳任务
-            task = asyncio.create_task(self._heartbeat_private())
+            task = asyncio.ensure_future(self._heartbeat_private())
             self._tasks.append(task)
 
             logger.info("私有WebSocket连接成功")
@@ -217,11 +243,11 @@ class OKXWebSocketClient:
 
         # 启动消息处理任务
         if public_ok or private_ok:
-            task = asyncio.create_task(self._message_processor())
+            task = asyncio.ensure_future(self._message_processor())
             self._tasks.append(task)
 
         # 启动连接监控任务
-        task = asyncio.create_task(self._connection_monitor())
+        task = asyncio.ensure_future(self._connection_monitor())
         self._tasks.append(task)
 
         return public_ok and private_ok
@@ -334,33 +360,47 @@ class OKXWebSocketClient:
 
     async def _receive_public_messages(self):
         """接收公共频道消息"""
-        while self._running and self.public_ws:
-            try:
-                message = await self.public_ws.recv()
-                # 将消息添加到队列
-                await self._message_queue.put((message, "public"))
-            except ConnectionClosed:
-                logger.warning("公共WebSocket连接已关闭")
-                self._public_connected = False
-                await self._reconnect_public()
-                break
-            except Exception as e:
-                logger.error(f"接收公共消息错误: {e}")
+        if self._public_receiving:
+            return
+        
+        self._public_receiving = True
+        try:
+            while self._running and self.public_ws:
+                try:
+                    message = await self.public_ws.recv()
+                    # 将消息添加到队列
+                    await self._message_queue.put((message, "public"))
+                except ConnectionClosed:
+                    logger.warning("公共WebSocket连接已关闭")
+                    self._public_connected = False
+                    await self._reconnect_public()
+                    break
+                except Exception as e:
+                    logger.error(f"接收公共消息错误: {e}")
+        finally:
+            self._public_receiving = False
 
     async def _receive_private_messages(self):
         """接收私有频道消息"""
-        while self._running and self.private_ws:
-            try:
-                message = await self.private_ws.recv()
-                # 将消息添加到队列
-                await self._message_queue.put((message, "private"))
-            except ConnectionClosed:
-                logger.warning("私有WebSocket连接已关闭")
-                self._private_connected = False
-                await self._reconnect_private()
-                break
-            except Exception as e:
-                logger.error(f"接收私有消息错误: {e}")
+        if self._private_receiving:
+            return
+        
+        self._private_receiving = True
+        try:
+            while self._running and self.private_ws:
+                try:
+                    message = await self.private_ws.recv()
+                    # 将消息添加到队列
+                    await self._message_queue.put((message, "private"))
+                except ConnectionClosed:
+                    logger.warning("私有WebSocket连接已关闭")
+                    self._private_connected = False
+                    await self._reconnect_private()
+                    break
+                except Exception as e:
+                    logger.error(f"接收私有消息错误: {e}")
+        finally:
+            self._private_receiving = False
 
     async def _handle_message(self, message: str, channel: str):
         """
@@ -418,6 +458,17 @@ class OKXWebSocketClient:
                 logger.debug(f"收到pong响应 [{channel}]")
                 return
 
+            # 处理ping消息
+            if data == "ping":
+                message_record["message_type"] = "ping"
+                logger.debug(f"收到ping消息 [{channel}]")
+                # 回复pong
+                if channel == "public" and self.public_ws:
+                    await self.public_ws.send("pong")
+                elif channel == "private" and self.private_ws:
+                    await self.private_ws.send("pong")
+                return
+
             # 处理channel-conn-count消息
             if "event" in data and data.get("event") == "channel-conn-count":
                 message_record["message_type"] = "channel-conn-count"
@@ -439,8 +490,21 @@ class OKXWebSocketClient:
             logger.debug(f"收到消息 [{channel}]: {message}")
 
         except json.JSONDecodeError:
+            # 处理pong消息
+            if isinstance(message, bytes):
+                message_str = message.decode('utf-8')
+            else:
+                message_str = str(message)
+            
+            message_str = message_str.strip()
+            
+            if message_str == "pong":
+                self._last_pong = time.time()
+                message_record["message_type"] = "pong"
+                logger.debug(f"收到pong响应 [{channel}]")
+                return
             # 处理ping消息
-            if message == "ping":
+            if message_str == "ping":
                 message_record["message_type"] = "ping"
                 logger.debug(f"收到ping消息 [{channel}]")
                 # 回复pong
@@ -449,7 +513,8 @@ class OKXWebSocketClient:
                 elif channel == "private" and self.private_ws:
                     await self.private_ws.send("pong")
                 return
-            error_msg = f"无法解析消息: {message}"
+            # 处理其他非JSON消息
+            error_msg = f"无法解析消息: {message_str}"
             logger.warning(error_msg)
             message_record["error"] = error_msg
         except Exception as e:
@@ -576,47 +641,61 @@ class OKXWebSocketClient:
 
     async def _reconnect_public(self):
         """重新连接公共频道"""
-        self._reconnect_attempts["public"] += 1
-        
-        # 指数退避策略
-        delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["public"] - 1)), self._max_reconnect_delay)
-        
-        logger.info(
-            f"尝试重新连接公共WebSocket ({self._reconnect_attempts['public']})，延迟 {delay:.2f}秒"
-        )
-
-        await asyncio.sleep(delay)
-
-        if await self.connect_public():
-            self._reconnect_attempts["public"] = 0
+        if self._reconnecting["public"]:
             return
+        
+        self._reconnecting["public"] = True
+        try:
+            self._reconnect_attempts["public"] += 1
+            
+            # 指数退避策略
+            delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["public"] - 1)), self._max_reconnect_delay)
+            
+            logger.info(
+                f"尝试重新连接公共WebSocket ({self._reconnect_attempts['public']})，延迟 {delay:.2f}秒"
+            )
 
-        # 持续尝试重新连接，不设置最大重试次数
-        logger.warning("公共WebSocket重连失败，将继续尝试")
-        # 继续尝试重新连接
-        asyncio.create_task(self._reconnect_public())
+            await asyncio.sleep(delay)
+
+            if await self.connect_public():
+                self._reconnect_attempts["public"] = 0
+                return
+
+            # 持续尝试重新连接，不设置最大重试次数
+            logger.warning("公共WebSocket重连失败，将继续尝试")
+            # 继续尝试重新连接
+            asyncio.ensure_future(self._reconnect_public())
+        finally:
+            self._reconnecting["public"] = False
 
     async def _reconnect_private(self):
         """重新连接私有频道"""
-        self._reconnect_attempts["private"] += 1
-        
-        # 指数退避策略
-        delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["private"] - 1)), self._max_reconnect_delay)
-        
-        logger.info(
-            f"尝试重新连接私有WebSocket ({self._reconnect_attempts['private']})，延迟 {delay:.2f}秒"
-        )
-
-        await asyncio.sleep(delay)
-
-        if await self.connect_private():
-            self._reconnect_attempts["private"] = 0
+        if self._reconnecting["private"]:
             return
+        
+        self._reconnecting["private"] = True
+        try:
+            self._reconnect_attempts["private"] += 1
+            
+            # 指数退避策略
+            delay = min(self._base_reconnect_delay * (2 ** (self._reconnect_attempts["private"] - 1)), self._max_reconnect_delay)
+            
+            logger.info(
+                f"尝试重新连接私有WebSocket ({self._reconnect_attempts['private']})，延迟 {delay:.2f}秒"
+            )
 
-        # 持续尝试重新连接，不设置最大重试次数
-        logger.warning("私有WebSocket重连失败，将继续尝试")
-        # 继续尝试重新连接
-        asyncio.create_task(self._reconnect_private())
+            await asyncio.sleep(delay)
+
+            if await self.connect_private():
+                self._reconnect_attempts["private"] = 0
+                return
+
+            # 持续尝试重新连接，不设置最大重试次数
+            logger.warning("私有WebSocket重连失败，将继续尝试")
+            # 继续尝试重新连接
+            asyncio.ensure_future(self._reconnect_private())
+        finally:
+            self._reconnecting["private"] = False
 
     async def _connection_monitor(self):
         """连接监控任务，检测连接状态和心跳超时"""
@@ -632,19 +711,19 @@ class OKXWebSocketClient:
                     # 重新连接公共和私有WebSocket
                     if self._public_connected:
                         logger.warning("公共WebSocket心跳超时，尝试重新连接")
-                        asyncio.create_task(self._reconnect_public())
+                        asyncio.ensure_future(self._reconnect_public())
                     if self._private_connected:
                         logger.warning("私有WebSocket心跳超时，尝试重新连接")
-                        asyncio.create_task(self._reconnect_private())
+                        asyncio.ensure_future(self._reconnect_private())
                 
                 # 检查连接状态
                 if self._running:
                     if not self._public_connected:
                         logger.warning("公共WebSocket连接已断开，尝试重新连接")
-                        asyncio.create_task(self._reconnect_public())
+                        asyncio.ensure_future(self._reconnect_public())
                     if not self._private_connected and self.auth.is_configured():
                         logger.warning("私有WebSocket连接已断开，尝试重新连接")
-                        asyncio.create_task(self._reconnect_private())
+                        asyncio.ensure_future(self._reconnect_private())
                         
             except Exception as e:
                 logger.error(f"连接监控错误: {e}")

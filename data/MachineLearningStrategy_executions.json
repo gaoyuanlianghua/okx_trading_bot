@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2026-04-01T20:47:58.836265",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:49:47.877739",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:34.148893",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T20:53:53.706673",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

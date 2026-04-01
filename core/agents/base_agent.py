@@ -150,7 +150,7 @@ class BaseAgent(ABC):
     def _handle_system_shutdown(self, event: Event):
         """处理系统关闭事件"""
         logger.info(f"智能体 {self.agent_id} 收到系统关闭事件")
-        asyncio.create_task(self.stop())
+        asyncio.ensure_future(self.stop())
 
     def _handle_incoming_message(self, event: Event):
         """处理传入消息"""
@@ -161,7 +161,7 @@ class BaseAgent(ABC):
 
                 # 检查消息是否是发给当前智能体的
                 if message.receiver == self.agent_id or message.is_broadcast():
-                    asyncio.create_task(self._process_message(message))
+                    asyncio.ensure_future(self._process_message(message))
         except Exception as e:
             logger.error(f"处理传入消息失败: {e}")
 
@@ -353,11 +353,11 @@ class BaseAgent(ABC):
             await self._initialize()
 
             # 启动主循环
-            main_task = asyncio.create_task(self._main_loop())
+            main_task = asyncio.ensure_future(self._main_loop())
             self._tasks.append(main_task)
 
             # 启动心跳任务
-            heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            heartbeat_task = asyncio.ensure_future(self._heartbeat_loop())
             self._tasks.append(heartbeat_task)
 
             self.status = AgentStatus.RUNNING

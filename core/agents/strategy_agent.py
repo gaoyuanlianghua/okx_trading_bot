@@ -177,31 +177,31 @@ class StrategyAgent(BaseAgent):
                         }
                     elif strategy_name == "CombinedStrategy":
                         # 组合策略需要其他策略已经加载
-                        if "DynamicsStrategy" in loaded_strategies and "PassivbotStrategy" in loaded_strategies and "MachineLearningStrategy" in loaded_strategies and "ArbitrageStrategy" in loaded_strategies:
+                        if "DynamicsStrategy" in self._strategies and "PassivbotStrategy" in self._strategies and "MachineLearningStrategy" in self._strategies and "ArbitrageStrategy" in self._strategies:
                             config = {
                                 "sub_strategies": [
                                     {
                                         "name": "DynamicsStrategy",
                                         "class": loaded_strategies["DynamicsStrategy"],
-                                        "config": loaded_strategies["DynamicsStrategy"].config,
+                                        "config": self._strategies["DynamicsStrategy"].config,
                                         "weight": 0.3,
                                     },
                                     {
                                         "name": "PassivbotStrategy",
                                         "class": loaded_strategies["PassivbotStrategy"],
-                                        "config": loaded_strategies["PassivbotStrategy"].config,
+                                        "config": self._strategies["PassivbotStrategy"].config,
                                         "weight": 0.3,
                                     },
                                     {
                                         "name": "MachineLearningStrategy",
                                         "class": loaded_strategies["MachineLearningStrategy"],
-                                        "config": loaded_strategies["MachineLearningStrategy"].config,
+                                        "config": self._strategies["MachineLearningStrategy"].config,
                                         "weight": 0.2,
                                     },
                                     {
                                         "name": "ArbitrageStrategy",
                                         "class": loaded_strategies["ArbitrageStrategy"],
-                                        "config": loaded_strategies["ArbitrageStrategy"].config,
+                                        "config": self._strategies["ArbitrageStrategy"].config,
                                         "weight": 0.2,
                                     },
                                 ]

@@ -118,17 +118,27 @@ class TradingBot:
         )
         self.market_data_agent = MarketDataAgent(
             config=market_data_config,
-            rest_client=self.rest_client,
-            ws_client=self.ws_client,
+            exchange_name="okx",
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase,
+            is_test=is_test,
         )
 
         # 创建订单智能体
         order_config = AgentConfig(name="Order", description="订单管理智能体")
-        self.order_agent = OrderAgent(config=order_config, rest_client=self.rest_client)
+        self.order_agent = OrderAgent(
+            config=order_config,
+            exchange_name="okx",
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase,
+            is_test=is_test,
+        )
 
         # 创建风险管理智能体
         risk_config = AgentConfig(name="Risk", description="风险管理智能体")
-        self.risk_agent = RiskAgent(config=risk_config, rest_client=self.rest_client)
+        self.risk_agent = RiskAgent(config=risk_config, rest_client=self.market_data_agent.rest_client)
 
         # 创建策略智能体
         strategy_config = AgentConfig(name="Strategy", description="策略执行智能体")
@@ -184,7 +194,7 @@ class TradingBot:
 
             # 启动市场情绪分析监控
             cryptocurrencies = get_config("market.cryptocurrencies", ["BTC", "ETH"])
-            asyncio.create_task(self.sentiment_analyzer.start_monitoring(cryptocurrencies))
+            asyncio.ensure_future(self.sentiment_analyzer.start_monitoring(cryptocurrencies))
 
             logger.info("交易机器人启动成功")
 
@@ -290,4 +300,6 @@ async def main():
 
 if __name__ == "__main__":
     # 运行主程序
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()

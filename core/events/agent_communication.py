@@ -44,6 +44,11 @@ class MessageType(Enum):
     # 广播消息
     BROADCAST = auto()  # 广播消息
 
+    # 策略相关消息
+    STRATEGY_METRICS = auto()  # 策略性能指标
+    STRATEGY_SIGNAL = auto()  # 策略信号
+    STRATEGY_STATUS = auto()  # 策略状态
+
     # 自定义消息
     CUSTOM = auto()  # 自定义消息
 

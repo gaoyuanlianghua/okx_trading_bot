@@ -41,6 +41,8 @@ class EventType(Enum):
     STRATEGY_STARTED = auto()  # 策略启动
     STRATEGY_STOPPED = auto()  # 策略停止
     STRATEGY_ERROR = auto()  # 策略错误
+    STRATEGY_PERFORMANCE = auto()  # 策略性能
+    STRATEGY_METRICS = auto()  # 策略指标
 
     # 系统事件
     SYSTEM_STARTUP = auto()  # 系统启动
@@ -252,7 +254,7 @@ class EventBus:
             tasks = []
             for callback in sorted_callbacks:
                 try:
-                    task = asyncio.create_task(callback(event))
+                    task = asyncio.ensure_future(callback(event))
                     tasks.append(task)
                     notified_count += 1
                 except Exception as e:
