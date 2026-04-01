@@ -709,3 +709,195 @@ class OKXWebSocketClient:
     def is_logged_in(self) -> bool:
         """检查是否已登录"""
         return self._logged_in
+
+    async def place_order(self, order: Dict) -> Optional[Dict]:
+        """
+        WebSocket下单
+
+        Args:
+            order: 订单信息，包含instId, side, ordType, sz等字段
+
+        Returns:
+            Optional[Dict]: 订单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法下单")
+            return None
+
+        # 生成订单ID
+        order_id = f"{int(time.time() * 1000)}"
+        
+        # 构建下单消息
+        order_msg = {
+            "id": order_id,
+            "op": "order",
+            "args": [order]
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(order_msg))
+            logger.info(f"WebSocket下单请求已发送: {order_id}")
+            return {"id": order_id}
+        except Exception as e:
+            logger.error(f"WebSocket下单失败: {e}")
+            return None
+
+    async def batch_place_orders(self, orders: List[Dict]) -> Optional[Dict]:
+        """
+        WebSocket批量下单
+
+        Args:
+            orders: 订单列表，每个订单包含instId, side, ordType, sz等字段
+
+        Returns:
+            Optional[Dict]: 批量下单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法批量下单")
+            return None
+
+        # 生成批量下单ID
+        batch_id = f"{int(time.time() * 1000)}"
+        
+        # 构建批量下单消息
+        batch_order_msg = {
+            "id": batch_id,
+            "op": "batch-order",
+            "args": orders
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(batch_order_msg))
+            logger.info(f"WebSocket批量下单请求已发送: {batch_id}")
+            return {"id": batch_id}
+        except Exception as e:
+            logger.error(f"WebSocket批量下单失败: {e}")
+            return None
+
+    async def amend_order(self, order: Dict) -> Optional[Dict]:
+        """
+        WebSocket修改订单
+
+        Args:
+            order: 订单修改信息，包含instId, ordId或clOrdId，以及要修改的字段
+
+        Returns:
+            Optional[Dict]: 修改订单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法修改订单")
+            return None
+
+        # 生成修改订单ID
+        amend_id = f"{int(time.time() * 1000)}"
+        
+        # 构建修改订单消息
+        amend_msg = {
+            "id": amend_id,
+            "op": "amend-order",
+            "args": [order]
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(amend_msg))
+            logger.info(f"WebSocket修改订单请求已发送: {amend_id}")
+            return {"id": amend_id}
+        except Exception as e:
+            logger.error(f"WebSocket修改订单失败: {e}")
+            return None
+
+    async def batch_amend_orders(self, orders: List[Dict]) -> Optional[Dict]:
+        """
+        WebSocket批量修改订单
+
+        Args:
+            orders: 订单修改列表，每个订单包含instId, ordId或clOrdId，以及要修改的字段
+
+        Returns:
+            Optional[Dict]: 批量修改订单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法批量修改订单")
+            return None
+
+        # 生成批量修改订单ID
+        batch_amend_id = f"{int(time.time() * 1000)}"
+        
+        # 构建批量修改订单消息
+        batch_amend_msg = {
+            "id": batch_amend_id,
+            "op": "batch-amend-orders",
+            "args": orders
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(batch_amend_msg))
+            logger.info(f"WebSocket批量修改订单请求已发送: {batch_amend_id}")
+            return {"id": batch_amend_id}
+        except Exception as e:
+            logger.error(f"WebSocket批量修改订单失败: {e}")
+            return None
+
+    async def cancel_order(self, order: Dict) -> Optional[Dict]:
+        """
+        WebSocket取消订单
+
+        Args:
+            order: 订单取消信息，包含instId和ordId或clOrdId
+
+        Returns:
+            Optional[Dict]: 取消订单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法取消订单")
+            return None
+
+        # 生成取消订单ID
+        cancel_id = f"{int(time.time() * 1000)}"
+        
+        # 构建取消订单消息
+        cancel_msg = {
+            "id": cancel_id,
+            "op": "cancel-order",
+            "args": [order]
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(cancel_msg))
+            logger.info(f"WebSocket取消订单请求已发送: {cancel_id}")
+            return {"id": cancel_id}
+        except Exception as e:
+            logger.error(f"WebSocket取消订单失败: {e}")
+            return None
+
+    async def batch_cancel_orders(self, orders: List[Dict]) -> Optional[Dict]:
+        """
+        WebSocket批量取消订单
+
+        Args:
+            orders: 订单取消列表，每个订单包含instId和ordId或clOrdId
+
+        Returns:
+            Optional[Dict]: 批量取消订单结果
+        """
+        if not self.private_ws or not self._logged_in:
+            logger.error("WebSocket未连接或未登录，无法批量取消订单")
+            return None
+
+        # 生成批量取消订单ID
+        batch_cancel_id = f"{int(time.time() * 1000)}"
+        
+        # 构建批量取消订单消息
+        batch_cancel_msg = {
+            "id": batch_cancel_id,
+            "op": "batch-cancel-orders",
+            "args": orders
+        }
+
+        try:
+            await self.private_ws.send(json.dumps(batch_cancel_msg))
+            logger.info(f"WebSocket批量取消订单请求已发送: {batch_cancel_id}")
+            return {"id": batch_cancel_id}
+        except Exception as e:
+            logger.error(f"WebSocket批量取消订单失败: {e}")
+            return None
