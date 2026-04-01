@@ -197,12 +197,18 @@ class OKXRESTClient(BaseExchange):
             return False
         
         # 检查响应格式
-        if "code" not in data or "data" not in data:
+        if "data" not in data:
             return False
         
-        # 检查错误码
-        if data.get("code") != "0":
-            return False
+        # 按照OKX API指南检查错误码
+        if "sCode" in data:
+            # 当返回中有sCode字段时，使用sCode
+            if data.get("sCode") != "0":
+                return False
+        else:
+            # 当返回中没有sCode字段时，使用code
+            if "code" not in data or data.get("code") != "0":
+                return False
         
         return True
 
@@ -373,18 +379,35 @@ class OKXRESTClient(BaseExchange):
                     api_call_record["response"] = data
 
                     # 检查业务错误码
-                    if data.get("code") != "0":
-                        error_msg = f"API错误 {data.get('code')}: {data.get('msg')}"
-                        logger.error(error_msg)
-                        api_call_record["error"] = error_msg
-                        
-                        # 对于某些错误码，进行重试
-                        retryable_codes = ["50000", "50001", "50002"]  # 服务器临时错误
-                        if data.get("code") in retryable_codes and retry < max_retries:
-                            logger.warning(f"API错误，进行重试 ({retry + 1}/{max_retries})")
-                            await asyncio.sleep(retry_delay * (retry + 1))
-                            continue
-                        return None
+                    # 按照OKX API指南处理返回数据
+                    if "sCode" in data:
+                        # 当返回中有sCode字段时，使用sCode和sMsg
+                        if data.get("sCode") != "0":
+                            error_msg = f"API错误 {data.get('sCode')}: {data.get('sMsg')}"
+                            logger.error(error_msg)
+                            api_call_record["error"] = error_msg
+                            
+                            # 对于某些错误码，进行重试
+                            retryable_codes = ["50000", "50001", "50002"]  # 服务器临时错误
+                            if data.get("sCode") in retryable_codes and retry < max_retries:
+                                logger.warning(f"API错误，进行重试 ({retry + 1}/{max_retries})")
+                                await asyncio.sleep(retry_delay * (retry + 1))
+                                continue
+                            return None
+                    else:
+                        # 当返回中没有sCode字段时，使用code和msg
+                        if data.get("code") != "0":
+                            error_msg = f"API错误 {data.get('code')}: {data.get('msg')}"
+                            logger.error(error_msg)
+                            api_call_record["error"] = error_msg
+                            
+                            # 对于某些错误码，进行重试
+                            retryable_codes = ["50000", "50001", "50002"]  # 服务器临时错误
+                            if data.get("code") in retryable_codes and retry < max_retries:
+                                logger.warning(f"API错误，进行重试 ({retry + 1}/{max_retries})")
+                                await asyncio.sleep(retry_delay * (retry + 1))
+                                continue
+                            return None
 
                     response_data = data.get("data")
 
