@@ -679,7 +679,7 @@ class OKXWebSocketClient:
 
     def is_connected(self) -> bool:
         """检查是否已连接"""
-        return self._public_connected and self._private_connected
+        return self._public_connected or self._private_connected
 
     async def _message_processor(self):
         """消息处理器 - 从队列中获取消息并处理"""

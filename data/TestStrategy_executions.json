@@ -40,5 +40,26 @@
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T12:14:18.020793",
+    "strategy": "TestStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T12:14:18.039481",
+    "strategy": "TestStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-01T12:14:18.041703",
+    "strategy": "TestStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
   }
 ]

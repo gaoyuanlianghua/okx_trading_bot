@@ -235,6 +235,19 @@ class MarketDataAgent(BaseAgent):
             # 更新缓存元数据
             self._update_cache_metadata(inst_id)
 
+            # 发布市场数据更新事件
+            await self.event_bus.publish_async(
+                Event(
+                    type=EventType.MARKET_DATA_TICKER,
+                    source="market_data_agent",
+                    data={
+                        "channel": "tickers",
+                        "inst_id": inst_id,
+                        "data": data
+                    }
+                )
+            )
+
             logger.debug(f"Ticker更新: {inst_id}, 价格: {data[0].get('last')}")
 
     async def _on_orderbook_update(self, event: Event):

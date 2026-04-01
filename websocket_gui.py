@@ -181,10 +181,6 @@ class WebSocketGUI(QMainWindow):
         # 初始化权限控制
         self._init_permission_system()
         
-        # 验证用户登录
-        if not self._show_login_dialog():
-            sys.exit()
-
         # 初始化事件总线
         self.event_bus = EventBus()
 
@@ -219,6 +215,13 @@ class WebSocketGUI(QMainWindow):
         # 加载加密的API密钥
         self._load_encrypted_api_keys()
 
+        # 加载现有策略
+        self._load_strategies()
+
+        # 验证用户登录
+        if not self._show_login_dialog():
+            sys.exit()
+
         # 初始化界面
         self.init_ui()
 
@@ -234,7 +237,7 @@ class WebSocketGUI(QMainWindow):
         # 注册事件监听器
         self.event_bus.subscribe(EventType.MARKET_DATA_TICKER, self.on_market_event)
         self.event_bus.subscribe(EventType.ORDER_UPDATED, self.on_order_event)
-        self.event_bus.subscribe(EventType.MARKET_DATA_TICKER, self.on_account_event)
+        self.event_bus.subscribe(EventType.CUSTOM, self.on_account_event)
         self.event_bus.subscribe(EventType.WS_CONNECTED, self.on_ws_connected)
         self.event_bus.subscribe(EventType.WS_DISCONNECTED, self.on_ws_disconnected)
 
@@ -518,6 +521,62 @@ class WebSocketGUI(QMainWindow):
                             "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         }
                 logger.info(f"加载缓存的市场数据: {symbol}, {len(cached_data)} 条记录")
+
+    def _load_strategies(self):
+        """
+        加载现有的策略文件
+        """
+        import os
+        try:
+            strategies_dir = "d:/Projects/okx_trading_bot/strategies"
+            
+            if os.path.exists(strategies_dir):
+                # 遍历strategies目录中的所有.py文件
+                for file_name in os.listdir(strategies_dir):
+                    if file_name.endswith(".py") and file_name != "__init__.py" and file_name != "base_strategy.py":
+                        # 提取策略名称（去掉.py后缀）
+                        strategy_name = os.path.splitext(file_name)[0]
+                        
+                        # 检查策略是否已经在列表中
+                        existing_strategy = next((s for s in self.strategies if s["name"] == strategy_name), None)
+                        if not existing_strategy:
+                            # 确定策略类型
+                            strategy_type = "自定义策略"
+                            if "ma_rsi" in strategy_name.lower():
+                                strategy_type = "移动平均线RSI策略"
+                            elif "macd_bollinger" in strategy_name.lower():
+                                strategy_type = "MACD布林带策略"
+                            elif "passivbot" in strategy_name.lower():
+                                strategy_type = "PassivBot策略"
+                            elif "dynamic" in strategy_name.lower():
+                                strategy_type = "动态策略"
+                            elif "combined" in strategy_name.lower():
+                                strategy_type = "组合策略"
+                            elif "arbitrage" in strategy_name.lower():
+                                strategy_type = "套利策略"
+                            elif "machine_learning" in strategy_name.lower():
+                                strategy_type = "机器学习策略"
+                            elif "nuclear_dynamics" in strategy_name.lower():
+                                strategy_type = "原子核互反动力策略"
+                            
+                            # 添加策略到列表
+                            self.strategies.append({
+                                "name": strategy_name,
+                                "type": strategy_type,
+                                "status": "已停止"
+                            })
+                            print(f"加载策略: {strategy_name} (类型: {strategy_type})")
+                            logger.info(f"加载策略: {strategy_name} (类型: {strategy_type})")
+            else:
+                print(f"策略目录不存在: {strategies_dir}")
+                logger.warning(f"策略目录不存在: {strategies_dir}")
+                # 创建策略目录
+                os.makedirs(strategies_dir, exist_ok=True)
+                print(f"创建策略目录: {strategies_dir}")
+                logger.info(f"创建策略目录: {strategies_dir}")
+        except Exception as e:
+            print(f"加载策略错误: {e}")
+            logger.error(f"加载策略错误: {e}")
 
     def init_ui(self):
         """
@@ -844,6 +903,9 @@ class WebSocketGUI(QMainWindow):
         
         # 更新UI权限
         self.update_ui_permissions()
+        
+        # 更新策略列表
+        self.update_strategy_list()
         
     def resizeEvent(self, event):
         """
@@ -1866,7 +1928,7 @@ class WebSocketGUI(QMainWindow):
         self.strategy_name_input.setMinimumWidth(150)
         
         self.strategy_type_combo = QComboBox()
-        self.strategy_type_combo.addItems(["动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "自定义策略"])
+        self.strategy_type_combo.addItems(["动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "原子核互反动力策略", "自定义策略"])
         self.strategy_type_combo.setMinimumWidth(120)
         
         self.create_strategy_button = QPushButton("创建策略")
@@ -1901,7 +1963,7 @@ class WebSocketGUI(QMainWindow):
         self.status_filter.setMinimumWidth(120)
         
         self.type_filter = QComboBox()
-        self.type_filter.addItems(["所有类型", "动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "自定义策略"])
+        self.type_filter.addItems(["所有类型", "动态策略", "PassivBot策略", "移动平均线RSI策略", "MACD布林带策略", "原子核互反动力策略", "自定义策略"])
         self.type_filter.setMinimumWidth(120)
         
         refresh_button = QPushButton("刷新")
@@ -2292,13 +2354,22 @@ class WebSocketGUI(QMainWindow):
         异步订阅产品
         """
         try:
-            success = await self.ws_client.subscribe("tickers", inst_id)
-            if success:
-                self.statusBar.showMessage(f"订阅 {inst_id} 成功")
-                # 更新订阅列表
-                self.update_subscribe_list()
+            if self.market_data_agent:
+                success = await self.market_data_agent.subscribe_instrument(inst_id)
+                if success:
+                    self.statusBar.showMessage(f"订阅 {inst_id} 成功")
+                    # 更新订阅列表
+                    self.update_subscribe_list()
+                else:
+                    self.statusBar.showMessage(f"订阅 {inst_id} 失败")
             else:
-                self.statusBar.showMessage(f"订阅 {inst_id} 失败")
+                success = await self.ws_client.subscribe("tickers", inst_id)
+                if success:
+                    self.statusBar.showMessage(f"订阅 {inst_id} 成功")
+                    # 更新订阅列表
+                    self.update_subscribe_list()
+                else:
+                    self.statusBar.showMessage(f"订阅 {inst_id} 失败")
         except Exception as e:
             logger.error(f"订阅错误: {e}")
             self.statusBar.showMessage(f"订阅错误: {str(e)}")
@@ -2327,11 +2398,23 @@ class WebSocketGUI(QMainWindow):
         异步取消订阅产品
         """
         try:
-            # 这里需要实现取消订阅的逻辑
-            # 由于 OKXWebSocketClient 可能没有直接的取消订阅方法，需要根据实际实现调整
-            self.statusBar.showMessage(f"取消订阅 {inst_id} 成功")
-            # 更新订阅列表
-            self.update_subscribe_list()
+            if self.market_data_agent:
+                success = await self.market_data_agent.unsubscribe_instrument(inst_id)
+                if success:
+                    self.statusBar.showMessage(f"取消订阅 {inst_id} 成功")
+                    # 更新订阅列表
+                    self.update_subscribe_list()
+                else:
+                    self.statusBar.showMessage(f"取消订阅 {inst_id} 失败")
+            else:
+                # 直接使用WebSocket客户端取消订阅
+                success = await self.ws_client.unsubscribe("tickers", inst_id)
+                if success:
+                    self.statusBar.showMessage(f"取消订阅 {inst_id} 成功")
+                    # 更新订阅列表
+                    self.update_subscribe_list()
+                else:
+                    self.statusBar.showMessage(f"取消订阅 {inst_id} 失败")
         except Exception as e:
             logger.error(f"取消订阅错误: {e}")
             self.statusBar.showMessage(f"取消订阅错误: {str(e)}")
@@ -3418,6 +3501,9 @@ class {strategy_name}(BaseStrategy):
             
             # 更新市场分析指标
             self.update_market_analysis(inst_id, float(last_price), float(change24h_percent) * 100)
+            
+            # 更新市场数据表格
+            self.update_market_table()
 
     def update_market_analysis(self, inst_id, price, change_percent):
         """
