@@ -294,6 +294,9 @@ class OKXRESTClient(BaseExchange):
 
         # 构建请求头
         headers = {"Content-Type": "application/json"}
+        # 模拟盘请求头
+        if self.is_test:
+            headers["x-simulated-trading"] = "1"
         if auth_required and self.auth.is_configured():
             request_path = f"{self.API_VERSION}{endpoint}"
             if params:

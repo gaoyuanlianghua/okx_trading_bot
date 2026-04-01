@@ -236,7 +236,7 @@ class OKXWebSocketClient:
         logger.info("WebSocket登录请求已发送")
 
     async def subscribe(
-        self, channel: str, inst_id: str = "", callback: Callable = None
+        self, channel: str, inst_id: str = "", inst_type: str = "", callback: Callable = None
     ) -> bool:
         """
         订阅频道
@@ -244,6 +244,7 @@ class OKXWebSocketClient:
         Args:
             channel: 频道名称 (tickers/books/candles/trades等)
             inst_id: 产品ID
+            inst_type: 产品类型 (SPOT/MARGIN/SWAP/FUTURES/OPTION)
             callback: 回调函数
 
         Returns:
@@ -255,12 +256,14 @@ class OKXWebSocketClient:
         args = {"channel": channel}
         if inst_id:
             args["instId"] = inst_id
+        if inst_type:
+            args["instType"] = inst_type
 
         subscribe_msg = {"op": "subscribe", "args": [args]}
 
         try:
             # 确定使用哪个连接
-            is_private = channel in ["orders", "account", "positions"]
+            is_private = channel in ["orders", "account", "positions", "account/balance", "positions", "orders"]
             ws = self.private_ws if is_private else self.public_ws
 
             if not ws:
@@ -283,13 +286,14 @@ class OKXWebSocketClient:
             logger.error(f"订阅失败 {subscription_key}: {e}")
             return False
 
-    async def unsubscribe(self, channel: str, inst_id: str = "") -> bool:
+    async def unsubscribe(self, channel: str, inst_id: str = "", inst_type: str = "") -> bool:
         """
         取消订阅
 
         Args:
             channel: 频道名称
             inst_id: 产品ID
+            inst_type: 产品类型 (SPOT/MARGIN/SWAP/FUTURES/OPTION)
 
         Returns:
             bool: 是否取消成功
@@ -299,11 +303,13 @@ class OKXWebSocketClient:
         args = {"channel": channel}
         if inst_id:
             args["instId"] = inst_id
+        if inst_type:
+            args["instType"] = inst_type
 
         unsubscribe_msg = {"op": "unsubscribe", "args": [args]}
 
         try:
-            is_private = channel in ["orders", "account", "positions"]
+            is_private = channel in ["orders", "account", "positions", "account/balance", "positions", "orders"]
             ws = self.private_ws if is_private else self.public_ws
 
             if ws:
@@ -412,6 +418,24 @@ class OKXWebSocketClient:
                 logger.debug(f"收到pong响应 [{channel}]")
                 return
 
+            # 处理channel-conn-count消息
+            if "event" in data and data.get("event") == "channel-conn-count":
+                message_record["message_type"] = "channel-conn-count"
+                logger.debug(f"收到连接数量消息: {data}")
+                return
+
+            # 处理channel-conn-count-error消息
+            if "event" in data and data.get("event") == "channel-conn-count-error":
+                message_record["message_type"] = "channel-conn-count-error"
+                logger.error(f"连接数量超出限制: {data}")
+                return
+
+            # 处理notice消息
+            if "event" in data and data.get("event") == "notice":
+                message_record["message_type"] = "notice"
+                logger.warning(f"收到通知消息: {data.get('msg')}")
+                return
+
             logger.debug(f"收到消息 [{channel}]: {message}")
 
         except json.JSONDecodeError:
@@ -419,6 +443,11 @@ class OKXWebSocketClient:
             if message == "ping":
                 message_record["message_type"] = "ping"
                 logger.debug(f"收到ping消息 [{channel}]")
+                # 回复pong
+                if channel == "public" and self.public_ws:
+                    await self.public_ws.send("pong")
+                elif channel == "private" and self.private_ws:
+                    await self.private_ws.send("pong")
                 return
             error_msg = f"无法解析消息: {message}"
             logger.warning(error_msg)
