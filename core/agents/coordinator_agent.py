@@ -90,11 +90,10 @@ class CoordinatorAgent(BaseAgent):
         self._total_trades: int = 0  # 总交易次数
         self._winning_trades: int = 0  # 盈利交易次数
         
-        # 保证金跟踪 - 最大使用100 USDT
-        self._max_margin: float = 10.0  # 最大保证金限制（USDT）
-        self._used_margin: float = 0.0  # 已使用的保证金（USDT）
-        self._long_margin: float = 0.0  # 多头占用保证金（USDT）
-        self._short_margin: float = 0.0  # 空头占用保证金（USDT）
+        # 保证金跟踪 - 每种交易对最大使用10 USDT
+        self._max_margin_per_symbol: float = 10.0  # 每种交易对最大保证金限制（USDT）
+        self._used_margin: Dict[str, Dict[str, float]] = {}  # 已使用的保证金，按交易对和方向分组
+        # 结构: {inst_id: {'long': x.xx, 'short': x.xx}}
         
         # 杠杆倍数
         self._leverage: int = 2  # 默认2倍杠杆
@@ -296,15 +295,18 @@ class CoordinatorAgent(BaseAgent):
     async def _update_margin_tracking(self):
         """
         更新保证金使用情况
-        计算当前所有未平仓订单占用的保证金
+        计算当前所有未平仓订单占用的保证金（按交易对分组）
         """
         try:
             # 重置保证金统计
-            self._long_margin = 0.0
-            self._short_margin = 0.0
+            self._used_margin = {}
             
             # 遍历所有未平仓订单计算保证金
             for inst_id, orders in self._buy_orders.items():
+                # 初始化交易对的保证金记录
+                if inst_id not in self._used_margin:
+                    self._used_margin[inst_id] = {'long': 0.0, 'short': 0.0}
+                
                 for order in orders:
                     position_type = order.get('position_type', 'long')
                     if position_type == 'long':
@@ -314,7 +316,7 @@ class CoordinatorAgent(BaseAgent):
                         if buy_amount > 0 and buy_price > 0:
                             # 杠杆交易中，保证金 = （买入金额） / 杠杆倍数
                             margin = (buy_amount * buy_price) / self._leverage
-                            self._long_margin += margin
+                            self._used_margin[inst_id]['long'] += margin
                     elif position_type == 'short':
                         # 做空订单：计算占用保证金（考虑杠杆倍数）
                         sell_amount = order.get('sell_amount', 0)
@@ -322,20 +324,21 @@ class CoordinatorAgent(BaseAgent):
                         if sell_amount > 0 and sell_price > 0:
                             # 杠杆交易中，保证金 = （卖出金额） / 杠杆倍数
                             margin = (sell_amount * sell_price) / self._leverage
-                            self._short_margin += margin
+                            self._used_margin[inst_id]['short'] += margin
             
-            # 计算总使用保证金
-            self._used_margin = self._long_margin + self._short_margin
-            
-            logger.info(f"保证金使用情况: 总使用={self._used_margin:.2f} USDT, 多头={self._long_margin:.2f} USDT, 空头={self._short_margin:.2f} USDT, 最大限制={self._max_margin:.2f} USDT")
+            # 记录日志
+            for inst_id, margins in self._used_margin.items():
+                total = margins['long'] + margins['short']
+                logger.info(f"保证金使用情况 [{inst_id}]: 总使用={total:.2f} USDT, 多头={margins['long']:.2f} USDT, 空头={margins['short']:.2f} USDT, 最大限制={self._max_margin_per_symbol:.2f} USDT")
         except Exception as e:
             logger.error(f"更新保证金跟踪失败: {e}")
 
-    async def _check_margin_available(self, required_margin: float, position_type: str = 'long') -> bool:
+    async def _check_margin_available(self, required_margin: float, inst_id: str, position_type: str = 'long') -> bool:
         """
-        检查保证金是否足够
+        检查保证金是否足够（针对特定交易对）
         Args:
             required_margin: 需要的保证金（USDT）
+            inst_id: 交易对ID
             position_type: 持仓类型 ('long' 或 'short')
         Returns:
             bool: 保证金是否足够
@@ -344,18 +347,25 @@ class CoordinatorAgent(BaseAgent):
             # 更新保证金使用情况
             await self._update_margin_tracking()
             
+            # 初始化交易对的保证金记录
+            if inst_id not in self._used_margin:
+                self._used_margin[inst_id] = {'long': 0.0, 'short': 0.0}
+            
             # 计算实际需要的保证金（考虑杠杆倍数）
             actual_margin = required_margin / self._leverage
             
+            # 获取当前交易对的已使用保证金
+            current_used = self._used_margin[inst_id].get(position_type, 0.0)
+            
             # 计算交易后总保证金
-            total_after = self._used_margin + actual_margin
+            total_after = current_used + actual_margin
             
             # 检查是否超过最大限制
-            if total_after > self._max_margin:
-                logger.warning(f"⚠️ 保证金不足: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin:.2f} USDT")
+            if total_after > self._max_margin_per_symbol:
+                logger.warning(f"⚠️ 保证金不足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin_per_symbol:.2f} USDT")
                 return False
             
-            logger.info(f"✅ 保证金充足: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin:.2f} USDT")
+            logger.info(f"✅ 保证金充足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin_per_symbol:.2f} USDT")
             return True
         except Exception as e:
             logger.error(f"检查保证金失败: {e}")
@@ -1972,9 +1982,9 @@ class CoordinatorAgent(BaseAgent):
         # ========== 添加保证金检查 ==========
         # 如果不是平仓操作，检查保证金
         if position_type != 'close_long' and position_type != 'close_short':
-            margin_available = await self._check_margin_available(trade_amount_usdt, position_type)
+            margin_available = await self._check_margin_available(trade_amount_usdt, inst_id, position_type)
             if not margin_available:
-                logger.warning(f"⚠️ 保证金不足，取消交易")
+                logger.warning(f"⚠️ 保证金不足 [{inst_id}]，取消交易")
                 return
         
         # 检查交易金额（已移除交易金额限制）
