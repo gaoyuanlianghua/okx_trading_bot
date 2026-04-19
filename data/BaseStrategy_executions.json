@@ -1,135 +1,36 @@
 [
   {
-    "timestamp": "2026-03-30T17:09:12.538556",
+    "timestamp": "2026-04-15T02:48:09.276651",
     "strategy": "BaseStrategy",
-    "execution_id": "exec_1774861752538",
+    "execution_id": "exec_1776192489276",
     "event_type": "start",
     "details": {
-      "price": 50000.0,
-      "timestamp": 1234567890
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
     }
   },
   {
-    "timestamp": "2026-03-30T17:09:12.586815",
+    "timestamp": "2026-04-15T02:48:09.277895",
     "strategy": "BaseStrategy",
-    "execution_id": "exec_1774861752538",
+    "execution_id": "exec_1776192489276",
     "event_type": "error",
     "details": {
       "error": "子类必须实现_execute_strategy方法",
-      "execution_time": "0.048s"
+      "execution_time": "0.001s"
     }
   },
   {
-    "timestamp": "2026-03-30T17:09:12.594828",
+    "timestamp": "2026-04-15T02:48:09.278494",
     "strategy": "BaseStrategy",
     "execution_id": "startup",
     "event_type": "strategy_started",
     "details": {}
   },
   {
-    "timestamp": "2026-03-30T17:09:12.596430",
-    "strategy": "BaseStrategy",
-    "execution_id": "shutdown",
-    "event_type": "strategy_stopped",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:49:08.879143",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774874948879",
-    "event_type": "start",
-    "details": {
-      "price": 50000.0,
-      "timestamp": 1234567890
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:49:08.884307",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774874948879",
-    "event_type": "error",
-    "details": {
-      "error": "子类必须实现_execute_strategy方法",
-      "execution_time": "0.005s"
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:49:08.893296",
-    "strategy": "BaseStrategy",
-    "execution_id": "startup",
-    "event_type": "strategy_started",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:49:08.894312",
-    "strategy": "BaseStrategy",
-    "execution_id": "shutdown",
-    "event_type": "strategy_stopped",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:50:48.836925",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774875048836",
-    "event_type": "start",
-    "details": {
-      "price": 50000.0,
-      "timestamp": 1234567890
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:50:48.841647",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774875048836",
-    "event_type": "error",
-    "details": {
-      "error": "子类必须实现_execute_strategy方法",
-      "execution_time": "0.005s"
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:50:48.849777",
-    "strategy": "BaseStrategy",
-    "execution_id": "startup",
-    "event_type": "strategy_started",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:50:48.850871",
-    "strategy": "BaseStrategy",
-    "execution_id": "shutdown",
-    "event_type": "strategy_stopped",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:51:29.886292",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774875089886",
-    "event_type": "start",
-    "details": {
-      "price": 50000.0,
-      "timestamp": 1234567890
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:51:29.889530",
-    "strategy": "BaseStrategy",
-    "execution_id": "exec_1774875089886",
-    "event_type": "error",
-    "details": {
-      "error": "子类必须实现_execute_strategy方法",
-      "execution_time": "0.003s"
-    }
-  },
-  {
-    "timestamp": "2026-03-30T20:51:29.895976",
-    "strategy": "BaseStrategy",
-    "execution_id": "startup",
-    "event_type": "strategy_started",
-    "details": {}
-  },
-  {
-    "timestamp": "2026-03-30T20:51:29.898061",
+    "timestamp": "2026-04-15T02:48:09.280873",
     "strategy": "BaseStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",

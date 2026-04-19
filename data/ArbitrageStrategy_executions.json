@@ -1,27 +1,85 @@
 [
   {
-    "timestamp": "2026-04-01T20:47:58.837134",
+    "timestamp": "2026-04-15T02:48:10.662105",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "exec_1776192490662",
+    "event_type": "start",
+    "details": {
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:10.662402",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "exec_1776192490662",
+    "event_type": "end",
+    "details": {
+      "signal": null,
+      "execution_time": "0.000s"
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:10.662888",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T02:48:10.664125",
     "strategy": "ArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:49:47.879011",
+    "timestamp": "2026-04-15T03:28:30.695933",
     "strategy": "ArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:34.150340",
+    "timestamp": "2026-04-15T03:30:38.187978",
     "strategy": "ArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:53.708020",
+    "timestamp": "2026-04-15T03:31:06.803361",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:33:03.184416",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:34:19.736285",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:36:24.950159",
+    "strategy": "ArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:41:08.781947",
     "strategy": "ArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",

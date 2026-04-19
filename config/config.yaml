@@ -1,56 +1,49 @@
 api:
-  api_key: 19500a62-5586-44ac-ad05-0aa8b1410af0
-  api_secret: 5939DA431FA0C9D820C46D13F7AB17F8
+  api_key: your_api_key
+  api_secret: your_api_secret
   is_test: true
-  passphrase: Gy528329818.123
+  passphrase: your_passphrase
   timeout: 30
-backtesting:
-  data_source: okx
-  end_date: '2024-01-31'
-  initial_balance: 10000
-  start_date: '2024-01-01'
-  timeframe: 1m
-gui:
-  refresh_interval: 2
-  show_count: 20
-  theme: light
-logging:
-  level: INFO
-  log_dir: logs
-  structured: false
 market:
-  default_inst_id: BTC-USDT-SWAP
-  subscribed_instruments:
-  - BTC-USDT-SWAP
-  - ETH-USDT-SWAP
-  websocket:
-    ping_interval: 20
-    reconnect_attempts: 10
-    reconnect_delay: 5
-risk:
-  alert_thresholds:
-    drawdown: 0.05
-    leverage: 8
-    position_size: 0.4
-  max_drawdown: 0.1
-  max_leverage: 10
-  max_position_percent: 0.5
-  stop_loss_enabled: true
-  take_profit_enabled: true
+  candle_interval: 1m
+  cryptocurrencies:
+  - BTC
+  - ETH
+  - DOGE
+  orderbook_depth: 5
+  update_interval: 5
+notification:
+  email:
+    recipient_emails:
+    - recipient1@example.com
+    - recipient2@example.com
+    sender_email: your_email@example.com
+    sender_password: your_email_password
+    smtp_port: 587
+    smtp_server: smtp.qq.com
+  telegram:
+    bot_token: your_bot_token
+    chat_id: your_chat_id
+  webhook:
+    secret: your_webhook_secret
+    url: http://your-webhook-url.com
 strategy:
   default_strategy: NuclearDynamicsStrategy
-  strategies:
-    DynamicsStrategy:
-      G_eff: 0.0012
-      max_position: 0.5
-      position_size: 0.1
-      stop_loss: 0.02
-      take_profit: 0.05
-      ε: 0.85
+  enabled_strategies:
+  - NuclearDynamicsStrategy
+  signal_cooldown: 60
+  signal_threshold: 0.5
+  strategy_params:
     NuclearDynamicsStrategy:
-      G_eff: 0.0015
-      max_position: 0.5
-      position_size: 0.1
-      stop_loss: 0.02
-      take_profit: 0.05
-      ε: 0.85
+      cooldown_period: 60
+      signal_threshold: 0.7
+trading:
+  default_trading_mode: cross
+  fixed_trade_amount: 10.0
+  leverage: 1
+  max_position_size: 1000
+  min_order_amount: 1
+  risk_per_trade: 0.01
+  stop_loss_percent: 0.02
+  take_profit_percent: 0.05
+  trade_amount_percentage: 0.1

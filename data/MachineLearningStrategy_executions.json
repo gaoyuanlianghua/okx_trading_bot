@@ -1,27 +1,85 @@
 [
   {
-    "timestamp": "2026-04-01T20:47:58.836265",
+    "timestamp": "2026-04-15T02:48:09.932914",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "exec_1776192489932",
+    "event_type": "start",
+    "details": {
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.933156",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "exec_1776192489932",
+    "event_type": "end",
+    "details": {
+      "signal": null,
+      "execution_time": "0.000s"
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.933562",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.934437",
     "strategy": "MachineLearningStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:49:47.877739",
+    "timestamp": "2026-04-15T03:28:30.694913",
     "strategy": "MachineLearningStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:34.148893",
+    "timestamp": "2026-04-15T03:30:38.187623",
     "strategy": "MachineLearningStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:53.706673",
+    "timestamp": "2026-04-15T03:31:06.803029",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:33:03.183929",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:34:19.735883",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:36:24.949830",
+    "strategy": "MachineLearningStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:41:08.781224",
     "strategy": "MachineLearningStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",

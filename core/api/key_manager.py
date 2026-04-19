@@ -43,6 +43,8 @@ class KeyManager:
             encryption_key = base64.b64encode(os.urandom(32)).decode("utf-8")
             print(f"生成新的加密密钥: {encryption_key}")
             print("请将此密钥设置为环境变量 OKX_BOT_ENCRYPTION_KEY")
+            # 临时设置环境变量，以便策略能够继续执行
+            os.environ["OKX_BOT_ENCRYPTION_KEY"] = encryption_key
         self._encryption_key = base64.b64decode(encryption_key)[
             :32
         ]  # 确保密钥长度为32字节

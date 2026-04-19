@@ -1,0 +1,54 @@
+[
+  {
+    "timestamp": "2026-04-15T02:48:09.399238",
+    "strategy": "MacdBollingerStrategy",
+    "execution_id": "exec_1776192489399",
+    "event_type": "start",
+    "details": {
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.399550",
+    "strategy": "MacdBollingerStrategy",
+    "execution_id": "exec_1776192489399",
+    "event_type": "end",
+    "details": {
+      "signal": {
+        "strategy": "MacdBollingerStrategy",
+        "side": "neutral",
+        "price": 74000.0,
+        "signal_strength": 0,
+        "timestamp": 1776192000000,
+        "inst_id": "BTC-USDT-SWAP",
+        "indicators": {
+          "macd_line": null,
+          "signal_line": null,
+          "histogram": null,
+          "bollinger_upper": null,
+          "bollinger_middle": null,
+          "bollinger_lower": null
+        }
+      },
+      "execution_time": "0.000s"
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.400111",
+    "strategy": "MacdBollingerStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.400890",
+    "strategy": "MacdBollingerStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

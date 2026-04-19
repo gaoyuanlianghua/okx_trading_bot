@@ -142,6 +142,441 @@ class BaseStrategy:
         self._log_execution("shutdown", "strategy_stopped", {})
         # 更新监控器中的策略状态
         strategy_monitor.update_strategy_status(self.name, self.status)
+    
+    async def on_trade_event(self, trade_data: dict, total_fees: float):
+        """处理交易事件
+        
+        Args:
+            trade_data (dict): 交易数据
+            total_fees (float): 累计手续费
+        """
+        try:
+            # 分析交易数据
+            fee = trade_data.get('fee', 0)
+            side = trade_data.get('side')
+            price = trade_data.get('price')
+            size = trade_data.get('filled_size')
+            
+            logger.info(f"策略 {self.name} 收到交易事件:")
+            logger.info(f"  交易方向: {side}")
+            logger.info(f"  交易价格: {price}")
+            logger.info(f"  交易数量: {size}")
+            logger.info(f"  交易手续费: {fee}")
+            logger.info(f"  累计手续费: {total_fees}")
+            
+            # 更新账户收益信息
+            self._update_account_pnl(trade_data, total_fees)
+            
+            # 分析是否可以交易
+            can_trade = self._analyze_trade_opportunity(trade_data, total_fees)
+            logger.info(f"  交易机会分析: {'可以交易' if can_trade else '不建议交易'}")
+            
+            # 记录交易事件
+            self._log_execution(
+                "trade_event",
+                "trade_processed",
+                {
+                    "trade_id": trade_data.get('trade_id'),
+                    "side": side,
+                    "price": price,
+                    "size": size,
+                    "fee": fee,
+                    "total_fees": total_fees,
+                    "can_trade": can_trade,
+                    "account_pnl": getattr(self, 'account_pnl', 0),
+                    "account_pnl_ratio": getattr(self, 'account_pnl_ratio', 0)
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"策略 {self.name} 处理交易事件失败: {e}")
+    
+    def _update_account_pnl(self, trade_data: dict, total_fees: float):
+        """更新账户收益信息
+        
+        Args:
+            trade_data (dict): 交易数据
+            total_fees (float): 累计手续费
+        """
+        try:
+            # 这里简化处理，实际应用中需要从API获取真实的账户余额
+            # 假设每次交易后更新账户收益
+            if hasattr(self, 'account_equity'):
+                # 模拟账户收益更新
+                # 实际应用中应该从API获取真实的账户余额
+                price = trade_data.get('price', 0)
+                size = trade_data.get('filled_size', 0)
+                side = trade_data.get('side')
+                
+                # 计算本次交易的盈亏
+                if side == 'buy':
+                    # 买入时，假设使用1 USDT
+                    self.account_equity -= 1.0
+                elif side == 'sell':
+                    # 卖出时，假设卖出0.00002 BTC
+                    self.account_equity += price * 0.00002
+                
+                # 初始账户权益假设为2.5 USDT
+                if self.account_equity == 0:
+                    self.account_equity = 2.5
+                
+                # 计算账户总盈亏
+                self.account_pnl = self.account_equity - 2.5
+                # 计算账户收益率
+                self.account_pnl_ratio = self.account_pnl / 2.5 * 100
+                
+                logger.info(f"  账户总权益: {self.account_equity:.4f} USDT")
+                logger.info(f"  账户总盈亏: {self.account_pnl:.4f} USDT")
+                logger.info(f"  账户收益率: {self.account_pnl_ratio:.2f}%")
+                
+        except Exception as e:
+            logger.error(f"更新账户收益信息失败: {e}")
+    
+    def _analyze_trade_opportunity(self, trade_data: dict, total_fees: float) -> bool:
+        """分析交易机会
+        
+        Args:
+            trade_data (dict): 交易数据
+            total_fees (float): 累计手续费
+            
+        Returns:
+            bool: 是否可以交易
+        """
+        # 简单的交易机会分析
+        # 实际应用中可以根据策略逻辑进行更复杂的分析
+        try:
+            # 检查手续费是否过高
+            fee = trade_data.get('fee', 0)
+            if fee > 0.01:  # 手续费超过0.01 USDT
+                logger.warning(f"手续费过高: {fee} USDT")
+                return False
+            
+            # 检查累计手续费是否过高
+            if total_fees > 1.0:  # 累计手续费超过1.0 USDT
+                logger.warning(f"累计手续费过高: {total_fees} USDT")
+                return False
+            
+            # 检查交易价格是否合理
+            price = trade_data.get('price', 0)
+            if price <= 0:
+                logger.warning("交易价格不合理")
+                return False
+            
+            # 检查交易数量是否合理
+            size = trade_data.get('filled_size', 0)
+            if size <= 0:
+                logger.warning("交易数量不合理")
+                return False
+            
+            # 默认可以交易
+            return True
+            
+        except Exception as e:
+            logger.error(f"分析交易机会失败: {e}")
+            return False
+    
+    async def on_trade_metrics(self, trade_stats: dict, risk_level: str):
+        """处理交易指标事件
+        
+        Args:
+            trade_stats (dict): 交易统计数据
+            risk_level (str): 风险等级
+        """
+        try:
+            # 分析交易指标数据
+            win_rate = trade_stats.get('win_rate', 0)
+            profit_factor = trade_stats.get('profit_factor', 1)
+            total_trades = trade_stats.get('total_trades', 0)
+            
+            logger.info(f"策略 {self.name} 收到交易指标事件:")
+            logger.info(f"  总交易数: {total_trades}")
+            logger.info(f"  胜率: {win_rate:.2f}")
+            logger.info(f"  盈利因子: {profit_factor:.2f}")
+            logger.info(f"  风险等级: {risk_level}")
+            
+            # 基于交易指标调整策略参数
+            self._adjust_strategy_based_on_metrics(trade_stats, risk_level)
+            
+            # 记录交易指标事件
+            self._log_execution(
+                "trade_metrics",
+                "metrics_processed",
+                {
+                    "win_rate": win_rate,
+                    "profit_factor": profit_factor,
+                    "total_trades": total_trades,
+                    "risk_level": risk_level
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"策略 {self.name} 处理交易指标事件失败: {e}")
+    
+    def _adjust_strategy_based_on_metrics(self, trade_stats: dict, risk_level: str):
+        """基于交易指标调整策略参数
+        
+        Args:
+            trade_stats (dict): 交易统计数据
+            risk_level (str): 风险等级
+        """
+        try:
+            # 分析交易指标
+            win_rate = trade_stats.get('win_rate', 0)
+            profit_factor = trade_stats.get('profit_factor', 1)
+            
+            # 根据胜率和盈利因子调整策略参数
+            if hasattr(self, 'current_threshold'):
+                # 胜率高时，降低阈值，增加交易频率
+                if win_rate > 0.6:
+                    new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                    if new_threshold < self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于高胜率调整阈值: {self.current_threshold}")
+                # 胜率低时，提高阈值，减少交易频率
+                elif win_rate < 0.4:
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于低胜率调整阈值: {self.current_threshold}")
+                
+                # 盈利因子高时，降低阈值，增加交易频率
+                if profit_factor > 1.5:
+                    new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                    if new_threshold < self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于高盈利因子调整阈值: {self.current_threshold}")
+                # 盈利因子低时，提高阈值，减少交易频率
+                elif profit_factor < 0.8:
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于低盈利因子调整阈值: {self.current_threshold}")
+            
+            # 根据风险等级调整策略参数
+            if risk_level == "high" or risk_level == "critical":
+                # 高风险时，提高阈值，减少交易频率
+                if hasattr(self, 'current_threshold'):
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.2)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于高风险调整阈值: {self.current_threshold}")
+            
+        except Exception as e:
+            logger.error(f"基于交易指标调整策略参数失败: {e}")
+    
+    async def on_low_return_event(self, params: dict, expected_return: float, reason: str, market_prediction: dict = None):
+        """处理低收益率事件
+        
+        Args:
+            params (dict): 订单参数
+            expected_return (float): 预期收益率
+            reason (str): 拒绝交易的原因
+            market_prediction (dict): 市场预测数据
+        """
+        try:
+            logger.info(f"策略 {self.name} 收到低收益率事件:")
+            logger.info(f"  预期收益率: {expected_return:.4f}")
+            logger.info(f"  原因: {reason}")
+            logger.info(f"  订单参数: {params}")
+            
+            # 打印市场预测数据
+            if market_prediction:
+                logger.info(f"  市场预测: {market_prediction}")
+            
+            # 基于低收益率事件和市场预测调整策略参数
+            self._adjust_strategy_based_on_low_return(expected_return, params, market_prediction)
+            
+            # 记录低收益率事件
+            self._log_execution(
+                "low_return",
+                "return_too_low",
+                {
+                    "expected_return": expected_return,
+                    "reason": reason,
+                    "params": params,
+                    "market_prediction": market_prediction
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"策略 {self.name} 处理低收益率事件失败: {e}")
+    
+    def _adjust_strategy_based_on_low_return(self, expected_return: float, params: dict, market_prediction: dict = None):
+        """基于低收益率事件和市场预测调整策略参数
+        
+        Args:
+            expected_return (float): 预期收益率
+            params (dict): 订单参数
+            market_prediction (dict): 市场预测数据
+        """
+        try:
+            # 分析低收益率原因
+            # 1. 调整阈值，提高交易标准
+            if hasattr(self, 'current_threshold'):
+                # 提高阈值，减少低收益率交易
+                new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                if new_threshold > self.current_threshold:
+                    self.current_threshold = new_threshold
+                    logger.info(f"基于低收益率调整阈值: {self.current_threshold}")
+            
+            # 2. 调整信号强度计算参数
+            if hasattr(self, 'dynamics_params'):
+                # 增加市场耦合系数，提高信号强度
+                if 'G_eff' in self.dynamics_params:
+                    self.dynamics_params['G_eff'] = min(self.dynamics_params['G_eff'] * 1.2, 0.01)
+                    logger.info(f"基于低收益率调整市场耦合系数: {self.dynamics_params['G_eff']}")
+            
+            # 3. 调整弹簧效应参数
+            if hasattr(self, 'spring_params'):
+                # 减少均值回归阈值，提高敏感度
+                if 'mean_threshold' in self.spring_params:
+                    self.spring_params['mean_threshold'] = max(self.spring_params['mean_threshold'] * 0.8, 0.001)
+                    logger.info(f"基于低收益率调整均值回归阈值: {self.spring_params['mean_threshold']}")
+            
+            # 4. 根据市场预测调整策略参数
+            if market_prediction:
+                trend = market_prediction.get('trend', 'neutral')
+                volatility = market_prediction.get('volatility', 0)
+                momentum = market_prediction.get('momentum', 'neutral')
+                
+                # 根据市场趋势调整
+                if trend == 'bullish':
+                    # 牛市，降低阈值，增加交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                        if new_threshold < self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于牛市预测调整阈值: {self.current_threshold}")
+                elif trend == 'bearish':
+                    # 熊市，提高阈值，减少交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                        if new_threshold > self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于熊市预测调整阈值: {self.current_threshold}")
+                
+                # 根据市场波动率调整
+                if volatility > 5:  # 高波动率
+                    # 高波动率，提高阈值，减少交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = min(self.max_threshold, self.current_threshold * 1.15)
+                        if new_threshold > self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于高波动率调整阈值: {self.current_threshold}")
+                elif volatility < 1:  # 低波动率
+                    # 低波动率，降低阈值，增加交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = max(self.min_threshold, self.current_threshold * 0.85)
+                        if new_threshold < self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于低波动率调整阈值: {self.current_threshold}")
+                
+                # 根据市场动量调整
+                if momentum == 'strong':
+                    # 强动量，降低阈值，增加交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                        if new_threshold < self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于强市场动量调整阈值: {self.current_threshold}")
+                elif momentum == 'weak':
+                    # 弱动量，提高阈值，减少交易频率
+                    if hasattr(self, 'current_threshold'):
+                        new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                        if new_threshold > self.current_threshold:
+                            self.current_threshold = new_threshold
+                            logger.info(f"基于弱市场动量调整阈值: {self.current_threshold}")
+            
+        except Exception as e:
+            logger.error(f"基于低收益率调整策略参数失败: {e}")
+    
+    async def on_risk_assessment(self, inst_id: str, prediction: dict, risk_level: str):
+        """处理风险评估事件
+        
+        Args:
+            inst_id (str): 产品ID
+            prediction (dict): 市场预测结果
+            risk_level (str): 风险等级
+        """
+        try:
+            logger.info(f"策略 {self.name} 收到风险评估事件:")
+            logger.info(f"  产品: {inst_id}")
+            logger.info(f"  风险等级: {risk_level}")
+            logger.info(f"  市场趋势: {prediction.get('trend')}")
+            logger.info(f"  市场波动率: {prediction.get('volatility', 0):.2f}%")
+            logger.info(f"  市场动量: {prediction.get('momentum')}")
+            
+            # 基于风险评估调整策略参数
+            self._adjust_strategy_based_on_risk(risk_level, prediction)
+            
+            # 记录风险评估事件
+            self._log_execution(
+                "risk_assessment",
+                "risk_level_updated",
+                {
+                    "inst_id": inst_id,
+                    "risk_level": risk_level,
+                    "prediction": prediction
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"策略 {self.name} 处理风险评估事件失败: {e}")
+    
+    def _adjust_strategy_based_on_risk(self, risk_level: str, prediction: dict):
+        """基于风险评估调整策略参数
+        
+        Args:
+            risk_level (str): 风险等级
+            prediction (dict): 市场预测结果
+        """
+        try:
+            # 根据风险等级调整策略参数
+            if hasattr(self, 'current_threshold'):
+                if risk_level == "critical":
+                    # 极高风险，大幅提高阈值，减少交易频率
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.5)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于极高风险调整阈值: {self.current_threshold}")
+                elif risk_level == "high":
+                    # 高风险，提高阈值，减少交易频率
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.2)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于高风险调整阈值: {self.current_threshold}")
+                elif risk_level == "medium":
+                    # 中等风险，适度提高阈值
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于中等风险调整阈值: {self.current_threshold}")
+                else:  # low
+                    # 低风险，可以降低阈值，增加交易频率
+                    new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                    if new_threshold < self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于低风险调整阈值: {self.current_threshold}")
+            
+            # 根据市场趋势调整策略参数
+            trend = prediction.get("trend", "neutral")
+            if trend == "bearish":
+                # 熊市，提高阈值，减少交易频率
+                if hasattr(self, 'current_threshold'):
+                    new_threshold = min(self.max_threshold, self.current_threshold * 1.1)
+                    if new_threshold > self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于熊市调整阈值: {self.current_threshold}")
+            elif trend == "bullish":
+                # 牛市，降低阈值，增加交易频率
+                if hasattr(self, 'current_threshold'):
+                    new_threshold = max(self.min_threshold, self.current_threshold * 0.9)
+                    if new_threshold < self.current_threshold:
+                        self.current_threshold = new_threshold
+                        logger.info(f"基于牛市调整阈值: {self.current_threshold}")
+            
+        except Exception as e:
+            logger.error(f"基于风险评估调整策略参数失败: {e}")
 
     def pause(self):
         """暂停策略"""

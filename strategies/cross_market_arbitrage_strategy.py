@@ -342,7 +342,7 @@ class CrossMarketArbitrageStrategy(BaseStrategy):
                 self.active_arbitrage[key]["error"] = str(e)
         finally:
             # 清理活跃套利记录（5分钟后）
-            asyncio.create_task(self._cleanup_active_arbitrage(key))
+            asyncio.ensure_future(self._cleanup_active_arbitrage(key))
     
     async def _place_order(self, exchange_name: str, trading_pair: str, side: str, price: float, amount: float) -> Optional[Dict]:
         """在交易所下单
@@ -401,7 +401,7 @@ class CrossMarketArbitrageStrategy(BaseStrategy):
         super().start()
         # 启动套利监控
         import asyncio
-        asyncio.create_task(self.run_arbitrage_monitor())
+        asyncio.ensure_future(self.run_arbitrage_monitor())
     
     def get_status(self):
         """获取策略状态

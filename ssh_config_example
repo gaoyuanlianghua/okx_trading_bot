@@ -1,0 +1,12 @@
+# SSH Configuration for 47.79.20.181
+Host 47.79.20.181
+    HostName 47.79.20.181
+    User root
+    # Password: w528329818.123
+    # Note: It's not recommended to store passwords in plain text in config files
+    # Consider using SSH keys for better security
+
+# To use this configuration:
+# 1. Copy this file to ~/.ssh/config
+# 2. Remove the # from the Password line if you want to use password authentication
+# 3. Run: ssh 47.79.20.181

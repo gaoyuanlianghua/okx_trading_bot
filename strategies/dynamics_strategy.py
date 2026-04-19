@@ -63,17 +63,17 @@ class DynamicsStrategy(BaseStrategy):
         # 动力学参数配置
         self.dynamics_params = {
             "ε": 0.85,  # 市场动量方向算符 (1同向/-1反向)
-            "G_eff": 1.2e-3,  # 市场耦合系数 (10⁻³~10⁻²量级)
-            "n": 3,  # 市场影响力衰减指数
-            "η": 0.75,  # 配对反馈强度
-            "γ": 0.1,  # 价差异常衰减率
-            "κ": 2.5,  # 相位同步强度
-            "λ": 3.0,  # 相位耦合衰减
-            "t_coll": 0.1,  # 市场协同时标(秒)
+            "G_eff": 5.0e-3,  # 市场耦合系数 (增加到5e-3，提高敏感度)
+            "n": 2,  # 市场影响力衰减指数 (从3降到2，减缓衰减)
+            "η": 1.0,  # 配对反馈强度 (从0.75增加到1.0)
+            "γ": 0.05,  # 价差异常衰减率 (从0.1降到0.05，减缓衰减)
+            "κ": 5.0,  # 相位同步强度 (从2.5增加到5.0)
+            "λ": 2.0,  # 相位耦合衰减 (从3.0降到2.0，减缓衰减)
+            "t_coll": 0.05,  # 市场协同时标(秒) (从0.1降到0.05，加快响应)
         }
 
         # 弹簧效应均值回归参数
-        self.spring_params = {"lookback_period": 20, "mean_threshold": 0.03}
+        self.spring_params = {"lookback_period": 10, "mean_threshold": 0.005}  # 降低阈值，增加敏感度
 
         # 数据容器
         self.price_history = []
@@ -86,6 +86,22 @@ class DynamicsStrategy(BaseStrategy):
             "consecutive_losses": 0,
             "last_reset_time": time.time(),
         }
+        
+        # 累计盈利和浮亏
+        self.total_profit = 0
+        self.total_floating_loss = 0
+        # 累计手续费
+        self.total_fees = 0
+        # 账户收益跟踪
+        self.account_equity = 0  # 账户总权益
+        self.account_pnl = 0  # 账户总盈亏
+        self.account_pnl_ratio = 0  # 账户收益率
+        # 阈值自动调节参数
+        self.base_threshold = 0.0001  # 基础阈值，降低以更容易生成交易信号
+        self.current_threshold = 0.0001  # 当前阈值，降低以更容易生成交易信号
+        self.threshold_adjustment_factor = 0.0001  # 阈值调整因子
+        self.max_threshold = 0.01  # 最大阈值
+        self.min_threshold = 0.0001  # 最小阈值，降低以更容易生成交易信号
 
         # 订单参数验证配置
         self.order_param_config = {
@@ -265,12 +281,12 @@ class DynamicsStrategy(BaseStrategy):
         else:
             phase_signal = 0
 
-        # 信号融合 (加权合成)
+        # 信号融合 (加权合成) - 增加spring_signal权重以提高敏感度
         combined_signal = (
-            0.4 * spring_signal
-            + 0.3 * momentum_signal
-            + 0.2 * pairing_signal
-            + 0.1 * phase_signal
+            0.6 * spring_signal  # 从0.4增加到0.6
+            + 0.25 * momentum_signal  # 从0.3降到0.25
+            + 0.1 * pairing_signal  # 从0.2降到0.1
+            + 0.05 * phase_signal  # 从0.1降到0.05
         )
 
         return combined_signal
@@ -278,9 +294,12 @@ class DynamicsStrategy(BaseStrategy):
     async def execute_trade(self, inst_id, signal_strength):
         """执行交易订单"""
         try:
-            # 检查信号强度
-            if -0.5 <= signal_strength <= 0.5:
-                logger.info("⚖️ 信号强度中性，保持观望")
+            # 基于信号强度调整阈值
+            self.adjust_threshold_based_on_signal_strength(signal_strength)
+            
+            # 检查信号强度 (使用当前阈值)
+            if -self.current_threshold <= signal_strength <= self.current_threshold:
+                logger.info(f"⚖️ 信号强度中性，保持观望 (阈值: {self.current_threshold})")
                 return True
 
             # 策略风险检查
@@ -295,18 +314,46 @@ class DynamicsStrategy(BaseStrategy):
                 logger.warning("⚠️ 账户健康状况不佳，跳过交易")
                 return False
 
-            # 订单类型决策
-            side = "buy" if signal_strength > 0.5 else "sell"
+            # 订单类型决策 (使用当前阈值)
+            side = "buy" if signal_strength > self.current_threshold else "sell"
 
             # 获取当前价格
             current_price = self.price_history[-1]
 
-            # 计算仓位大小 (弹簧效应)
+            # 计算市场波动率
+            volatility = 0
+            if len(self.price_history) > 10:
+                returns = np.diff(np.log(self.price_history[-10:]))
+                volatility = np.std(returns)
+
+            # 根据市场波动率和信号强度自动调整委托单价
+            price_adjustment = volatility * abs(signal_strength) * 10
+            if side == "buy":
+                # 买入时，价格适当提高以增加成交概率
+                adjusted_price = current_price * (1 + price_adjustment)
+            else:
+                # 卖出时，价格适当降低以增加成交概率
+                adjusted_price = current_price * (1 - price_adjustment)
+
+            # 确保价格精度正确
+            price_precision = self.order_param_config["price_precisions"].get(inst_id, 2)
+            adjusted_price = round(adjusted_price, price_precision)
+
+            # 计算基础仓位大小 (弹簧效应)
             account_balance = overall_risk["account_balance"]
-            position_size = np.tanh(signal_strength) * min(
+            base_position_size = np.tanh(signal_strength) * min(
                 self.risk_manager.risk_params["max_order_amount"],
                 account_balance * 0.2,  # 最多使用20%的账户余额
             )
+
+            # 利用盈利收益增加交易金额
+            if self.total_profit > 0:
+                # 最多使用50%的累计盈利作为额外交易金额
+                profit_boost = min(self.total_profit * 0.5, base_position_size * 0.3)
+                position_size = base_position_size + profit_boost
+                logger.info(f"📈 利用盈利增加交易金额: +{profit_boost:.2f} USDT")
+            else:
+                position_size = base_position_size
 
             order_size = position_size / current_price
 
@@ -315,7 +362,7 @@ class DynamicsStrategy(BaseStrategy):
                 "inst_id": inst_id,
                 "side": side,
                 "sz": str(order_size),
-                "px": str(current_price),
+                "px": str(adjusted_price),
             }
 
             # 订单参数验证
@@ -330,29 +377,36 @@ class DynamicsStrategy(BaseStrategy):
                 logger.warning(f"⚠️ 订单风险检查失败: {reason}")
                 return False
 
+            # 执行交易前进行阈值校准
+            self.adjust_threshold_before_trade()
+        
             # 执行交易
             try:
                 order_id = self.api_client.place_order(
                     inst_id=inst_id,
                     side=side,
                     ord_type="limit",
-                    px=str(current_price),
+                    px=str(adjusted_price),
                     sz=str(order_size),
                 )
 
                 if order_id:
                     logger.info(
-                        f"✅ 订单执行成功: {side} {inst_id} {order_size} @ {current_price}"
+                        f"✅ 订单执行成功: {side} {inst_id} {order_size} @ {adjusted_price} (调整: {price_adjustment:.4f})"
                     )
                     # 更新交易统计
                     self.update_trade_stats(
                         {"profit": 0}
                     )  # 暂时假设盈亏为0，实际应从订单结果获取
+                    # 交易后再次校准阈值
+                    self.adjust_threshold_after_trade({"profit": 0})
                     return True
                 else:
                     logger.error("❌ 订单失败")
                     # 更新交易统计
                     self.update_trade_stats({"profit": -0.01})  # 假设小亏损
+                    # 交易后再次校准阈值
+                    self.adjust_threshold_after_trade({"profit": -0.01})
                     return False
             except Exception as api_error:
                 # 尝试提取错误码和错误信息
@@ -373,6 +427,8 @@ class DynamicsStrategy(BaseStrategy):
 
                 # 更新交易统计
                 self.update_trade_stats({"profit": -0.01})  # 假设小亏损
+                # 交易后再次校准阈值
+                self.adjust_threshold_after_trade({"profit": -0.01})
                 return False
 
         except Exception as e:
@@ -807,13 +863,136 @@ class DynamicsStrategy(BaseStrategy):
 
         # 更新盈亏
         profit = trade_result.get("profit", 0)
+        # 更新手续费
+        fee = trade_result.get("fee", 0)
+        self.total_fees += fee
+        
         if profit < 0:
             self.trade_stats["daily_loss"] += abs(profit)
             self.trade_stats["consecutive_losses"] += 1
+            # 更新浮亏
+            self.total_floating_loss += abs(profit)
+            # 自动调节阈值（考虑手续费）
+            self.adjust_threshold_based_on_loss()
         else:
             self.trade_stats["consecutive_losses"] = 0
+            # 更新累计盈利
+            self.total_profit += profit
+            # 盈利时可以考虑降低阈值，增加交易频率
+            if self.total_profit > 0:
+                self.adjust_threshold_based_on_profit()
 
-        logger.debug(f"交易统计更新: {self.trade_stats}")
+        logger.debug(f"交易统计更新: {self.trade_stats}, 累计盈利: {self.total_profit}, 浮亏: {self.total_floating_loss}, 累计手续费: {self.total_fees}")
+
+    def adjust_threshold_based_on_loss(self):
+        """基于浮亏自动调节阈值
+        当出现浮亏时，增加阈值以减少交易频率，降低风险
+        """
+        # 计算总损失（浮亏 + 手续费）
+        total_loss = self.total_floating_loss + self.total_fees
+        
+        # 根据总损失程度调整阈值
+        if total_loss > 0:
+            # 总损失越大，阈值增加越多
+            loss_factor = min(total_loss / 10, 1)  # 最多增加1倍
+            new_threshold = self.base_threshold + (loss_factor * self.threshold_adjustment_factor * 10)
+            # 确保阈值在合理范围内
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"基于浮亏和手续费调整阈值: {self.base_threshold} → {self.current_threshold} (浮亏: {self.total_floating_loss}, 手续费: {self.total_fees}, 总损失: {total_loss})")
+
+    def adjust_threshold_based_on_profit(self):
+        """基于盈利自动调节阈值
+        当盈利时，适当降低阈值以增加交易频率，提高盈利机会
+        """
+        # 计算净利润（盈利 - 手续费）
+        net_profit = self.total_profit - self.total_fees
+        
+        # 根据净利润程度调整阈值
+        if net_profit > 0:
+            # 净利润越多，阈值降低越多
+            profit_factor = min(net_profit / 10, 1)  # 最多降低1倍
+            new_threshold = self.base_threshold - (profit_factor * self.threshold_adjustment_factor * 5)
+            # 确保阈值在合理范围内
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"基于净利润调整阈值: {self.base_threshold} → {self.current_threshold} (盈利: {self.total_profit}, 手续费: {self.total_fees}, 净利润: {net_profit})")
+
+    def adjust_threshold_before_trade(self):
+        """交易前进行阈值校准
+        基于当前市场状态和策略表现进行阈值调整
+        """
+        # 计算当前市场波动率
+        volatility = 0
+        if len(self.price_history) > 10:
+            returns = np.diff(np.log(self.price_history[-10:]))
+            volatility = np.std(returns)
+        
+        # 根据市场波动率调整阈值
+        if volatility > 0.02:
+            # 高波动率市场，增加阈值以减少交易频率，降低风险
+            volatility_factor = min(volatility * 100, 2)  # 最多增加2倍
+            new_threshold = self.base_threshold * (1 + volatility_factor * 0.1)
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"交易前基于市场波动率调整阈值: {self.base_threshold} → {self.current_threshold} (波动率: {volatility:.4f})")
+        
+        # 记录阈值校准信息
+        logger.info(f"交易前阈值校准完成，当前阈值: {self.current_threshold}")
+
+    def adjust_threshold_after_trade(self, trade_result):
+        """交易后进行阈值校准
+        基于交易结果进行阈值调整
+        
+        Args:
+            trade_result (dict): 交易结果，包含profit等信息
+        """
+        profit = trade_result.get("profit", 0)
+        fee = trade_result.get("fee", 0)
+        
+        # 计算实际盈亏（考虑手续费）
+        actual_profit = profit - fee
+        
+        # 根据实际盈亏调整阈值
+        if actual_profit < 0:
+            # 实际亏损，增加阈值以减少交易频率
+            loss_factor = min(abs(actual_profit) * 100, 1)  # 最多增加1倍
+            new_threshold = self.base_threshold * (1 + loss_factor * 0.2)
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"交易后基于实际亏损调整阈值: {self.base_threshold} → {self.current_threshold} (盈利: {profit:.4f}, 手续费: {fee:.4f}, 实际亏损: {abs(actual_profit):.4f})")
+        elif actual_profit > 0:
+            # 实际盈利，适当降低阈值以增加交易频率
+            profit_factor = min(actual_profit * 100, 1)  # 最多降低1倍
+            new_threshold = self.base_threshold * (1 - profit_factor * 0.1)
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"交易后基于实际盈利调整阈值: {self.base_threshold} → {self.current_threshold} (盈利: {profit:.4f}, 手续费: {fee:.4f}, 实际盈利: {actual_profit:.4f})")
+        
+        # 记录阈值校准信息
+        logger.info(f"交易后阈值校准完成，当前阈值: {self.current_threshold}")
+
+    def adjust_threshold_based_on_signal_strength(self, signal_strength):
+        """基于信号强度调整阈值
+        信号强度越大，阈值可以适当降低，以捕捉更多的交易机会
+        信号强度越小，阈值应该适当提高，以减少噪音交易
+        
+        Args:
+            signal_strength (float): 信号强度
+        """
+        # 计算信号强度的绝对值
+        abs_signal_strength = abs(signal_strength)
+        
+        # 根据信号强度调整阈值
+        if abs_signal_strength > 0.01:
+            # 强信号，降低阈值以捕捉更多交易机会
+            signal_factor = min(abs_signal_strength * 100, 2)  # 最多降低2倍
+            new_threshold = self.base_threshold * (1 - signal_factor * 0.05)
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"基于强信号调整阈值: {self.base_threshold} → {self.current_threshold} (信号强度: {signal_strength:.6f})")
+        elif abs_signal_strength < 0.001:
+            # 弱信号，提高阈值以减少噪音交易
+            new_threshold = self.base_threshold * 1.1  # 提高10%
+            self.current_threshold = min(max(new_threshold, self.min_threshold), self.max_threshold)
+            logger.info(f"基于弱信号调整阈值: {self.base_threshold} → {self.current_threshold} (信号强度: {signal_strength:.6f})")
+        
+        # 记录阈值调整信息
+        logger.info(f"基于信号强度的阈值调整完成，当前阈值: {self.current_threshold}")
 
     def _execute_strategy(self, market_data):
         """执行策略，生成交易信号
@@ -833,13 +1012,22 @@ class DynamicsStrategy(BaseStrategy):
         # 计算信号强度
         signal_strength = self.calculate_signal_strength()
 
-        # 生成交易信号
-        if signal_strength > 0.5:
+        # 基于账户收益调整信号强度
+        signal_strength = self.adjust_signal_based_on_account_pnl(signal_strength)
+
+        # 基于信号强度调整阈值
+        self.adjust_threshold_based_on_signal_strength(signal_strength)
+
+        # 生成交易信号 (使用自动调节的阈值)
+        if signal_strength > self.current_threshold:
             side = "buy"
-        elif signal_strength < -0.5:
+        elif signal_strength <= -self.current_threshold:
             side = "sell"
         else:
             side = "neutral"  # 信号强度不足，返回中性信号
+        
+        # 记录当前阈值和信号强度
+        logger.info(f"当前阈值: {self.current_threshold}, 信号强度: {signal_strength}")
 
         # 获取当前价格
         current_price = (
@@ -855,8 +1043,50 @@ class DynamicsStrategy(BaseStrategy):
             "price": current_price,
             "signal_strength": signal_strength,
             "timestamp": market_data.get("timestamp", time.time()),
-            "inst_id": market_data.get("inst_id", "BTC-USDT-SWAP"),
+            "inst_id": market_data.get("inst_id", "BTC-USDT"),  # 使用现货交易对
         }
 
         logger.info(f"策略信号生成: {signal}")
         return signal
+    
+    def adjust_signal_based_on_account_pnl(self, signal_strength):
+        """基于账户收益调整信号强度
+        当账户亏损时，减小信号强度，降低交易频率，控制风险
+        当账户盈利时，增大信号强度，增加交易频率，提高盈利机会
+        
+        Args:
+            signal_strength (float): 原始信号强度
+            
+        Returns:
+            float: 调整后的信号强度
+        """
+        try:
+            # 检查是否有账户收益信息
+            if hasattr(self, 'account_pnl_ratio'):
+                pnl_ratio = self.account_pnl_ratio
+                
+                # 根据账户收益率调整信号强度
+                if pnl_ratio < -5:  # 账户亏损超过5%
+                    # 亏损严重，减小信号强度，降低交易频率
+                    adjusted_strength = signal_strength * 0.5
+                    logger.info(f"基于账户亏损调整信号强度: {signal_strength} → {adjusted_strength} (账户收益率: {pnl_ratio:.2f}%)")
+                elif pnl_ratio < 0:  # 账户亏损但不严重
+                    # 轻微亏损，小幅减小信号强度
+                    adjusted_strength = signal_strength * 0.8
+                    logger.info(f"基于账户亏损调整信号强度: {signal_strength} → {adjusted_strength} (账户收益率: {pnl_ratio:.2f}%)")
+                elif pnl_ratio > 5:  # 账户盈利超过5%
+                    # 盈利良好，增大信号强度，增加交易频率
+                    adjusted_strength = signal_strength * 1.2
+                    logger.info(f"基于账户盈利调整信号强度: {signal_strength} → {adjusted_strength} (账户收益率: {pnl_ratio:.2f}%)")
+                else:
+                    # 账户收益正常，不调整信号强度
+                    adjusted_strength = signal_strength
+                
+                return adjusted_strength
+            else:
+                # 没有账户收益信息，返回原始信号强度
+                return signal_strength
+                
+        except Exception as e:
+            logger.error(f"调整信号强度失败: {e}")
+            return signal_strength

@@ -1,0 +1,52 @@
+[
+  {
+    "timestamp": "2026-04-15T02:48:09.384644",
+    "strategy": "MARsiStrategy",
+    "execution_id": "exec_1776192489384",
+    "event_type": "start",
+    "details": {
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.384982",
+    "strategy": "MARsiStrategy",
+    "execution_id": "exec_1776192489384",
+    "event_type": "end",
+    "details": {
+      "signal": {
+        "strategy": "MARsiStrategy",
+        "side": "neutral",
+        "price": 74000.0,
+        "signal_strength": 0,
+        "timestamp": 1776192000000,
+        "inst_id": "BTC-USDT-SWAP",
+        "indicators": {
+          "ma_short": null,
+          "ma_long": null,
+          "rsi": null,
+          "trend": 0
+        }
+      },
+      "execution_time": "0.000s"
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.385579",
+    "strategy": "MARsiStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.386429",
+    "strategy": "MARsiStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  }
+]

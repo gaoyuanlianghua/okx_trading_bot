@@ -1,0 +1,275 @@
+{
+  "total_trade_amount": 21.0,
+  "max_trade_amount": 100.0,
+  "recent_signals": {
+    "72798.3_buy_2026-04-11T15:30:21.372690": 1775892621.3732078,
+    "72798.3_buy_2026-04-11T15:30:27.764289": 1775892627.7647004,
+    "72798.3_buy_2026-04-11T15:30:32.858133": 1775892632.8586617,
+    "72798.3_buy_2026-04-11T15:30:38.472072": 1775892638.476929,
+    "72798.3_buy_2026-04-11T15:30:44.850736": 1775892644.853406
+  },
+  "strategy_signals": {
+    "2026-04-11T15:29:15.421968_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:15.421968",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.011917844205813558,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.9999821171504435,
+            "trend": "stable",
+            "asymmetric_param": 0.0
+          },
+          "phase_sync": {
+            "phase_diff": 0.003861052840042012,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892555.4224327,
+      "processed": false
+    },
+    "2026-04-11T15:29:20.849403_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:20.849403",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.011917844205813558,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.9999821171504435,
+            "trend": "stable",
+            "asymmetric_param": 0.0
+          },
+          "phase_sync": {
+            "phase_diff": 0.009558154412739217,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892560.8499296,
+      "processed": false
+    },
+    "2026-04-11T15:29:26.318129_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:26.318129",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.011917844205813558,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.9999821171504435,
+            "trend": "stable",
+            "asymmetric_param": 0.0
+          },
+          "phase_sync": {
+            "phase_diff": 0.01753990872796618,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892566.3220007,
+      "processed": false
+    },
+    "2026-04-11T15:29:32.602805_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:32.602805",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.012028996301222023,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.9999821171504435,
+            "trend": "stable",
+            "asymmetric_param": 0.006832154385727209
+          },
+          "phase_sync": {
+            "phase_diff": 0.02906327906207551,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892572.603304,
+      "processed": false
+    },
+    "2026-04-11T15:29:40.262440_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:40.262440",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.012028996301222016,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.99998211644996,
+            "trend": "stable",
+            "asymmetric_param": 0.006832154385727209
+          },
+          "phase_sync": {
+            "phase_diff": 0.046778974261887596,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892580.2628367,
+      "processed": false
+    },
+    "2026-04-11T15:29:46.297386_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:46.297386",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.012028996301222023,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.99998211644996,
+            "trend": "stable",
+            "asymmetric_param": 0.006832154385727209
+          },
+          "phase_sync": {
+            "phase_diff": 0.07519749570984757,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892586.2978292,
+      "processed": false
+    },
+    "2026-04-11T15:29:52.566453_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,
+        "signal_strength": 0.4,
+        "signal_level": "S",
+        "timestamp": "2026-04-11T15:29:52.566453",
+        "inst_id": "BTC-USDT",
+        "daily_amplitude": 0.0737083253532123,
+        "indicators": {
+          "spring_drift": {
+            "P": "→",
+            "E": "→",
+            "M": "→",
+            "direction": "neutral"
+          },
+          "angular_momentum_flow": {
+            "flow": -0.012028996301222023,
+            "direction": "to_A"
+          },
+          "pairing_gap": {
+            "gap": 0.99998211644996,
+            "trend": "stable",
+            "asymmetric_param": 0.006832154385727209
+          },
+          "phase_sync": {
+            "phase_diff": 0.12506480168535572,
+            "status": "locked"
+          },
+          "atr": 362.2142857142847
+        }
+      },
+      "expected_return": 0.005,
+      "received_time": 1775892592.567018,
+      "processed": false
+    },
+    "2026-04-11T15:29:58.948716_buy_72812.2": {
+      "signal": {
+        "strategy": "NuclearDynamicsStrategy",
+        "side": "buy",
+        "price": 72812.2,

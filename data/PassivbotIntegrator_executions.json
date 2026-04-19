@@ -1,27 +1,55 @@
 [
   {
-    "timestamp": "2026-04-01T20:47:58.835299",
+    "timestamp": "2026-04-15T03:28:30.694559",
     "strategy": "PassivbotIntegrator",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:49:47.876550",
+    "timestamp": "2026-04-15T03:30:38.187379",
     "strategy": "PassivbotIntegrator",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:34.145092",
+    "timestamp": "2026-04-15T03:31:06.802700",
     "strategy": "PassivbotIntegrator",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:53.705291",
+    "timestamp": "2026-04-15T03:33:03.183513",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:34:19.735567",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:36:24.949502",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:41:08.780605",
+    "strategy": "PassivbotIntegrator",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T11:43:49.544163",
     "strategy": "PassivbotIntegrator",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",

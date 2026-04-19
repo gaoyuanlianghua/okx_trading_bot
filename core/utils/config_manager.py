@@ -297,7 +297,7 @@ class ConfigManager:
                     callback(self._config)
         
         if self._watch_task is None:
-            self._watch_task = asyncio.create_task(watch_task())
+            self._watch_task = asyncio.ensure_future(watch_task())
             logger.info("配置文件监控已启动")
     
     def stop_watching(self):

@@ -282,7 +282,7 @@ class BaseExchange(ABC):
                 task = getattr(self, method)(**params) if params else getattr(self, method)()
                 tasks.append(task)
             else:
-                tasks.append(asyncio.create_task(asyncio.sleep(0, result=None)))
+                tasks.append(asyncio.ensure_future(asyncio.sleep(0, result=None)))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         

@@ -55,6 +55,9 @@ class OKXAuth:
                 self.passphrase = ""
                 self.is_test = is_test
 
+        # 时间戳偏移量，用于同步OKX服务器时间
+        self.time_offset = 0
+
     def get_timestamp(self) -> str:
         """
         获取ISO格式的时间戳
@@ -62,7 +65,19 @@ class OKXAuth:
         Returns:
             str: ISO格式时间戳，如 2020-12-08T09:08:57.715Z
         """
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        import time
+        # 考虑时间偏移量，确保与OKX服务器时间同步
+        current_time = datetime.now(timezone.utc).timestamp() + self.time_offset
+        return datetime.fromtimestamp(current_time, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    def set_time_offset(self, offset: float):
+        """
+        设置时间偏移量
+
+        Args:
+            offset: 时间偏移量（秒）
+        """
+        self.time_offset = offset
 
     def sign(
         self, timestamp: str, method: str, request_path: str, body: str = ""

@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from core.events.event_bus import EventBus, Event, EventType, event_bus
 from core.events.agent_communication import (
@@ -21,6 +22,11 @@ from core.events.agent_communication import (
     MessageTemplates,
 )
 
+# 配置日志
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -123,14 +129,32 @@ class BaseAgent(ABC):
         # 消息处理
         self._message_handlers: Dict[MessageType, List[Callable]] = {}
         self._pending_responses: Dict[str, asyncio.Future] = {}
+        self._message_queue = None  # 消息队列，将在start方法中初始化
+        self._message_processor_task = None  # 消息处理器任务
+        self._max_concurrent_messages = 3  # 最大并发消息处理数
+        self._message_semaphore = None  # 消息处理并发控制
 
         # 任务管理
         self._tasks: List[asyncio.Task] = []
         self._running = False
-        self._stop_event = asyncio.Event()
+        self._stop_event = None  # 稍后在start方法中初始化
+
+        # 事件循环
+        self.loop = None
 
         # 线程锁
         self._lock = threading.RLock()
+
+        # 线程池，用于处理同步回调函数
+        self._executor = ThreadPoolExecutor(max_workers=3)
+
+        # 消息处理统计
+        self._message_stats = {
+            'total_messages': 0,
+            'processed_messages': 0,
+            'failed_messages': 0,
+            'queue_size': 0
+        }
 
         # 注册到事件总线
         self._register_event_handlers()
@@ -150,7 +174,12 @@ class BaseAgent(ABC):
     def _handle_system_shutdown(self, event: Event):
         """处理系统关闭事件"""
         logger.info(f"智能体 {self.agent_id} 收到系统关闭事件")
-        asyncio.ensure_future(self.stop())
+        # 使用智能体的事件循环创建任务
+        if hasattr(self, 'loop') and self.loop is not None:
+            self.loop.create_task(self.stop())
+        else:
+            # 使用当前事件循环
+            asyncio.ensure_future(self.stop())
 
     def _handle_incoming_message(self, event: Event):
         """处理传入消息"""
@@ -161,9 +190,57 @@ class BaseAgent(ABC):
 
                 # 检查消息是否是发给当前智能体的
                 if message.receiver == self.agent_id or message.is_broadcast():
-                    asyncio.ensure_future(self._process_message(message))
+                    # 将消息加入队列，非阻塞
+                    try:
+                        # 延迟处理，等待智能体启动后再处理消息
+                        if hasattr(self, 'loop') and self.loop is not None and self.status == AgentStatus.RUNNING:
+                            # 使用智能体的事件循环创建任务
+                            self.loop.create_task(self._add_message_to_queue(message))
+                        else:
+                            # 智能体未启动，暂存消息
+                            logger.debug(f"智能体未启动，暂存消息: {message.type.name}")
+                            # 可以考虑添加到临时队列，等智能体启动后再处理
+                    except Exception as e:
+                        logger.error(f"添加消息到队列失败: {e}")
         except Exception as e:
             logger.error(f"处理传入消息失败: {e}")
+
+    async def _add_message_to_queue(self, message: Message):
+        """将消息添加到队列"""
+        try:
+            # 非阻塞添加消息，避免队列满时阻塞
+            try:
+                await asyncio.wait_for(
+                    self._message_queue.put(message),
+                    timeout=0.1
+                )
+                self._message_stats['total_messages'] += 1
+                self._message_stats['queue_size'] = self._message_queue.qsize()
+            except asyncio.TimeoutError:
+                # 队列满，丢弃消息
+                logger.warning(f"消息队列已满，丢弃消息: {message.type.name}")
+        except Exception as e:
+            logger.error(f"添加消息到队列失败: {e}")
+
+    async def _message_processor(self):
+        """消息处理器"""
+        while self._running:
+            try:
+                # 非阻塞获取消息，避免队列空时阻塞
+                try:
+                    message = await asyncio.wait_for(
+                        self._message_queue.get(), timeout=0.1
+                    )
+                    await self._process_message(message)
+                    self._message_queue.task_done()
+                    # 更新队列大小统计
+                    self._message_stats['queue_size'] = self._message_queue.qsize()
+                except asyncio.TimeoutError:
+                    # 队列为空，继续循环
+                    pass
+            except Exception as e:
+                logger.error(f"消息处理器异常: {e}")
+                await asyncio.sleep(0.1)
 
     async def _process_message(self, message: Message):
         """
@@ -172,28 +249,45 @@ class BaseAgent(ABC):
         Args:
             message: 消息对象
         """
-        # 验证消息
-        if not AgentCommunicationProtocol.validate_message(message):
-            logger.warning(f"收到无效消息: {message.message_id}")
-            return
-
-        # 更新指标
-        self.metrics.increment_message()
-
-        # 处理特定消息类型
-        handlers = self._message_handlers.get(message.type, [])
-        for handler in handlers:
+        async with self._message_semaphore:
             try:
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(message)
-                else:
-                    handler(message)
-            except Exception as e:
-                logger.error(f"消息处理错误: {e}")
-                self.metrics.increment_error()
+                # 验证消息
+                if not AgentCommunicationProtocol.validate_message(message):
+                    logger.warning(f"收到无效消息: {message.message_id}")
+                    return
 
-        # 处理通用命令
-        await self._handle_command(message)
+                # 更新指标
+                self.metrics.increment_message()
+
+                # 处理特定消息类型
+                handlers = self._message_handlers.get(message.type, [])
+                for handler in handlers:
+                    try:
+                        if asyncio.iscoroutinefunction(handler):
+                            await handler(message)
+                        else:
+                            # 使用线程池处理同步函数，避免阻塞事件循环
+                            if hasattr(self, 'loop') and self.loop is not None:
+                                await self.loop.run_in_executor(
+                                    self._executor, handler, message
+                                )
+                            else:
+                                # 使用当前事件循环
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(
+                                    self._executor, handler, message
+                                )
+                    except Exception as e:
+                        logger.error(f"消息处理错误: {e}")
+                        self.metrics.increment_error()
+                        self._message_stats['failed_messages'] += 1
+
+                # 处理通用命令
+                await self._handle_command(message)
+                self._message_stats['processed_messages'] += 1
+            except Exception as e:
+                logger.error(f"处理消息失败: {e}")
+                self._message_stats['failed_messages'] += 1
 
     async def _handle_command(self, message: Message):
         """
@@ -347,18 +441,37 @@ class BaseAgent(ABC):
         try:
             self.status = AgentStatus.INITIALIZING
             self._running = True
-            self._stop_event.clear()
+            
+            # 获取当前事件循环
+            self.loop = asyncio.get_event_loop()
+            
+            # 初始化停止事件，确保使用当前事件循环
+            if self._stop_event is None:
+                self._stop_event = asyncio.Event()
+            else:
+                # 清除事件状态
+                self._stop_event.clear()
+
+            # 初始化消息队列，使用当前事件循环
+            if self._message_queue is None:
+                self._message_queue = asyncio.Queue(maxsize=1000, loop=self.loop)
+            # 初始化消息处理并发控制
+            self._message_semaphore = asyncio.Semaphore(self._max_concurrent_messages, loop=self.loop)
 
             # 执行子类初始化
             await self._initialize()
 
             # 启动主循环
-            main_task = asyncio.ensure_future(self._main_loop())
+            main_task = self.loop.create_task(self._main_loop())
             self._tasks.append(main_task)
 
             # 启动心跳任务
-            heartbeat_task = asyncio.ensure_future(self._heartbeat_loop())
+            heartbeat_task = self.loop.create_task(self._heartbeat_loop())
             self._tasks.append(heartbeat_task)
+
+            # 启动消息处理器任务
+            self._message_processor_task = self.loop.create_task(self._message_processor())
+            self._tasks.append(self._message_processor_task)
 
             self.status = AgentStatus.RUNNING
             self.metrics.start_time = time.time()
@@ -377,6 +490,8 @@ class BaseAgent(ABC):
         except Exception as e:
             self.status = AgentStatus.ERROR
             logger.error(f"智能体启动失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def stop(self) -> bool:
@@ -386,13 +501,17 @@ class BaseAgent(ABC):
         Returns:
             bool: 是否停止成功
         """
+        import traceback
+        logger.warning(f"智能体 {self.agent_id} 的stop()方法被调用！调用堆栈:\n{traceback.format_stack()}")
+        
         if self.status == AgentStatus.STOPPED:
             return True
 
         try:
             self.status = AgentStatus.STOPPING
             self._running = False
-            self._stop_event.set()
+            if self._stop_event:
+                self._stop_event.set()
 
             # 执行子类清理
             await self._cleanup()
@@ -407,6 +526,10 @@ class BaseAgent(ABC):
                         pass
 
             self._tasks.clear()
+            
+            # 关闭线程池
+            self._executor.shutdown(wait=False)
+            
             self.status = AgentStatus.STOPPED
 
             # 发布停止事件
@@ -457,6 +580,7 @@ class BaseAgent(ABC):
 
     async def _main_loop(self):
         """主循环 - 子类应重写此方法"""
+        import traceback
         while self._running:
             try:
                 if self.status == AgentStatus.RUNNING:
@@ -469,7 +593,9 @@ class BaseAgent(ABC):
                     pass
 
             except Exception as e:
+                error_detail = traceback.format_exc()
                 logger.error(f"主循环错误: {e}")
+                logger.error(f"详细错误信息:\n{error_detail}")
                 self.metrics.increment_error()
 
                 if self.config.auto_recover:
@@ -491,6 +617,8 @@ class BaseAgent(ABC):
                 pass
             except Exception as e:
                 logger.error(f"心跳错误: {e}")
+                import traceback
+                traceback.print_exc()
 
     async def _recover(self):
         """错误恢复"""
@@ -527,6 +655,12 @@ class BaseAgent(ABC):
                 "error_count": self.metrics.error_count,
                 "task_count": self.metrics.task_count,
                 "last_active": self.metrics.last_active,
+            },
+            "message_stats": {
+                "total_messages": self._message_stats['total_messages'],
+                "processed_messages": self._message_stats['processed_messages'],
+                "failed_messages": self._message_stats['failed_messages'],
+                "queue_size": self._message_stats['queue_size'],
             },
         }
 

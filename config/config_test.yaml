@@ -1,0 +1,60 @@
+# OKX交易机器人模拟盘配置文件
+
+# API配置
+api:
+  api_key: "8086af24-b7a3-4745-9f7e-0e9bd032a568"
+  api_secret: "E26ADC34D89C681303E6FC124B274F1B"
+  passphrase: "Gy528329818.123"
+  is_test: true
+  timeout: 30
+
+# 交易配置
+trading:
+  default_trading_mode: "cross"  # 交易模式: cash(现货), cross(全仓杠杆), isolated(逐仓杠杆)
+  max_position_size: 10  # 最大持仓大小(USDT)
+  min_order_amount: 1  # 最小订单金额(USDT)
+  fixed_trade_amount: 1  # 固定交易金额(USDT)
+  leverage: 2  # 杠杆倍数
+  risk_per_trade: 0.01  # 每笔交易风险比例
+  stop_loss_percent: 0.02  # 止损比例
+  take_profit_percent: 0.05  # 止盈比例
+  simulate_trading: false  # 是否开启模拟交易
+  simulate_balance: 10000  # 模拟账户余额(USDT)
+
+# 策略配置
+strategy:
+  default_strategy: "NuclearDynamicsStrategy"  # 默认策略
+  enabled_strategies:  # 启用的策略列表
+    - "NuclearDynamicsStrategy"
+  strategy_params:  # 策略参数
+    NuclearDynamicsStrategy:
+      signal_threshold: 0.7
+      cooldown_period: 60
+  signal_threshold: 0.5  # 信号阈值
+  signal_cooldown: 60  # 信号冷却时间(秒)
+
+# 市场配置
+market:
+  cryptocurrencies:  # 监控的加密货币
+    - "BTC"
+    - "ETH"
+  update_interval: 5  # 市场数据更新间隔(秒)
+  orderbook_depth: 5  # 订单簿深度
+  candle_interval: "1m"  # K线间隔
+
+# 通知配置
+notification:
+  email:
+    smtp_server: "smtp.qq.com"
+    smtp_port: 587
+    sender_email: "your_email@example.com"
+    sender_password: "your_email_password"
+    recipient_emails:
+      - "recipient1@example.com"
+      - "recipient2@example.com"
+  telegram:
+    bot_token: "your_bot_token"
+    chat_id: "your_chat_id"
+  webhook:
+    url: "http://your-webhook-url.com"
+    secret: "your_webhook_secret"

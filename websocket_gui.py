@@ -50,10 +50,15 @@ import numpy as np
 import pandas as pd
 
 from core import OKXWebSocketClient, EventBus, EventType
-from core.monitoring import strategy_monitor
-from core.storage.data_persistence import data_persistence
+from core.monitoring.strategy_monitor import StrategyMonitor
+from core.storage.data_persistence import DataPersistence
 from core.agents.market_data_agent import MarketDataAgent
 from core.agents.base_agent import AgentConfig
+
+# 初始化数据持久化实例
+data_persistence = DataPersistence()
+# 初始化策略监控实例
+strategy_monitor = StrategyMonitor()
 
 # 设置日志
 logging.basicConfig(
@@ -181,9 +186,8 @@ class WebSocketGUI(QMainWindow):
         # 初始化权限控制
         self._init_permission_system()
         
-        # 初始化事件总线 - 使用全局实例
-        from core.events.event_bus import event_bus
-        self.event_bus = event_bus
+        # 初始化事件总线
+        self.event_bus = EventBus()
 
         # 数据存储
         self.market_data = {}
@@ -529,7 +533,7 @@ class WebSocketGUI(QMainWindow):
         """
         import os
         try:
-            strategies_dir = "d:/Projects/okx_trading_bot/strategies"
+            strategies_dir = os.path.join(os.path.dirname(__file__), "strategies")
             
             if os.path.exists(strategies_dir):
                 # 遍历strategies目录中的所有.py文件
@@ -2105,7 +2109,8 @@ class WebSocketGUI(QMainWindow):
                 if not self.market_data_agent:
                     market_data_config = AgentConfig(name="MarketDataAgent", description="市场数据智能体")
                     self.market_data_agent = MarketDataAgent(
-                        market_data_config,
+                        config=market_data_config,
+                        exchange_name="okx",
                         api_key=api_key,
                         api_secret=api_secret,
                         passphrase=passphrase,

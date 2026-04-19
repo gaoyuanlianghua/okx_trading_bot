@@ -194,7 +194,7 @@ class DistributedEventBus:
                     tasks = []
                     for callback in all_async_callbacks:
                         try:
-                            task = asyncio.create_task(callback(event))
+                            task = asyncio.ensure_future(callback(event))
                             tasks.append(task)
                         except Exception as e:
                             logger.error(f"异步事件处理错误 [{event.type.name}]: {e}")

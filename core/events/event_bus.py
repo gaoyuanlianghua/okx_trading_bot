@@ -30,6 +30,7 @@ class EventType(Enum):
     ORDER_CANCELLED = auto()  # 订单取消
     ORDER_FILLED = auto()  # 订单成交
     ORDER_FAILED = auto()  # 订单失败
+    ORDER_EVENT = auto()  # 订单事件（来自协调智能体）
 
     # 风险事件
     RISK_ALERT = auto()  # 风险警报
@@ -58,6 +59,29 @@ class EventType(Enum):
 
     # 自定义事件
     CUSTOM = auto()  # 自定义事件
+    
+    # 交易事件
+    TRADE_EVENT = auto()  # 交易事件
+    
+    # 交易指标事件
+    TRADE_METRICS = auto()  # 交易指标事件
+    
+    # 低收益率事件
+    LOW_RETURN_EVENT = auto()  # 低收益率事件
+    
+    # 市场预测事件
+    MARKET_PREDICTION = auto()  # 市场预测事件
+    
+    # 风险评估事件
+    RISK_ASSESSMENT = auto()  # 风险评估事件
+    
+    # 账户同步事件
+    ACCOUNT_UPDATE = auto()  # 账户更新事件
+    POSITIONS_UPDATE = auto()  # 持仓更新事件
+    PENDING_ORDERS_UPDATE = auto()  # 未成交订单更新事件
+    HISTORY_ORDERS_UPDATE = auto()  # 历史订单更新事件
+    ORDER_NEW = auto()  # 新订单事件
+    ORDER_UPDATE = auto()  # 订单更新事件
 
 
 @dataclass
@@ -254,7 +278,9 @@ class EventBus:
             tasks = []
             for callback in sorted_callbacks:
                 try:
-                    task = asyncio.ensure_future(callback(event))
+                    # 使用当前事件循环创建任务
+                    loop = asyncio.get_event_loop()
+                    task = loop.create_task(callback(event))
                     tasks.append(task)
                     notified_count += 1
                 except Exception as e:

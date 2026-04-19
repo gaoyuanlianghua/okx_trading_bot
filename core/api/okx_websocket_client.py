@@ -262,7 +262,7 @@ class OKXWebSocketClient:
         logger.info("WebSocket登录请求已发送")
 
     async def subscribe(
-        self, channel: str, inst_id: str = "", inst_type: str = "", callback: Callable = None
+        self, channel: str, inst_id: str = "", inst_type: str = "", inst_family: str = "", ccy: str = "", extra_params: Dict = None, callback: Callable = None
     ) -> bool:
         """
         订阅频道
@@ -271,12 +271,23 @@ class OKXWebSocketClient:
             channel: 频道名称 (tickers/books/candles/trades等)
             inst_id: 产品ID
             inst_type: 产品类型 (SPOT/MARGIN/SWAP/FUTURES/OPTION)
+            inst_family: 产品家族 (用于positions频道)
+            ccy: 币种 (用于account频道)
+            extra_params: 额外参数 (用于account频道的updateInterval等)
             callback: 回调函数
 
         Returns:
             bool: 是否订阅成功
         """
-        subscription_key = f"{channel}:{inst_id}" if inst_id else channel
+        # 构建订阅键
+        if ccy:
+            subscription_key = f"{channel}:{ccy}"
+        elif inst_id:
+            subscription_key = f"{channel}:{inst_id}"
+        elif inst_family:
+            subscription_key = f"{channel}:{inst_family}"
+        else:
+            subscription_key = channel
 
         # 构建订阅参数
         args = {"channel": channel}
@@ -284,6 +295,12 @@ class OKXWebSocketClient:
             args["instId"] = inst_id
         if inst_type:
             args["instType"] = inst_type
+        if inst_family:
+            args["instFamily"] = inst_family
+        if ccy:
+            args["ccy"] = ccy
+        if extra_params:
+            args["extraParams"] = json.dumps(extra_params)
 
         subscribe_msg = {"op": "subscribe", "args": [args]}
 
@@ -312,7 +329,7 @@ class OKXWebSocketClient:
             logger.error(f"订阅失败 {subscription_key}: {e}")
             return False
 
-    async def unsubscribe(self, channel: str, inst_id: str = "", inst_type: str = "") -> bool:
+    async def unsubscribe(self, channel: str, inst_id: str = "", inst_type: str = "", inst_family: str = "", ccy: str = "") -> bool:
         """
         取消订阅
 
@@ -320,17 +337,31 @@ class OKXWebSocketClient:
             channel: 频道名称
             inst_id: 产品ID
             inst_type: 产品类型 (SPOT/MARGIN/SWAP/FUTURES/OPTION)
+            inst_family: 产品家族 (用于positions频道)
+            ccy: 币种 (用于account频道)
 
         Returns:
             bool: 是否取消成功
         """
-        subscription_key = f"{channel}:{inst_id}" if inst_id else channel
+        # 构建订阅键
+        if ccy:
+            subscription_key = f"{channel}:{ccy}"
+        elif inst_id:
+            subscription_key = f"{channel}:{inst_id}"
+        elif inst_family:
+            subscription_key = f"{channel}:{inst_family}"
+        else:
+            subscription_key = channel
 
         args = {"channel": channel}
         if inst_id:
             args["instId"] = inst_id
         if inst_type:
             args["instType"] = inst_type
+        if inst_family:
+            args["instFamily"] = inst_family
+        if ccy:
+            args["ccy"] = ccy
 
         unsubscribe_msg = {"op": "unsubscribe", "args": [args]}
 
@@ -568,8 +599,18 @@ class OKXWebSocketClient:
         arg = data.get("arg", {})
         channel_name = arg.get("channel", "")
         inst_id = arg.get("instId", "")
+        inst_family = arg.get("instFamily", "")
+        ccy = arg.get("ccy", "")
 
-        subscription_key = f"{channel_name}:{inst_id}" if inst_id else channel_name
+        # 构建订阅键
+        if ccy:
+            subscription_key = f"{channel_name}:{ccy}"
+        elif inst_id:
+            subscription_key = f"{channel_name}:{inst_id}"
+        elif inst_family:
+            subscription_key = f"{channel_name}:{inst_family}"
+        else:
+            subscription_key = channel_name
 
         # 发布到事件总线
         event_type = self._get_event_type(channel_name)
@@ -604,8 +645,11 @@ class OKXWebSocketClient:
             "candle": EventType.MARKET_DATA_KLINE,
             "trades": EventType.MARKET_DATA_TRADE,
             "orders": EventType.ORDER_UPDATED,
-            "account": EventType.CUSTOM,
-            "positions": EventType.CUSTOM,
+            "account": EventType.ACCOUNT_UPDATE,
+            "positions": EventType.POSITIONS_UPDATE,
+            "balance_and_position": EventType.ACCOUNT_UPDATE,
+            "liquidation-warning": EventType.RISK_ALERT,
+            "account-greeks": EventType.ACCOUNT_UPDATE,
         }
         return channel_event_map.get(channel, EventType.CUSTOM)
 

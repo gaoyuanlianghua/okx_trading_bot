@@ -1,27 +1,85 @@
 [
   {
-    "timestamp": "2026-04-01T20:47:58.837683",
+    "timestamp": "2026-04-15T02:48:09.403808",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "exec_1776192489403",
+    "event_type": "start",
+    "details": {
+      "last": "74000.0",
+      "high": "74500.0",
+      "low": "73500.0",
+      "volume": 100000000,
+      "timestamp": 1776192000000
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.404012",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "exec_1776192489403",
+    "event_type": "end",
+    "details": {
+      "signal": null,
+      "execution_time": "0.000s"
+    }
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.404659",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "startup",
+    "event_type": "strategy_started",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T02:48:09.405909",
     "strategy": "CrossMarketArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:49:47.880419",
+    "timestamp": "2026-04-15T03:28:30.692959",
     "strategy": "CrossMarketArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:34.138431",
+    "timestamp": "2026-04-15T03:30:38.186401",
     "strategy": "CrossMarketArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
     "details": {}
   },
   {
-    "timestamp": "2026-04-01T20:53:53.697210",
+    "timestamp": "2026-04-15T03:31:06.801464",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:33:03.181904",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:34:19.734297",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:36:24.948317",
+    "strategy": "CrossMarketArbitrageStrategy",
+    "execution_id": "shutdown",
+    "event_type": "strategy_stopped",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-04-15T03:41:08.778205",
     "strategy": "CrossMarketArbitrageStrategy",
     "execution_id": "shutdown",
     "event_type": "strategy_stopped",
