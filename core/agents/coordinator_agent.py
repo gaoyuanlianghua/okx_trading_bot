@@ -167,6 +167,10 @@ class CoordinatorAgent(BaseAgent):
         
         确保账户状态和订单状态保持同步，避免数据不一致
         """
+        # 创建日志清理任务
+        import asyncio
+        asyncio.ensure_future(self._regular_log_cleanup_task())
+        
         while True:
             try:
                 logger.info("🔄 执行定期账户和订单同步...")
@@ -196,6 +200,33 @@ class CoordinatorAgent(BaseAgent):
                 logger.error(f"❌ 定期同步任务失败: {e}")
                 import asyncio
                 await asyncio.sleep(60)  # 出错后等待1分钟再重试
+
+    async def _regular_log_cleanup_task(self):
+        """定期清理日志任务
+        
+        每2小时检查一次日志大小，超过5GB自动清理
+        """
+        from core.utils.logger import logger_config
+        import asyncio
+        
+        logger.info("📝 定期日志清理任务已启动")
+        
+        while True:
+            try:
+                logger.info("📝 检查并清理日志...")
+                logger_config.clean_old_logs()
+                logger.info("✅ 日志检查完成")
+            except Exception as e:
+                logger.error(f"❌ 日志清理任务失败: {e}")
+            
+            # 等待2小时后再次检查
+            try:
+                await asyncio.sleep(7200)  # 2小时
+            except asyncio.CancelledError:
+                logger.info("📝 定期日志清理任务已停止")
+                break
+            except Exception:
+                await asyncio.sleep(3600)  # 出错后等待1小时
     
     def _load_state(self):
         """加载上次的状态"""
