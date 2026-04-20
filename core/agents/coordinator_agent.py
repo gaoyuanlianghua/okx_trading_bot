@@ -244,7 +244,14 @@ class CoordinatorAgent(BaseAgent):
                 self._strategy_signals = state.get('strategy_signals', {})
                 
                 # 加载买入订单跟踪信息
-                self._buy_orders = state.get('buy_orders', {})
+                buy_orders_data = state.get('buy_orders', {})
+                if isinstance(buy_orders_data, list):
+                    # 修复格式问题：从数组转换为字典
+                    self._buy_orders = {}
+                    logger.warning("⚠️ 修复buy_orders格式: 从数组转换为字典")
+                else:
+                    self._buy_orders = buy_orders_data
+                
                 self._sell_orders = state.get('sell_orders', {})
                 self._last_expected_returns = state.get('last_expected_returns', {})
                 self._total_pnl = state.get('total_pnl', 0.0)
@@ -2169,13 +2176,15 @@ class CoordinatorAgent(BaseAgent):
                         
                         # 从买入订单跟踪器中找到当前交易对的最早的做空订单（FIFO）
                         matched_short_order = None
-                        if inst_id in self._buy_orders:
+                        if inst_id in self._buy_orders and self._buy_orders[inst_id]:
                             for i, order in enumerate(self._buy_orders[inst_id]):
                                 if order.get('position_type') == 'short':
                                     matched_short_order = order
                                     # 从列表中移除该订单
                                     self._buy_orders[inst_id].pop(i)
                                     break
+                        else:
+                            logger.warning(f"⚠️ 交易对 {inst_id} 没有做空订单记录")
                         
                         if matched_short_order:
                             # 获取API返回的真实盈亏（从成交订单中获取）
@@ -2284,13 +2293,15 @@ class CoordinatorAgent(BaseAgent):
                             
                             # 从买入订单跟踪器中找到当前交易对的最早的做多订单（FIFO）
                             matched_buy_order = None
-                            if inst_id in self._buy_orders:
+                            if inst_id in self._buy_orders and self._buy_orders[inst_id]:
                                 for i, order in enumerate(self._buy_orders[inst_id]):
                                     if order.get('position_type') == 'long':
                                         matched_buy_order = order
                                         # 从列表中移除该订单
                                         self._buy_orders[inst_id].pop(i)
                                         break
+                            else:
+                                logger.warning(f"⚠️ 交易对 {inst_id} 没有做多订单记录")
                             
                             if matched_buy_order:
                                 # 获取API返回的真实盈亏（从成交订单中获取）
