@@ -60,6 +60,7 @@ class CoordinatorAgent(BaseAgent):
         self._buy_order_count = 0  # 买入订单计数
         self._current_gradient = 1  # 当前梯度
         self._last_buy_price = 0  # 上次买入价格
+        self._max_drawdowns = {}  # 每个交易对的最大跌幅记录 {inst_id: max_drawdown}
         
         # 当日振幅相关
         self._daily_amplitude = 0.0  # 当日振幅
@@ -1038,7 +1039,7 @@ class CoordinatorAgent(BaseAgent):
                     # 没有未卖出的买入订单，执行做多操作
                     logger.info("没有未卖出的买入订单，执行做多操作")
                     
-                    # 实现梯度交易逻辑（价格跌幅梯度）
+                    # 实现梯度交易逻辑（基于最大跌幅的增仓策略）
                     # 计算当前价格与上一个买入订单价格的跌幅
                     latest_buy_trade = None
                     if exchange_buy_orders:
@@ -1050,65 +1051,42 @@ class CoordinatorAgent(BaseAgent):
                     
                     if latest_buy_trade:
                         latest_buy_price = float(latest_buy_trade.get('avgPx', '0'))
-                        # 移除价格跌幅检查，允许在任何价格情况下执行交易
+                        # 计算价格跌幅
                         if latest_buy_price > 0:
                             price_drop = (latest_buy_price - current_price) / latest_buy_price
-                            if price_drop <= 0:
-                                # 价格上涨或不变，允许买入
-                                logger.info(f"当前价格上涨 {abs(price_drop) * 100:.2f}%，允许执行买入交易")
+                            
+                            # 更新该交易对的最大跌幅记录
+                            if inst_id not in self._max_drawdowns:
+                                self._max_drawdowns[inst_id] = 0.0
+                            
+                            # 如果当前跌幅大于历史最大跌幅，更新记录
+                            if price_drop > self._max_drawdowns[inst_id]:
+                                self._max_drawdowns[inst_id] = price_drop
+                                logger.info(f"更新{inst_id}最大跌幅: {price_drop * 100:.2f}%")
+                            
+                            # 检查是否满足梯度增仓条件：当前跌幅必须大于之前的最大跌幅
+                            current_max_drawdown = self._max_drawdowns[inst_id]
+                            logger.info(f"当前{inst_id}跌幅: {price_drop * 100:.2f}%, 历史最大跌幅: {current_max_drawdown * 100:.2f}%")
+                            
+                            # 梯度增仓逻辑：只有当当前跌幅大于历史最大跌幅时才增仓
+                            if price_drop > current_max_drawdown:
+                                logger.info(f"✅ 满足梯度增仓条件，执行增仓操作")
+                                # 更新买入订单计数
+                                self._buy_order_count += 1
+                                # 进入下一个梯度
+                                self._current_gradient += 1
+                                logger.info(f"梯度更新: 进入第 {self._current_gradient} 梯度")
                             else:
-                                # 价格下跌，也允许买入
-                                logger.info(f"当前价格下跌 {price_drop * 100:.2f}%，允许执行买入交易")
+                                logger.info(f"⚠️ 不满足梯度增仓条件，保持当前梯度: {self._current_gradient}")
                         
-                        # 更新买入订单计数
-                        self._buy_order_count += 1
-                        
-                        # 获取当日振幅（从信号中获取）
-                        daily_amplitude = signal.get("daily_amplitude", 0.0)
-                        self._daily_amplitude = daily_amplitude
-                        
-                        # 从交易对中提取币种
-                        symbol = inst_id.split('-')[0]
-                        
-                        # 计算当前币种数量增长率
-                        current_size = 0.0  # 初始化为0，后续会从账户信息中获取
-                        if self._first_size is not None and self._first_size > 0:
-                            current_growth_rate = (current_size - self._first_size) / self._first_size
-                        else:
-                            current_growth_rate = 0.0
-                        
-                        # 检查最早的币种数量增长率是否与当日振幅相同，进入下一个梯度
-                        if self._first_growth_rate is None:
-                            # 记录最早的币种数量增长率
-                            self._first_growth_rate = current_growth_rate
-                            self._first_size = current_size
-                            logger.info(f"记录最早的{symbol}数量: {self._first_size:.8f} {symbol}, 增长率: {self._first_growth_rate:.2%}")
-                        elif abs(current_growth_rate - daily_amplitude) < 0.001:  # 允许0.1%的误差
-                            # 最早的币种数量增长率与当日振幅相同，进入下一个梯度
-                            self._current_gradient += 1
-                            logger.info(f"梯度更新: 最早的{symbol}数量增长率({current_growth_rate:.2%})与当日振幅({daily_amplitude:.2%})相同，进入第 {self._current_gradient} 梯度")
-                            # 重置最早的币种数量增长率
-                            self._first_growth_rate = None
-                            self._first_size = None
-                        else:
-                            logger.info(f"当前梯度: {self._current_gradient}, 最早的{symbol}数量增长率: {self._first_growth_rate:.2%}, 当日振幅: {daily_amplitude:.2%}")
-                        
-                        logger.info(f"买入订单计数: {self._buy_order_count}")
+                        logger.info(f"买入订单计数: {self._buy_order_count}, 当前梯度: {self._current_gradient}")
                     else:
                         # 第一个买入订单
                         self._buy_order_count = 1
-                        daily_amplitude = signal.get("daily_amplitude", 0.0)
-                        self._daily_amplitude = daily_amplitude
-                        
-                        # 从交易对中提取币种
-                        symbol = inst_id.split('-')[0]
-                        
-                        # 记录最早的币种数量
-                        current_size = 0.0  # 初始化为0，后续会从账户信息中获取
-                        self._first_size = current_size
-                        self._first_growth_rate = 0.0  # 第一个订单的增长率为0
-                        
-                        logger.info(f"开始第 {self._current_gradient} 梯度 (当日振幅: {daily_amplitude:.2%}, 最早{symbol}数量: {self._first_size:.8f} {symbol})")
+                        self._current_gradient = 1
+                        # 重置最大跌幅记录
+                        self._max_drawdowns[inst_id] = 0.0
+                        logger.info(f"开始第 {self._current_gradient} 梯度 (首次买入)")
             except Exception as e:
                 logger.error(f"检查未卖出订单失败: {e}")
         
@@ -2416,6 +2394,13 @@ class CoordinatorAgent(BaseAgent):
                                 
                                 # 更新该交易对的收益和动态保证金限制
                                 self._update_symbol_profit(inst_id, profit)
+                                
+                                # 重置梯度和最大跌幅记录，为下次交易做准备
+                                self._buy_order_count = 0
+                                self._current_gradient = 1
+                                if inst_id in self._max_drawdowns:
+                                    del self._max_drawdowns[inst_id]
+                                logger.info(f"✅ 已重置{inst_id}的梯度和最大跌幅记录，准备下次交易")
                                 
                                 # 记录盈亏信息
                                 win_rate = (self._winning_trades / self._total_trades * 100) if self._total_trades > 0 else 0
