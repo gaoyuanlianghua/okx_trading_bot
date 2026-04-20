@@ -144,6 +144,9 @@ class CoordinatorAgent(BaseAgent):
         # 启动定期账户和订单同步任务
         import asyncio
         asyncio.ensure_future(self._regular_sync_task())
+        
+        # 同步持仓
+        await self._sync_positions_from_api()
 
         logger.info("协调智能体初始化完成")
 
@@ -333,8 +336,8 @@ class CoordinatorAgent(BaseAgent):
             logger.error(f"加载协调智能体状态失败: {e}")
         
         # 启动时从API获取实际持仓，确保buy_orders不为空
-        import asyncio
-        asyncio.create_task(self._sync_positions_from_api())
+        # 注意：不能在同步方法中直接使用asyncio.create_task
+        # 这个调用会在_initialize方法中通过事件循环执行
     
     def _save_state(self):
         """保存当前状态"""
