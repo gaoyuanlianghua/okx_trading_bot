@@ -350,22 +350,25 @@ class CoordinatorAgent(BaseAgent):
                 
                 for order in orders:
                     position_type = order.get('position_type', 'long')
+                    # 使用记录的保证金或重新计算
+                    margin_used = order.get('margin_used', 0.0)
+                    if margin_used == 0.0:
+                        # 如果没有记录保证金，则重新计算
+                        if position_type == 'long':
+                            buy_amount = order.get('buy_amount', 0)
+                            buy_price = order.get('buy_price', 0)
+                            if buy_amount > 0 and buy_price > 0:
+                                margin_used = (buy_amount * buy_price) / self._leverage
+                        elif position_type == 'short':
+                            sell_amount = order.get('sell_amount', 0)
+                            sell_price = order.get('sell_price', 0)
+                            if sell_amount > 0 and sell_price > 0:
+                                margin_used = (sell_amount * sell_price) / self._leverage
+                    
                     if position_type == 'long':
-                        # 做多订单：计算占用保证金（考虑杠杆倍数）
-                        buy_amount = order.get('buy_amount', 0)
-                        buy_price = order.get('buy_price', 0)
-                        if buy_amount > 0 and buy_price > 0:
-                            # 杠杆交易中，保证金 = （买入金额） / 杠杆倍数
-                            margin = (buy_amount * buy_price) / self._leverage
-                            self._used_margin[inst_id]['long'] += margin
+                        self._used_margin[inst_id]['long'] += margin_used
                     elif position_type == 'short':
-                        # 做空订单：计算占用保证金（考虑杠杆倍数）
-                        sell_amount = order.get('sell_amount', 0)
-                        sell_price = order.get('sell_price', 0)
-                        if sell_amount > 0 and sell_price > 0:
-                            # 杠杆交易中，保证金 = （卖出金额） / 杠杆倍数
-                            margin = (sell_amount * sell_price) / self._leverage
-                            self._used_margin[inst_id]['short'] += margin
+                        self._used_margin[inst_id]['short'] += margin_used
             
             # 记录日志
             for inst_id, margins in self._used_margin.items():
@@ -2246,32 +2249,41 @@ class CoordinatorAgent(BaseAgent):
                     if side == "buy":
                         # 做多逻辑：记录买入 - 盈利增长管理器会自动更新平均买入价格
                         sz = float(order_params.get('sz', 0))
-                        # 计算买入的BTC数量（买入时sz是USDT金额）
-                        btc_amount = sz / current_price
-                        profit_growth_manager.record_trade('buy', current_price, btc_amount)
-                        logger.info(f"✅ 已记录买入交易到盈利增长管理器: {btc_amount:.8f} BTC @ {current_price:.2f} USDT")
+                        # OKX API中sz是交易数量（如1 ETH），不是USDT金额
+                        # 保证金 = sz * price / leverage
+                        actual_margin = (sz * current_price) / self._leverage
                         
-                        # 将买入订单添加到跟踪列表（做多）
-                        buy_order = {
-                            'order_id': order_id,
-                            'buy_price': current_price,
-                            'buy_amount': btc_amount,
-                            'buy_time': datetime.now().isoformat(),
-                            'inst_id': inst_id,
-                            'position_type': 'long'  # 标记为做多仓位
-                        }
-                        # 按交易对分组存储
-                        if inst_id not in self._buy_orders:
-                            self._buy_orders[inst_id] = []
-                        self._buy_orders[inst_id].append(buy_order)
-                        logger.info(f"✅ 已记录做多买入订单到跟踪器: 订单ID={order_id}, 价格={current_price:.2f}, 数量={btc_amount:.8f}, 交易对={inst_id}")
-                        
+                        # 检查保证金是否超过限制（每种交易对10 USDT初始值）
+                        if await self._check_margin_available(sz * current_price, inst_id, 'long'):
+                            profit_growth_manager.record_trade('buy', current_price, sz)
+                            logger.info(f"✅ 已记录买入交易到盈利增长管理器: {sz:.8f} @ {current_price:.2f} USDT")
+                            
+                            # 将买入订单添加到跟踪列表（做多）
+                            buy_order = {
+                                'order_id': order_id,
+                                'buy_price': current_price,
+                                'buy_amount': sz,
+                                'buy_time': datetime.now().isoformat(),
+                                'inst_id': inst_id,
+                                'position_type': 'long',
+                                'margin_used': actual_margin  # 记录使用的保证金
+                            }
+                            # 按交易对分组存储
+                            if inst_id not in self._buy_orders:
+                                self._buy_orders[inst_id] = []
+                            self._buy_orders[inst_id].append(buy_order)
+                            logger.info(f"✅ 已记录做多买入订单到跟踪器: 订单ID={order_id}, 价格={current_price:.2f}, 数量={sz:.8f}, 保证金={actual_margin:.2f} USDT, 交易对={inst_id}")
+                        else:
+                            logger.warning(f"⚠️ 保证金检查失败，跳过订单记录: 需要保证金 {actual_margin:.2f} USDT")
+                            
                     elif side == "sell":
                         sz = float(order_params.get('sz', 0))
+                        # 卖出的保证金计算
+                        actual_margin = (sz * current_price) / self._leverage
                         if is_short_sell:
                             # 做空逻辑：记录做空 - 盈利增长管理器会自动更新平均卖出价格
                             profit_growth_manager.record_trade('short', current_price, sz)
-                            logger.info(f"✅ 已记录做空交易到盈利增长管理器: {sz:.8f} BTC @ {current_price:.2f} USDT")
+                            logger.info(f"✅ 已记录做空交易到盈利增长管理器: {sz:.8f} @ {current_price:.2f} USDT")
                             
                             # 将做空订单添加到跟踪列表（做空）
                             short_order = {
@@ -2280,13 +2292,14 @@ class CoordinatorAgent(BaseAgent):
                                 'sell_amount': sz,
                                 'sell_time': datetime.now().isoformat(),
                                 'inst_id': inst_id,
-                                'position_type': 'short'  # 标记为做空仓位
+                                'position_type': 'short',
+                                'margin_used': actual_margin  # 记录使用的保证金
                             }
                             # 按交易对分组存储
                             if inst_id not in self._buy_orders:
                                 self._buy_orders[inst_id] = []
                             self._buy_orders[inst_id].append(short_order)
-                            logger.info(f"✅ 已记录做空订单到跟踪器: 订单ID={order_id}, 价格={current_price:.2f}, 数量={sz:.8f}, 交易对={inst_id}")
+                            logger.info(f"✅ 已记录做空订单到跟踪器: 订单ID={order_id}, 价格={current_price:.2f}, 数量={sz:.8f}, 保证金={actual_margin:.2f} USDT, 交易对={inst_id}")
                         else:
                             # 平多逻辑：找到对应的做多买入订单并计算盈亏
                             logger.info(f"🔄 开始平多操作，查找对应的做多买入订单...")
