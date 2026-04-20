@@ -192,6 +192,9 @@ class CoordinatorAgent(BaseAgent):
                 else:
                     logger.warning("⚠️ 订单智能体不可用，跳过同步")
                 
+                # 同步持仓
+                await self._sync_positions_from_api()
+                
                 # 等待一段时间后再次同步
                 import asyncio
                 await asyncio.sleep(300)  # 5分钟同步一次
@@ -227,6 +230,70 @@ class CoordinatorAgent(BaseAgent):
                 break
             except Exception:
                 await asyncio.sleep(3600)  # 出错后等待1小时
+    
+    async def _sync_positions_from_api(self):
+        """从API同步实际持仓信息"""
+        try:
+            logger.info("🔄 开始从API同步实际持仓信息...")
+            
+            # 找到OrderAgent
+            order_agent = None
+            for agent_id, agent in self._agents.items():
+                if agent.name == "Order":
+                    order_agent = agent
+                    break
+            
+            if not order_agent or not hasattr(order_agent, 'rest_client'):
+                logger.warning("⚠️ 未找到OrderAgent或rest_client，无法同步持仓")
+                return
+            
+            # 从API获取持仓信息
+            try:
+                positions = await order_agent.rest_client.get_positions()
+                logger.debug(f"API返回的持仓数据: {positions}")
+                
+                if positions and isinstance(positions, dict) and 'data' in positions:
+                    data = positions['data']
+                    logger.info(f"从API获取到 {len(data)} 个持仓")
+                    
+                    # 清空当前的buy_orders，重新构建
+                    self._buy_orders = {}
+                    
+                    for position in data:
+                        if isinstance(position, dict):
+                            inst_id = position.get('instId')
+                            pos_side = position.get('posSide')
+                            pos = float(position.get('pos', '0'))
+                            avg_px = float(position.get('avgPx', '0'))
+                            
+                            if inst_id and pos > 0:
+                                # 构建订单记录
+                                order = {
+                                    'order_id': f"API_{inst_id}_{pos_side}",
+                                    'buy_price' if pos_side == 'long' else 'sell_price': avg_px,
+                                    'buy_amount' if pos_side == 'long' else 'sell_amount': pos,
+                                    'buy_time' if pos_side == 'long' else 'sell_time': datetime.now().isoformat(),
+                                    'inst_id': inst_id,
+                                    'position_type': 'long' if pos_side == 'long' else 'short',
+                                    'margin_used': float(position.get('notionalUsd', '0')) / self._leverage
+                                }
+                                
+                                # 添加到buy_orders
+                                if inst_id not in self._buy_orders:
+                                    self._buy_orders[inst_id] = []
+                                self._buy_orders[inst_id].append(order)
+                                
+                                logger.info(f"✅ 同步持仓: {inst_id} {pos_side} {pos:.8f} @ {avg_px:.2f}")
+                    
+                    # 保存状态
+                    self._save_state()
+                    logger.info(f"✅ 成功同步 {len(self._buy_orders)} 个交易对的持仓")
+                else:
+                    logger.warning("⚠️ API返回的持仓数据格式不正确")
+            except Exception as e:
+                logger.error(f"从API获取持仓失败: {e}")
+        except Exception as e:
+            logger.error(f"同步持仓失败: {e}")
     
     def _load_state(self):
         """加载上次的状态"""
@@ -264,6 +331,10 @@ class CoordinatorAgent(BaseAgent):
                 logger.info("未找到上次的协调智能体状态")
         except Exception as e:
             logger.error(f"加载协调智能体状态失败: {e}")
+        
+        # 启动时从API获取实际持仓，确保buy_orders不为空
+        import asyncio
+        asyncio.create_task(self._sync_positions_from_api())
     
     def _save_state(self):
         """保存当前状态"""
