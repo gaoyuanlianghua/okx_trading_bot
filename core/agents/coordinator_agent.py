@@ -90,8 +90,9 @@ class CoordinatorAgent(BaseAgent):
         self._total_trades: int = 0  # 总交易次数
         self._winning_trades: int = 0  # 盈利交易次数
         
-        # 保证金跟踪 - 每种交易对最大使用10 USDT
-        self._max_margin_per_symbol: float = 10.0  # 每种交易对最大保证金限制（USDT）
+        # 保证金跟踪 - 每种交易对最大使用10 USDT（初始值，随收益动态调整）
+        self._initial_margin_per_symbol: float = 10.0  # 初始保证金限制
+        self._symbol_profit: Dict[str, float] = {}  # 每个交易对的累计收益
         self._used_margin: Dict[str, Dict[str, float]] = {}  # 已使用的保证金，按交易对和方向分组
         # 结构: {inst_id: {'long': x.xx, 'short': x.xx}}
         
@@ -218,6 +219,7 @@ class CoordinatorAgent(BaseAgent):
                 self._total_pnl = state.get('total_pnl', 0.0)
                 self._total_trades = state.get('total_trades', 0)
                 self._winning_trades = state.get('winning_trades', 0)
+                self._symbol_profit = state.get('symbol_profit', {})
                 
                 logger.info(f"成功加载协调智能体状态: 总交易金额={self._total_trade_amount} USDT, 总盈亏={self._total_pnl:.2f} USDT")
             else:
@@ -237,7 +239,8 @@ class CoordinatorAgent(BaseAgent):
                 'last_expected_returns': self._last_expected_returns,
                 'total_pnl': self._total_pnl,
                 'total_trades': self._total_trades,
-                'winning_trades': self._winning_trades
+                'winning_trades': self._winning_trades,
+                'symbol_profit': self._symbol_profit
             }
             success = persistence_manager.save_coordinator_agent_state(state)
             if success:
@@ -329,7 +332,8 @@ class CoordinatorAgent(BaseAgent):
             # 记录日志
             for inst_id, margins in self._used_margin.items():
                 total = margins['long'] + margins['short']
-                logger.info(f"保证金使用情况 [{inst_id}]: 总使用={total:.2f} USDT, 多头={margins['long']:.2f} USDT, 空头={margins['short']:.2f} USDT, 最大限制={self._max_margin_per_symbol:.2f} USDT")
+                dynamic_limit = self._get_dynamic_margin_limit(inst_id)
+                logger.info(f"保证金使用情况 [{inst_id}]: 总使用={total:.2f} USDT, 多头={margins['long']:.2f} USDT, 空头={margins['short']:.2f} USDT, 动态限制={dynamic_limit:.2f} USDT, 累计收益={self._symbol_profit.get(inst_id, 0.0):.4f} USDT")
         except Exception as e:
             logger.error(f"更新保证金跟踪失败: {e}")
 
@@ -357,19 +361,63 @@ class CoordinatorAgent(BaseAgent):
             # 获取当前交易对的已使用保证金
             current_used = self._used_margin[inst_id].get(position_type, 0.0)
             
+            # 获取动态保证金限制
+            dynamic_limit = self._get_dynamic_margin_limit(inst_id)
+            
             # 计算交易后总保证金
             total_after = current_used + actual_margin
             
             # 检查是否超过最大限制
-            if total_after > self._max_margin_per_symbol:
-                logger.warning(f"⚠️ 保证金不足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin_per_symbol:.2f} USDT")
+            if total_after > dynamic_limit:
+                logger.warning(f"⚠️ 保证金不足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 动态限制 {dynamic_limit:.2f} USDT (累计收益: {self._symbol_profit.get(inst_id, 0.0):.4f} USDT)")
                 return False
             
-            logger.info(f"✅ 保证金充足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 最大限制 {self._max_margin_per_symbol:.2f} USDT")
+            logger.info(f"✅ 保证金充足 [{inst_id}]: 需要 {actual_margin:.2f} USDT (原始金额: {required_margin:.2f} USDT, 杠杆: {self._leverage}x), 交易后总使用 {total_after:.2f} USDT, 动态限制 {dynamic_limit:.2f} USDT (累计收益: {self._symbol_profit.get(inst_id, 0.0):.4f} USDT)")
             return True
         except Exception as e:
             logger.error(f"检查保证金失败: {e}")
             return False
+
+    def _get_dynamic_margin_limit(self, inst_id: str) -> float:
+        """
+        获取交易对的动态保证金限制
+
+        保证金限制 = 初始值 + 累计收益（最多增加到初始值的5倍，最少不低于初始值的50%）
+
+        Args:
+            inst_id: 交易对ID
+
+        Returns:
+            float: 动态保证金限制（USDT）
+        """
+        profit = self._symbol_profit.get(inst_id, 0.0)
+        # 计算动态限制：初始值 + 收益
+        dynamic_limit = self._initial_margin_per_symbol + profit
+        
+        # 设置边界：最多5倍，最少50%
+        max_limit = self._initial_margin_per_symbol * 5.0
+        min_limit = self._initial_margin_per_symbol * 0.5
+        
+        # 应用边界
+        dynamic_limit = max(min_limit, min(dynamic_limit, max_limit))
+        
+        return dynamic_limit
+
+    def _update_symbol_profit(self, inst_id: str, profit: float):
+        """
+        更新交易对的累计收益
+
+        Args:
+            inst_id: 交易对ID
+            profit: 本次交易的盈亏
+        """
+        if inst_id not in self._symbol_profit:
+            self._symbol_profit[inst_id] = 0.0
+        self._symbol_profit[inst_id] += profit
+        
+        # 获取新的动态限制
+        new_limit = self._get_dynamic_margin_limit(inst_id)
+        logger.info(f"📊 更新{inst_id}收益: +{profit:.4f} USDT, 累计收益: {self._symbol_profit[inst_id]:.4f} USDT, 动态保证金限制: {new_limit:.2f} USDT")
 
     async def _check_expected_return(self, expected_return: float, fee_rate: float = 0.002) -> bool:
         """
@@ -2116,6 +2164,9 @@ class CoordinatorAgent(BaseAgent):
                             profit_growth_manager.record_trade('buy', current_price, actual_buy_amount, profit)
                             logger.info(f"✅ 已记录平空交易到盈利增长管理器，盈利: {profit:.4f} USDT")
                             
+                            # 更新该交易对的收益和动态保证金限制
+                            self._update_symbol_profit(inst_id, profit)
+                            
                             # 记录盈亏信息
                             win_rate = (self._winning_trades / self._total_trades * 100) if self._total_trades > 0 else 0
                             logger.info(f"📊 交易统计: 总交易={self._total_trades}, 盈利交易={self._winning_trades}, 胜率={win_rate:.2f}%, 总盈亏={self._total_pnl:.4f} USDT")
@@ -2221,6 +2272,9 @@ class CoordinatorAgent(BaseAgent):
                                 # 记录平多 - 盈利增长管理器会自动更新上次卖出价格和盈利
                                 profit_growth_manager.record_trade('sell', current_price, actual_sell_amount, profit)
                                 logger.info(f"✅ 已记录平多交易到盈利增长管理器，盈利: {profit:.4f} USDT")
+                                
+                                # 更新该交易对的收益和动态保证金限制
+                                self._update_symbol_profit(inst_id, profit)
                                 
                                 # 记录盈亏信息
                                 win_rate = (self._winning_trades / self._total_trades * 100) if self._total_trades > 0 else 0
