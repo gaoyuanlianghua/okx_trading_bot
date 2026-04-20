@@ -2178,12 +2178,18 @@ class CoordinatorAgent(BaseAgent):
                                     break
                         
                         if matched_short_order:
-                            # 计算实际盈亏（做空时，价格下跌才盈利）
-                            sell_price = matched_short_order['sell_price']
-                            sell_amount = matched_short_order['sell_amount']
-                            # 使用实际买入数量（可能小于做空数量）
-                            actual_buy_amount = min(close_short_amount, sell_amount)
-                            profit = (sell_price - current_price) * actual_buy_amount
+                            # 获取API返回的真实盈亏（从成交订单中获取）
+                            api_pnl = result.get('pnl', 0.0) if isinstance(result, dict) else 0.0
+                            
+                            # 如果API pnl为0，使用本地计算作为备选
+                            if api_pnl == 0.0:
+                                sell_price = matched_short_order['sell_price']
+                                sell_amount = matched_short_order['sell_amount']
+                                actual_buy_amount = min(close_short_amount, sell_amount)
+                                profit = (sell_price - current_price) * actual_buy_amount
+                                logger.warning(f"⚠️ API未返回pnl，使用本地计算: {profit:.4f} USDT")
+                            else:
+                                profit = api_pnl
                             
                             # 更新统计信息
                             self._total_pnl += profit
@@ -2193,7 +2199,7 @@ class CoordinatorAgent(BaseAgent):
                             
                             # 记录平空 - 盈利增长管理器会自动更新
                             profit_growth_manager.record_trade('buy', current_price, actual_buy_amount, profit)
-                            logger.info(f"✅ 已记录平空交易到盈利增长管理器，盈利: {profit:.4f} USDT")
+                            logger.info(f"✅ 已记录平空交易到盈利增长管理器，盈利: {profit:.4f} USDT (API pnl: {api_pnl:.4f})")
                             
                             # 更新该交易对的收益和动态保证金限制
                             self._update_symbol_profit(inst_id, profit)
@@ -2201,7 +2207,7 @@ class CoordinatorAgent(BaseAgent):
                             # 记录盈亏信息
                             win_rate = (self._winning_trades / self._total_trades * 100) if self._total_trades > 0 else 0
                             logger.info(f"📊 交易统计: 总交易={self._total_trades}, 盈利交易={self._winning_trades}, 胜率={win_rate:.2f}%, 总盈亏={self._total_pnl:.4f} USDT")
-                            logger.info(f"✅ 平空成功: 卖出价={sell_price:.2f}, 买入价={current_price:.2f}, 数量={actual_buy_amount:.8f}, 盈亏={profit:.4f} USDT")
+                            logger.info(f"✅ 平空成功: API盈亏={api_pnl:.4f} USDT, 本地计算盈亏={profit:.4f} USDT")
                         else:
                             # 没有找到对应的做空订单，直接记录
                             profit_growth_manager.record_trade('buy', current_price, close_short_amount, 0)
@@ -2287,12 +2293,18 @@ class CoordinatorAgent(BaseAgent):
                                         break
                             
                             if matched_buy_order:
-                                # 计算实际盈亏
-                                buy_price = matched_buy_order['buy_price']
-                                buy_amount = matched_buy_order['buy_amount']
-                                # 使用实际卖出数量（可能小于买入数量）
-                                actual_sell_amount = min(sz, buy_amount)
-                                profit = (current_price - buy_price) * actual_sell_amount
+                                # 获取API返回的真实盈亏（从成交订单中获取）
+                                api_pnl = result.get('pnl', 0.0) if isinstance(result, dict) else 0.0
+                                
+                                # 如果API pnl为0，使用本地计算作为备选
+                                if api_pnl == 0.0:
+                                    buy_price = matched_buy_order['buy_price']
+                                    buy_amount = matched_buy_order['buy_amount']
+                                    actual_sell_amount = min(sz, buy_amount)
+                                    profit = (current_price - buy_price) * actual_sell_amount
+                                    logger.warning(f"⚠️ API未返回pnl，使用本地计算: {profit:.4f} USDT")
+                                else:
+                                    profit = api_pnl
                                 
                                 # 更新统计信息
                                 self._total_pnl += profit
@@ -2302,7 +2314,7 @@ class CoordinatorAgent(BaseAgent):
                                 
                                 # 记录平多 - 盈利增长管理器会自动更新上次卖出价格和盈利
                                 profit_growth_manager.record_trade('sell', current_price, actual_sell_amount, profit)
-                                logger.info(f"✅ 已记录平多交易到盈利增长管理器，盈利: {profit:.4f} USDT")
+                                logger.info(f"✅ 已记录平多交易到盈利增长管理器，盈利: {profit:.4f} USDT (API pnl: {api_pnl:.4f})")
                                 
                                 # 更新该交易对的收益和动态保证金限制
                                 self._update_symbol_profit(inst_id, profit)
@@ -2310,7 +2322,7 @@ class CoordinatorAgent(BaseAgent):
                                 # 记录盈亏信息
                                 win_rate = (self._winning_trades / self._total_trades * 100) if self._total_trades > 0 else 0
                                 logger.info(f"📊 交易统计: 总交易={self._total_trades}, 盈利交易={self._winning_trades}, 胜率={win_rate:.2f}%, 总盈亏={self._total_pnl:.4f} USDT")
-                                logger.info(f"✅ 平多成功: 买入价={buy_price:.2f}, 卖出价={current_price:.2f}, 数量={actual_sell_amount:.8f}, 盈亏={profit:.4f} USDT")
+                                logger.info(f"✅ 平多成功: API盈亏={api_pnl:.4f} USDT, 本地计算盈亏={profit:.4f} USDT")
                             else:
                                 # 没有找到对应的做多订单，直接记录
                                 profit_growth_manager.record_trade('sell', current_price, sz, 0)
