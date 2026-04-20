@@ -822,12 +822,14 @@ class OrderAgent(BaseAgent):
                                     balance = await self.rest_client.get_account_balance()
                                     if balance and isinstance(balance, dict):
                                         details = balance.get('details', [])
+                                        # 从交易对中提取币种
+                                        symbol = inst_id.split('-')[0]
                                         for item in details:
-                                            if isinstance(item, dict) and item.get('ccy') == 'BTC':
+                                            if isinstance(item, dict) and item.get('ccy') == symbol:
                                                 avail_bal_str = item.get('availBal', 0)
                                                 try:
                                                     actual_btc_balance = float(avail_bal_str)
-                                                    logger.info(f"从API获取BTC可用余额: {actual_btc_balance:.8f}")
+                                                    logger.info(f"从API获取{symbol}可用余额: {actual_btc_balance:.8f}")
                                                 except (ValueError, TypeError):
                                                     pass
                                                 break

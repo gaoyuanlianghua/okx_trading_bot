@@ -2359,7 +2359,6 @@ class CoordinatorAgent(BaseAgent):
                     )
                     # 将信号标记为已处理
                     if hasattr(self, '_processed_signals'):
-                        
                         logger.info(f"信号已标记为已处理: {signal_key}")
                 except Exception as e:
                     logger.error(f"更新交易金额失败: {e}")
